@@ -1,0 +1,26 @@
+networks:
+  access-net-ht6pn:
+    name: access-net-ht6pn
+    driver: bridge
+  app-net-nt5rk:
+    name: app-net-nt5rk
+    driver: bridge
+    internal: true
+  data-net-nt8fq:
+    name: data-net-nt8fq
+    driver: bridge
+    internal: true
+
+volumes:
+  postgres-tp8vn-data:
+    name: postgres-tp8vn-data
+  valkey-cache-tv4kq-data:
+    name: valkey-cache-tv4kq-data
+  valkey-channels-tv9zw-data:
+    name: valkey-channels-tv9zw-data
+  rabbitmq-tr6mc-data:
+    name: rabbitmq-tr6mc-data
+  seaweedfs-ts3jd-data:
+    name: seaweedfs-ts3jd-data
+  mailpit-tm7bh-data:
+    name: mailpit-tm7bh-data

@@ -59,7 +59,7 @@ Character set: lowercase `a–z` plus digits `2–9`. Digits `0` and `1` are exc
 unambiguous. The matching validation pattern, used by `scripts/audit_naming.py` and by the audits in
 [service-inventory.md](./service-inventory.md) Section 6, is `^[a-z][a-z-]*-[a-z2-9]{5}$`.
 
-Every ID is exactly five characters and unique across both environments: **29 containers and 6 networks, 35 IDs, no
+Every ID is exactly five characters and unique across both environments: **29 containers and 8 networks, 37 IDs, no
 duplicates.**
 
 ### 2.2 Development
@@ -108,18 +108,26 @@ Its own IDs, so it can coexist with development. Same never-regenerate rule.
 | Network | ID | Environment | Purpose | `internal` |
 |---|---|---|---|---|
 | `edge-net-ne2vk` | `ne2vk` | development | Traefik to the Django app | no |
+| `access-net-ha4mz` | `ha4mz` | development | host access for every service publishing a port | no |
 | `app-net-na6hy` | `na6hy` | development | app tier to brokers, cache, storage, mail | **yes** |
 | `data-net-nd9pc` | `nd9pc` | development | PostgreSQL nodes, backup agent, pgAdmin | **yes** |
 | `obsv-net-nb4xt` | `nb4xt` | development | Prometheus, Grafana, Loki, Alloy, exporters, cAdvisor | **yes** |
+| `access-net-ht6pn` | `ht6pn` | testing | host access for host-mode testing | no |
 | `app-net-nt5rk` | `nt5rk` | testing | test runner to brokers, cache, storage, mail | **yes** |
 | `data-net-nt8fq` | `nt8fq` | testing | test runner to PostgreSQL | **yes** |
 
-Services attach to more than one network where needed. `django-uv5n2` is on all four development networks;
+Services attach to more than one network where needed. `django-uv5n2` is on all four development service zones;
 `postgres-exporter-pe4rk` is on `data-net-nd9pc` and `obsv-net-nb4xt`.
 
-`internal: true` on every network except `edge-net-ne2vk` is the enforcement mechanism for the offline constraint:
-no container on an internal network can reach the internet even if a dependency tries. It does **not** restrict
-traffic between members of that network, and the gateway IP remains reachable.
+`internal: true` on a service zone is the enforcement mechanism for the offline constraint: no container whose
+networks are all internal can reach the internet even if a dependency tries. It does **not** restrict traffic
+between members of that network.
+
+**A published host port does not work on an internal network.** Docker drops the publication silently — no warning,
+no error, no non-zero exit — so the container runs healthily while the port is unreachable. Every service the
+inventory gives a host port therefore also joins its environment's access zone, which is the only reason those two
+zones exist. Measured 2026-09-13; see
+[../adr/0021-access-zone-for-published-ports.md](../adr/0021-access-zone-for-published-ports.md).
 
 ### 2.5 Volumes
 

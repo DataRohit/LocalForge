@@ -14,28 +14,28 @@ would otherwise have surfaced as a mysterious failure at build time.
 
 | Container name | Role | Host ports | Internal | Networks |
 |---|---|---|---|---|
-| `traefik-tk2jp` | reverse proxy, Docker label discovery | `8080` web, `8081` dashboard | 80, 8080 | `edge-net-ne2vk` |
-| `django-uv5n2` | Django ASGI app under Uvicorn | `8000` | 8000 | `edge-net-ne2vk`, `app-net-na6hy`, `data-net-nd9pc`, `obsv-net-nb4xt` |
-| `postgres-pg3ka` | PostgreSQL 18.6 primary | `5432` | 5432 | `data-net-nd9pc` |
-| `postgres-replica-pg6vy` | PostgreSQL 18.6 hot standby | `5433` | 5432 | `data-net-nd9pc` |
+| `traefik-tk2jp` | reverse proxy, Docker label discovery | `8080` web, `8081` dashboard | 80, 8080 | `edge-net-ne2vk`, `access-net-ha4mz` |
+| `django-uv5n2` | Django ASGI app under Uvicorn | `8000` | 8000 | `edge-net-ne2vk`, `app-net-na6hy`, `data-net-nd9pc`, `obsv-net-nb4xt`, `access-net-ha4mz` |
+| `postgres-pg3ka` | PostgreSQL 18.6 primary | `5432` | 5432 | `data-net-nd9pc`, `access-net-ha4mz` |
+| `postgres-replica-pg6vy` | PostgreSQL 18.6 hot standby | `5433` | 5432 | `data-net-nd9pc`, `access-net-ha4mz` |
 | `pgbackrest-pb2wj` | backup agent, scheduled | none | — | `data-net-nd9pc` |
-| `pgadmin-pa7fe` | PostgreSQL dashboard | `5050` | 80 | `data-net-nd9pc` |
-| `valkey-cache-vc5tn` | cache (DB 0) + Celery results (DB 1) | `6379` | 6379 | `app-net-na6hy` |
-| `valkey-channels-vh8dm` | Channels layer | `6380` | 6379 | `app-net-na6hy` |
-| `rabbitmq-rq4sx` | Celery broker | `5672` AMQP, `15672` management | 5672, 15672 | `app-net-na6hy` |
+| `pgadmin-pa7fe` | PostgreSQL dashboard | `5050` | 80 | `data-net-nd9pc`, `access-net-ha4mz` |
+| `valkey-cache-vc5tn` | cache (DB 0) + Celery results (DB 1) | `6379` | 6379 | `app-net-na6hy`, `access-net-ha4mz` |
+| `valkey-channels-vh8dm` | Channels layer | `6380` | 6379 | `app-net-na6hy`, `access-net-ha4mz` |
+| `rabbitmq-rq4sx` | Celery broker | `5672` AMQP, `15672` management | 5672, 15672 | `app-net-na6hy`, `access-net-ha4mz` |
 | `celery-worker-cw8rt` | task worker | none | — | `app-net-na6hy`, `data-net-nd9pc` |
 | `celery-beat-cb4hq` | periodic task scheduler | none | — | `app-net-na6hy`, `data-net-nd9pc` |
-| `flower-fl9zd` | Celery dashboard | `5555` | 5555 | `app-net-na6hy` |
-| `mailpit-mp6gb` | SMTP capture | `1025` SMTP, `8025` web | 1025, 8025 | `app-net-na6hy` |
-| `seaweedfs-sw9cr` | S3 storage, all-in-one | `9333` master, `8082` volume, `8888` filer, `8333` S3 | 9333, 8080, 8888, 8333 | `app-net-na6hy` |
-| `prometheus-pm5db` | metrics collection | `9090` | 9090 | `obsv-net-nb4xt` |
-| `grafana-gf7qv` | metrics + logs visualization | `3000` | 3000 | `obsv-net-nb4xt` |
-| `loki-lk3ny` | log storage and query | `3100` | 3100 | `obsv-net-nb4xt` |
-| `alloy-al6wz` | log collection | `12345` | 12345 | `obsv-net-nb4xt` |
-| `cadvisor-cv8mh` | container metrics | `8090` | 8080 | `obsv-net-nb4xt` |
-| `postgres-exporter-pe4rk` | PostgreSQL metrics, both nodes | `9187` | 9187 | `data-net-nd9pc`, `obsv-net-nb4xt` |
-| `valkey-cache-exporter-ve7ts` | cache Valkey metrics | `9121` | 9121 | `app-net-na6hy`, `obsv-net-nb4xt` |
-| `valkey-channels-exporter-vx4nq` | channels Valkey metrics | `9122` | 9121 | `app-net-na6hy`, `obsv-net-nb4xt` |
+| `flower-fl9zd` | Celery dashboard | `5555` | 5555 | `app-net-na6hy`, `access-net-ha4mz` |
+| `mailpit-mp6gb` | SMTP capture | `1025` SMTP, `8025` web | 1025, 8025 | `app-net-na6hy`, `access-net-ha4mz` |
+| `seaweedfs-sw9cr` | S3 storage, all-in-one | `9333` master, `8082` volume, `8888` filer, `8333` S3 | 9333, 8080, 8888, 8333 | `app-net-na6hy`, `access-net-ha4mz` |
+| `prometheus-pm5db` | metrics collection | `9090` | 9090 | `obsv-net-nb4xt`, `access-net-ha4mz` |
+| `grafana-gf7qv` | metrics + logs visualization | `3000` | 3000 | `obsv-net-nb4xt`, `access-net-ha4mz` |
+| `loki-lk3ny` | log storage and query | `3100` | 3100 | `obsv-net-nb4xt`, `access-net-ha4mz` |
+| `alloy-al6wz` | log collection | `12345` | 12345 | `obsv-net-nb4xt`, `access-net-ha4mz` |
+| `cadvisor-cv8mh` | container metrics | `8090` | 8080 | `obsv-net-nb4xt`, `access-net-ha4mz` |
+| `postgres-exporter-pe4rk` | PostgreSQL metrics, both nodes | `9187` | 9187 | `data-net-nd9pc`, `obsv-net-nb4xt`, `access-net-ha4mz` |
+| `valkey-cache-exporter-ve7ts` | cache Valkey metrics | `9121` | 9121 | `app-net-na6hy`, `obsv-net-nb4xt`, `access-net-ha4mz` |
+| `valkey-channels-exporter-vx4nq` | channels Valkey metrics | `9122` | 9121 | `app-net-na6hy`, `obsv-net-nb4xt`, `access-net-ha4mz` |
 
 ### 1.1 Why two Valkey exporters
 
@@ -193,15 +193,17 @@ Seven services, one profile-gated. Every dashboard and UI service is dropped; no
 | Container name | Role | Host ports | Networks | Default |
 |---|---|---|---|---|
 | `django-test-dt5qx` | pytest runner | none | `app-net-nt5rk`, `data-net-nt8fq` | yes |
-| `postgres-tp8vn` | PostgreSQL 18.6, single node | `25432` | `data-net-nt8fq` | yes |
-| `valkey-cache-tv4kq` | cache | `26379` | `app-net-nt5rk` | yes |
-| `valkey-channels-tv9zw` | Channels layer | `26380` | `app-net-nt5rk` | yes |
-| `rabbitmq-tr6mc` | Celery broker, no management plugin | `25672` | `app-net-nt5rk` | yes |
-| `seaweedfs-ts3jd` | S3 storage | `28333` S3, `29333` master | `app-net-nt5rk` | yes |
-| `mailpit-tm7bh` | SMTP capture | `21025` SMTP | `app-net-nt5rk` | **no — profile `smtp`** |
+| `postgres-tp8vn` | PostgreSQL 18.6, single node | `25432` | `data-net-nt8fq`, `access-net-ht6pn` | yes |
+| `valkey-cache-tv4kq` | cache | `26379` | `app-net-nt5rk`, `access-net-ht6pn` | yes |
+| `valkey-channels-tv9zw` | Channels layer | `26380` | `app-net-nt5rk`, `access-net-ht6pn` | yes |
+| `rabbitmq-tr6mc` | Celery broker, no management plugin | `25672` | `app-net-nt5rk`, `access-net-ht6pn` | yes |
+| `seaweedfs-ts3jd` | S3 storage | `28333` S3, `29333` master | `app-net-nt5rk`, `access-net-ht6pn` | yes |
+| `mailpit-tm7bh` | SMTP capture | `21025` SMTP | `app-net-nt5rk`, `access-net-ht6pn` | **no — profile `smtp`** |
 
-Two networks, not four: there is no `edge` zone because no proxy runs, and no `obsv` zone because every
-observability service is excluded. Both are `internal: true`.
+Three networks, not five: there is no `edge` zone because no proxy runs, and no `obsv` zone because every
+observability service is excluded. The two service zones are `internal: true`; `access-net-ht6pn` is not, because
+every testing service publishes a host port and Docker drops a publication made from an internal network. See
+[../adr/0021-access-zone-for-published-ports.md](../adr/0021-access-zone-for-published-ports.md).
 
 Host ports are the development port plus 20000. That is what lets both stacks run at once and what makes host mode
 possible.
@@ -318,9 +320,14 @@ requirement.
 ### 6.5 Offline enforcement
 
 ```console
-docker exec postgres-pg3ka getent hosts example.com
+docker exec pgbackrest-pb2wj getent hosts example.com
 ```
 
-Pass: non-zero exit and no output, because `data-net-nd9pc` is `internal: true`. A successful lookup means a network
-was declared without it. Containers on an internal network still reach each other normally — `internal` blocks
-outbound traffic, not traffic between members.
+Pass: non-zero exit and no output, because every network `pgbackrest-pb2wj` is on carries `internal: true`.
+Containers on an internal network still reach each other normally — `internal` blocks outbound traffic, not traffic
+between members.
+
+The probe targets `pgbackrest-pb2wj` rather than `postgres-pg3ka` because this audit proves a *container* is
+offline, not a network. A container on an access zone resolves `example.com` by design, so only the three services
+that publish no host port — `pgbackrest-pb2wj`, `celery-worker-cw8rt`, and `celery-beat-cb4hq` — can be asserted
+offline. See [../adr/0021-access-zone-for-published-ports.md](../adr/0021-access-zone-for-published-ports.md).

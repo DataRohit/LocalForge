@@ -30,6 +30,7 @@ Format follows `.agents/skills/domain-modeling/ADR-FORMAT.md`: sequential number
 | [0018](./0018-api-error-contract.md) | API error contract | One error envelope, exhaustive status-code documentation | — | accepted |
 | [0019](./0019-websocket-authentication.md) | WebSocket auth | JWT over the subprotocol header, custom ASGI middleware | — | accepted |
 | [0020](./0020-no-comments-structured-docstrings.md) | Code standards | No comments; structured docstrings, mechanically enforced | — | accepted |
+| [0021](./0021-access-zone-for-published-ports.md) | Network topology | A dedicated access zone, because internal networks cannot publish host ports | — | accepted |
 
 ## Evidence standard
 

@@ -37,8 +37,8 @@ Listed so scope creep is recognisable. None exists.
 
 | Path | Purpose |
 |---|---|
-| `compose.yaml` | Shared services, networks, volumes |
-| `compose.development.yaml`, `compose.testing.yaml` | Per-environment overlays |
+| `compose.yaml` | Shared services and the project name |
+| `compose.development.yaml`, `compose.testing.yaml` | Per-environment overlays, each owning its own networks and volumes because the two registries are disjoint |
 | `docker/django/Dockerfile` | Multi-stage app image with a `test` stage |
 | `docker/django/entrypoint.sh` | Wait for dependencies, migrate, collectstatic, exec the server |
 | `docker/pgbackrest/Dockerfile` | pgBackRest image; no first-party image exists upstream |

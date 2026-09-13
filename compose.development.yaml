@@ -1,0 +1,51 @@
+networks:
+  edge-net-ne2vk:
+    name: edge-net-ne2vk
+    driver: bridge
+  access-net-ha4mz:
+    name: access-net-ha4mz
+    driver: bridge
+  app-net-na6hy:
+    name: app-net-na6hy
+    driver: bridge
+    internal: true
+  data-net-nd9pc:
+    name: data-net-nd9pc
+    driver: bridge
+    internal: true
+  obsv-net-nb4xt:
+    name: obsv-net-nb4xt
+    driver: bridge
+    internal: true
+
+volumes:
+  postgres-pg3ka-data:
+    name: postgres-pg3ka-data
+  postgres-pg3ka-wal:
+    name: postgres-pg3ka-wal
+  postgres-replica-pg6vy-data:
+    name: postgres-replica-pg6vy-data
+  pgbackrest-pb2wj-repo:
+    name: pgbackrest-pb2wj-repo
+  pgadmin-pa7fe-data:
+    name: pgadmin-pa7fe-data
+  valkey-cache-vc5tn-data:
+    name: valkey-cache-vc5tn-data
+  valkey-channels-vh8dm-data:
+    name: valkey-channels-vh8dm-data
+  rabbitmq-rq4sx-data:
+    name: rabbitmq-rq4sx-data
+  mailpit-mp6gb-data:
+    name: mailpit-mp6gb-data
+  seaweedfs-sw9cr-data:
+    name: seaweedfs-sw9cr-data
+  prometheus-pm5db-data:
+    name: prometheus-pm5db-data
+  grafana-gf7qv-data:
+    name: grafana-gf7qv-data
+  loki-lk3ny-data:
+    name: loki-lk3ny-data
+  alloy-al6wz-data:
+    name: alloy-al6wz-data
+  django-uv5n2-static:
+    name: django-uv5n2-static
