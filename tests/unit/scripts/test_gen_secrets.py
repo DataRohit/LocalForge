@@ -2039,6 +2039,76 @@ def test_the_documented_exit_codes_are_the_ones_implemented() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("url", ["CELERY_BROKER_URL", "CELERY_RESULT_BACKEND"])
+@pytest.mark.parametrize("placeholder", ["", gen_secrets.GENERATED_PLACEHOLDER])
+def test_a_composed_value_holding_no_real_value_is_derived_rather_than_refused(
+    repository: Path,
+    url: str,
+    placeholder: str,
+) -> None:
+    """Fill a composed value that was never written rather than refusing it.
+
+    Confirms a composed URL left empty or still carrying the manifest placeholder is derived, since
+    neither is an endpoint anyone chose, and refusing would block the plausible first run where a
+    developer copied the manifest into place before generating.
+
+    Arguments:
+        repository: Temporary repository holding the manifest.
+        url: Composed variable to inspect.
+        placeholder: Value standing in for a composed value nobody wrote.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the run is refused, or the value is left unusable.
+    """
+    gen_secrets.main([], root=repository, version_control=FakeVersionControl())
+    values = values_in(repository, ".env.development")
+    values[url] = placeholder
+    (repository / ".env.development").write_text(
+        gen_secrets.render_env_text(values),
+        encoding="utf-8",
+    )
+
+    code = gen_secrets.main([], root=repository, version_control=FakeVersionControl())
+    after = values_in(repository, ".env.development")
+
+    assert code == gen_secrets.EXIT_OK
+    assert after[url] not in gen_secrets.INVALID_VALUES
+    assert after["RABBITMQ_DEFAULT_PASS"] in after["CELERY_BROKER_URL"]
+
+
+@pytest.mark.unit
+def test_the_manifest_can_be_copied_into_place_and_generated_over(repository: Path) -> None:
+    """Survive the manifest being used as a starting file.
+
+    Confirms copying the committed manifest to an environment file and generating fills every
+    placeholder rather than refusing, because the manifest reads like a template and doing so is
+    the obvious first move.
+
+    Arguments:
+        repository: Temporary repository holding the manifest.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the run is refused, or a placeholder survives.
+    """
+    (repository / ".env.development").write_text(
+        (repository / ".env.example").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    code = gen_secrets.main([], root=repository, version_control=FakeVersionControl())
+    after = values_in(repository, ".env.development")
+
+    assert code == gen_secrets.EXIT_OK
+    assert gen_secrets.GENERATED_PLACEHOLDER not in after.values()
+
+
+@pytest.mark.unit
 def test_the_script_guard_runs_the_generator(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

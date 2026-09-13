@@ -540,24 +540,24 @@ def groups_for(environments: Sequence[str]) -> list[tuple[str, ...]]:
     return [group for group in SHARING_GROUPS if selected.intersection(group)]
 
 
-def apply_composed(resolved: dict[str, str], added: Sequence[str], *, force: bool) -> None:
+def apply_composed(resolved: dict[str, str], *, force: bool) -> None:
     """Reconcile every composed value with the variables it is built from.
 
-    Derives a composed value that is absent, and derives it again on a forced run. A value that is
-    present but disagrees with its components is refused rather than rewritten, because the
-    generator cannot prove whether it is stale or a deliberate edit, and guessing either way is
-    worse than saying so.
+    Derives a composed value that carries nothing real yet, which covers the absent case, the
+    manifest placeholder, and a forced run, since forcing resets the value to that placeholder
+    first. A value that is present and real but disagrees with its components is refused rather
+    than rewritten, because the generator cannot prove whether it is stale or a deliberate edit,
+    and guessing either way is worse than saying so.
 
     Arguments:
         resolved: Variables resolved so far, updated in place.
-        added: Names written for the first time in this run.
         force: Whether existing values are being replaced.
 
     Returns:
         None.
 
     Raises:
-        RefusalError: If a composed value disagrees with its components on a default run.
+        RefusalError: If a composed value was written by hand and disagrees with its components.
     """
     for name, composer in COMPOSED_VALUES.items():
         if name not in resolved:
@@ -567,7 +567,7 @@ def apply_composed(resolved: dict[str, str], added: Sequence[str], *, force: boo
         if derived == resolved[name]:
             continue
 
-        if name not in added and not force:
+        if is_usable(resolved[name]) and not force:
             message = (
                 f"{name} does not match the variables it is built from; "
                 "remove it to have it rebuilt, or regenerate with --force"
@@ -636,7 +636,7 @@ def resolve_values(
         if name not in resolved:
             resolved[name] = value
 
-    apply_composed(resolved, added, force=force)
+    apply_composed(resolved, force=force)
 
     return resolved, added, regenerated
 
