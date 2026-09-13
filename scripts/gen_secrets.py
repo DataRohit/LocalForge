@@ -22,6 +22,7 @@ GENERATED_PLACEHOLDER = "<GENERATED>"
 COMMAND_TIMEOUT_SECONDS = 30
 
 EXIT_OK = 0
+EXIT_REFUSED = 1
 EXIT_MANIFEST_UNUSABLE = 2
 EXIT_TRACKED_FILE = 3
 EXIT_FORCE_WITHOUT_ENVIRONMENT = 4
@@ -114,6 +115,15 @@ SHARING_GROUPS: tuple[tuple[str, ...], ...] = (
     (DEVELOPMENT,),
     (TESTING, TESTING_HOST),
 )
+
+
+class RefusalError(Exception):
+    """Raised when the existing files are in a state the generator will not resolve.
+
+    Covers a composed value that disagrees with its components and a sharing group whose members
+    hold different credentials, both of which need a person to decide rather than a default.
+    Inherits Exception; it carries only the message its constructor is given.
+    """
 
 
 class ManifestError(Exception):
@@ -451,7 +461,7 @@ def read_manifest(path: Path) -> dict[str, str]:
     return values
 
 
-def render_value(value: str) -> str:
+def render_value(name: str, value: str) -> str:
     """Render one value for an environment file.
 
     Single-quotes a value containing a dollar sign, because Compose expands unquoted values in both
@@ -460,6 +470,7 @@ def render_value(value: str) -> str:
     Single quotes suppress that expansion and are stripped when the file is read.
 
     Arguments:
+        name: Variable the value belongs to, named in any refusal.
         value: Value to render.
 
     Returns:
@@ -472,7 +483,7 @@ def render_value(value: str) -> str:
         return value
 
     if "'" in value:
-        message = "a value containing both a dollar sign and a single quote cannot be written"
+        message = f"{name} contains both a dollar sign and a single quote, which cannot be written"
         raise ManifestError(message)
 
     return f"'{value}'"
@@ -494,7 +505,7 @@ def render_env_text(values: Mapping[str, str]) -> str:
     Raises:
         ManifestError: If a value cannot be written safely.
     """
-    return "\n".join(f"{name}={render_value(value)}" for name, value in values.items()) + "\n"
+    return "\n".join(f"{name}={render_value(name, value)}" for name, value in values.items()) + "\n"
 
 
 def secret_names(manifest: Mapping[str, str]) -> tuple[str, ...]:
@@ -546,7 +557,7 @@ def apply_composed(resolved: dict[str, str], added: Sequence[str], *, force: boo
         None.
 
     Raises:
-        ManifestError: If a composed value disagrees with its components on a default run.
+        RefusalError: If a composed value disagrees with its components on a default run.
     """
     for name, composer in COMPOSED_VALUES.items():
         if name not in resolved:
@@ -561,7 +572,7 @@ def apply_composed(resolved: dict[str, str], added: Sequence[str], *, force: boo
                 f"{name} does not match the variables it is built from; "
                 "remove it to have it rebuilt, or regenerate with --force"
             )
-            raise ManifestError(message)
+            raise RefusalError(message)
 
         resolved[name] = derived
 
@@ -601,7 +612,7 @@ def resolve_values(
         The resolved variables, the names newly added, and the names regenerated.
 
     Raises:
-        ManifestError: If a composed value disagrees with its components on a default run.
+        RefusalError: If a composed value disagrees with its components on a default run.
     """
     defaults = {**manifest, **overrides}
     resolved: dict[str, str] = {}
@@ -610,7 +621,9 @@ def resolve_values(
 
     for name, default in defaults.items():
         fallback = generated.get(name, default)
-        if not is_usable(existing.get(name)):
+        held = existing.get(name)
+        absent = held is None or (name in generated and not is_usable(held))
+        if absent:
             resolved[name] = fallback
             added.append(name)
         elif force:
@@ -690,7 +703,7 @@ def group_secrets(
         One value per secret variable, shared by every member of the group.
 
     Raises:
-        ManifestError: If two members of the group hold different values for one secret, which
+        RefusalError: If two members of the group hold different values for one secret, which
             cannot be reconciled without choosing one credential over another.
     """
     shared: dict[str, str] = {}
@@ -708,7 +721,7 @@ def group_secrets(
                 f"{name} differs between files that must share it; "
                 "reconcile them by hand, or regenerate the pair with --force"
             )
-            raise ManifestError(message)
+            raise RefusalError(message)
 
         shared[name] = held.pop() if held else SECRET_RECIPES.get(name, generate_password)()
 
@@ -757,8 +770,9 @@ def prepare_group(
         One prepared file per environment, in the order given.
 
     Raises:
-        ManifestError: If an existing file cannot be read, its members disagree on a shared
-            credential, or a composed value disagrees with its components.
+        ManifestError: If an existing file cannot be read.
+        RefusalError: If the group's members disagree on a shared credential, or a composed value
+            disagrees with its components.
     """
     existing_by_environment = {
         environment: read_existing(root / ENVIRONMENT_FILES[environment])
@@ -950,6 +964,41 @@ def report(
     return "\n".join(lines)
 
 
+def preflight_request(
+    arguments: argparse.Namespace,
+    root: Path,
+    index: VersionControl,
+    environments: Sequence[str],
+) -> int:
+    """Check everything that must hold before any file is considered.
+
+    Refuses a run whose targets are tracked, or whose tracking status cannot be established, so the
+    decision is made once and before any file is read or written.
+
+    Arguments:
+        arguments: Parsed command-line arguments.
+        root: Repository root holding the environment files.
+        index: Version control query surface.
+        environments: Environments the run will write.
+
+    Returns:
+        Zero when the run may proceed, or the documented failure code.
+    """
+    del arguments, root
+
+    try:
+        refusals = tracked_refusals(environments, index)
+    except IndexUnavailableError as error:
+        print(f"refusing to write: cannot determine what Git tracks: {error}")
+        return EXIT_TRACKED_FILE
+
+    if refusals:
+        print(f"refusing to write Git-tracked file(s): {', '.join(refusals)}")
+        return EXIT_TRACKED_FILE
+
+    return EXIT_OK
+
+
 def main(
     argv: Sequence[str] | None = None,
     root: Path = REPOSITORY_ROOT,
@@ -982,25 +1031,25 @@ def main(
         print(f"manifest unusable: {error}")
         return EXIT_MANIFEST_UNUSABLE
 
-    environments = SELECTIONS[arguments.environment or ALL_ENVIRONMENTS]
-    try:
-        refusals = tracked_refusals(environments, index)
-    except IndexUnavailableError as error:
-        print(f"refusing to write: cannot determine what Git tracks: {error}")
-        return EXIT_TRACKED_FILE
+    selection = SELECTIONS[arguments.environment or ALL_ENVIRONMENTS]
+    groups = groups_for(selection)
+    environments = [environment for group in groups for environment in group]
 
-    if refusals:
-        print(f"refusing to write Git-tracked file(s): {', '.join(refusals)}")
-        return EXIT_TRACKED_FILE
+    blocked = preflight_request(arguments, root, index, environments)
+    if blocked != EXIT_OK:
+        return blocked
 
     outcomes: list[Outcome] = []
     try:
         prepared = [
             file
-            for group in groups_for(environments)
+            for group in groups
             for file in prepare_group(group, manifest, root, force=arguments.force)
         ]
         outcomes = commit_prepared(prepared)
+    except RefusalError as error:
+        print(f"refusing to write: {error}")
+        return EXIT_REFUSED
     except ManifestError as error:
         print(f"refusing to write: {error}")
         return EXIT_MANIFEST_UNUSABLE

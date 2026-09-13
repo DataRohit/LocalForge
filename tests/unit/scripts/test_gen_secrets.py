@@ -26,6 +26,13 @@ MANIFEST_SOURCE = gen_secrets.REPOSITORY_ROOT / ".env.example"
 MINIMUM_BCRYPT_ROUNDS = 4
 DOCUMENTED_BCRYPT_ROUNDS = 12
 DIVERGENT_VALUE = "not-the-same-value"
+DOCUMENTED_EXIT_CODES = {
+    "ok": 0,
+    "refused": 1,
+    "manifest_unusable": 2,
+    "tracked_file": 3,
+    "force_without": 4,
+}
 SHIPPED_BCRYPT_ROUNDS = gen_secrets.BCRYPT_ROUNDS
 SECRET_VARIABLES = (
     "DJANGO_SECRET_KEY",
@@ -1182,7 +1189,7 @@ def test_a_composed_url_left_disagreeing_with_its_parts_is_refused(
 
     code = gen_secrets.main([], root=repository, version_control=FakeVersionControl())
 
-    assert code == gen_secrets.EXIT_MANIFEST_UNUSABLE
+    assert code == gen_secrets.EXIT_REFUSED
     assert url in capsys.readouterr().out
     assert values_in(repository, ".env.development")[url] == before
 
@@ -1314,7 +1321,7 @@ def test_an_edited_url_is_kept_even_when_a_component_is_also_missing(
 
     code = gen_secrets.main([], root=repository, version_control=FakeVersionControl())
 
-    assert code == gen_secrets.EXIT_MANIFEST_UNUSABLE
+    assert code == gen_secrets.EXIT_REFUSED
     assert "CELERY_BROKER_URL" in capsys.readouterr().out
     assert values_in(repository, ".env.development")["CELERY_BROKER_URL"] == (
         "amqps://deliberate.example:5671/localforge"
@@ -1455,8 +1462,8 @@ def test_quoting_is_applied_only_where_expansion_would_occur() -> None:
     Raises:
         AssertionError: If quoting is applied to the wrong values.
     """
-    assert gen_secrets.render_value("plain") == "plain"
-    assert gen_secrets.render_value("has$dollar") == "'has$dollar'"
+    assert gen_secrets.render_value("NAME", "plain") == "plain"
+    assert gen_secrets.render_value("NAME", "has$dollar") == "'has$dollar'"
     assert gen_secrets.unquote("'has$dollar'") == "has$dollar"
     assert gen_secrets.unquote("plain") == "plain"
 
@@ -1478,7 +1485,7 @@ def test_a_value_that_cannot_be_quoted_is_refused() -> None:
         AssertionError: If the value is not refused.
     """
     with pytest.raises(gen_secrets.ManifestError):
-        gen_secrets.render_value("has$dollar'and'quote")
+        gen_secrets.render_value("NAME", "has$dollar'and'quote")
 
 
 @pytest.mark.unit
@@ -1719,7 +1726,7 @@ def test_siblings_holding_different_credentials_are_refused(
 
     code = gen_secrets.main([], root=repository, version_control=FakeVersionControl())
 
-    assert code == gen_secrets.EXIT_MANIFEST_UNUSABLE
+    assert code == gen_secrets.EXIT_REFUSED
     assert "differs between files" in capsys.readouterr().out
     for relative, contents in before.items():
         assert (repository / relative).read_bytes() == contents
@@ -1756,7 +1763,7 @@ def test_a_hand_edited_composed_value_is_not_discarded(
 
     code = gen_secrets.main([], root=repository, version_control=FakeVersionControl())
 
-    assert code == gen_secrets.EXIT_MANIFEST_UNUSABLE
+    assert code == gen_secrets.EXIT_REFUSED
     assert "does not match the variables it is built from" in capsys.readouterr().out
     assert values_in(repository, ".env.development")["CELERY_BROKER_URL"] == (
         "amqps://deliberate.example:5671/localforge"
@@ -1795,7 +1802,7 @@ def test_a_refused_run_leaves_every_file_untouched(
 
     code = gen_secrets.main([], root=repository, version_control=FakeVersionControl())
 
-    assert code == gen_secrets.EXIT_MANIFEST_UNUSABLE
+    assert code == gen_secrets.EXIT_REFUSED
     for relative, contents in before.items():
         assert (repository / relative).read_bytes() == contents
 
@@ -2001,6 +2008,34 @@ def test_a_replacement_failure_removes_a_file_that_did_not_exist(repository: Pat
     assert code == gen_secrets.EXIT_MANIFEST_UNUSABLE
     assert not (repository / ".env.testing").exists()
     assert not list(repository.glob("*.partial"))
+
+
+@pytest.mark.unit
+def test_the_documented_exit_codes_are_the_ones_implemented() -> None:
+    """Keep the exit codes in step with the document.
+
+    Confirms each code the generator returns is the one the conventions document assigns it, and
+    that a refusal over existing state is distinguishable from an unusable manifest, so a caller
+    branching on an exit code reads the same contract the generator implements.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If an implemented code differs from the documented one.
+    """
+    document = CONVENTIONS_DOCUMENT.read_text(encoding="utf-8")
+
+    assert DOCUMENTED_EXIT_CODES["ok"] == gen_secrets.EXIT_OK
+    assert DOCUMENTED_EXIT_CODES["refused"] == gen_secrets.EXIT_REFUSED
+    assert DOCUMENTED_EXIT_CODES["manifest_unusable"] == gen_secrets.EXIT_MANIFEST_UNUSABLE
+    assert DOCUMENTED_EXIT_CODES["tracked_file"] == gen_secrets.EXIT_TRACKED_FILE
+    assert DOCUMENTED_EXIT_CODES["force_without"] == gen_secrets.EXIT_FORCE_WITHOUT_ENVIRONMENT
+    assert "`1` refused because the existing files" in document
+    assert "`2` `.env.example` missing or unparsable" in document
 
 
 @pytest.mark.unit
