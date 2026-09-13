@@ -6,6 +6,7 @@ TITLE_MAX_LENGTH = 72
 MIN_MESSAGE_LINE_COUNT = 6
 BODY_MAX_LENGTH = 100
 EXPECTED_ARGUMENT_COUNT = 2
+FORBIDDEN_REFERENCES = re.compile(r"copilot|claude|codex", re.IGNORECASE)
 
 
 def fail(errors: list[str]) -> int:
@@ -19,7 +20,7 @@ def fail(errors: list[str]) -> int:
 
 def visible_lines(path: Path) -> list[str]:
     lines = path.read_text(encoding="utf-8").splitlines()
-    return [line.rstrip() for line in lines if not line.lstrip().startswith("#")]
+    return [line.rstrip() for line in lines if not line.startswith("#")]
 
 
 def validate(lines: list[str]) -> list[str]:
@@ -28,9 +29,11 @@ def validate(lines: list[str]) -> list[str]:
     if not lines:
         return ["the message is empty"]
     title = lines[0]
-    if title.startswith(("Merge ", 'Revert "')):
-        return []
     errors = []
+    if any(FORBIDDEN_REFERENCES.search(line) for line in lines):
+        errors.append("the message must not contain Copilot, Claude, or Codex references")
+    if title.startswith(("Merge ", 'Revert "')):
+        return errors
     if len(title) > TITLE_MAX_LENGTH:
         errors.append("the title must be 72 characters or fewer")
     if title.endswith((".", "!", "?", ":", ";")):

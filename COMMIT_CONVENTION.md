@@ -61,15 +61,20 @@ Use a `revert: ...` title for a revert. Fixup and squash commits must be autosqu
 
 ## Local enforcement
 
-The existing commit-message hook validates the body structure. Follow the title, attribution, and identity rules above
-when composing messages. Enable the repository hooks and template with:
+The commit-message hook rejects Copilot, Claude, and Codex references regardless of capitalization, including in
+co-author trailers and Git-generated merge or revert messages. It also validates ordinary commit bodies.
+Follow the title and identity rules above when composing messages. Enable the repository hooks and template with:
 
 ```console
 uv run pre-commit install
 git config --local commit.template .gitmessage
+git config --local commit.cleanup strip
 git config --local user.name "Rohit Vilas Ingole"
 git config --local user.email rohit.vilas.ingole@gmail.com
 ```
+
+Use `commit.cleanup strip` so comment lines beginning with `#`, which the validator ignores, are also removed by Git.
+This keeps editor-generated status comments out of the committed message, including when using `git commit -m`.
 
 Before finalizing a history rewrite, check every rewritten message against this policy and verify both identities
 across all retained refs.
