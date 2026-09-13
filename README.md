@@ -34,6 +34,9 @@ Open `http://127.0.0.1:8000/admin/` to verify that Django is running.
 
 ## Quality checks
 
+The `.agents` directory is excluded from pre-commit file checks, Markdown/YAML linting, Python linting and formatting,
+type-check discovery, and test discovery. Its files remain available and can still be tracked in Git.
+
 Run linting and formatting checks:
 
 ```console
