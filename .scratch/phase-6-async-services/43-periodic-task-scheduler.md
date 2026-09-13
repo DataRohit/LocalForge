@@ -1,0 +1,18 @@
+# 43: Periodic task scheduler
+
+**What to build:** a scheduler container that fires periodic work on time, with schedules editable through the
+admin rather than hardcoded, and exactly one instance running so nothing double-fires.
+
+**Blocked by:** 42.
+
+**Status:** ready-for-agent
+
+- [ ] The scheduler runs from the same image with the registry name and its own process, separate from the worker.
+- [ ] Schedules are stored in the database and editable through the admin, so changing one needs no redeploy.
+- [ ] Exactly one scheduler instance runs. Two would double-fire every periodic task, and the constraint is stated
+      in the service's documentation and reflected in the Kubernetes mapping.
+- [ ] The scheduler starts only after the database and broker are healthy, and it does not run migrations.
+- [ ] At least one real periodic task is registered and observed to fire, proving the path end to end.
+- [ ] A periodic task that overruns its interval does not stack up unboundedly.
+- [ ] Scheduler logs reach the log store, and a missed or failed run is visible.
+- [ ] The schedule state persists across a restart without re-firing tasks that already ran.

@@ -1,0 +1,22 @@
+# 50: Convention audit
+
+**What to build:** an automated check that the running stack matches the naming, volume, and network rules, so a
+drifted name is caught mechanically rather than by reading a Compose file.
+
+**Blocked by:** 49.
+
+**Status:** ready-for-agent
+
+- [ ] The audit compares live Docker objects against the registry and reports any container that is missing,
+      unexpected, or misnamed.
+- [ ] Every audit command filters by the Compose project label. This machine is shared and carries unrelated
+      containers, volumes, and networks; an unfiltered check fails for the wrong reason.
+- [ ] Every container name matches the documented pattern.
+- [ ] No anonymous volume belongs to either project, and every named volume traces to a registry entry.
+- [ ] No default network exists for either project, and every network carries the zone naming scheme.
+- [ ] Every internal network is proven internal: a container on one cannot resolve an external name.
+- [ ] Every published host port matches the inventory, and no service publishes a port the inventory does not
+      list.
+- [ ] Bind mounts are read-only except where documented, and the only writable exceptions are justified.
+- [ ] The audit runs for both environments and exits non-zero on any violation, printing the object and the rule.
+- [ ] Violations found are fixed and the audit re-run in full, not just the failing check.

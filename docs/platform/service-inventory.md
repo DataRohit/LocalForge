@@ -1,0 +1,326 @@
+# Service inventory
+
+Authoritative for: the service list, published host ports, startup order, health-check definitions, dashboards, and
+the testing service set.
+
+Names come from the registry in [conventions.md](./conventions.md). Tool choices and their evidence are in
+[../adr/](../adr/README.md). Every port, endpoint, and command below was verified against upstream source or
+official documentation on **2026-09-13**; corrections found during that pass are flagged inline, because each one
+would otherwise have surfaced as a mysterious failure at build time.
+
+## 1. Development stack
+
+22 services. Ports listed are **host** ports; the internal port is given where it differs.
+
+| Container name | Role | Host ports | Internal | Networks |
+|---|---|---|---|---|
+| `traefik-tk2jp` | reverse proxy, Docker label discovery | `8080` web, `8081` dashboard | 80, 8080 | `edge-net-ne2vk` |
+| `django-uv5n2` | Django ASGI app under Uvicorn | `8000` | 8000 | `edge-net-ne2vk`, `app-net-na6hy`, `data-net-nd9pc`, `obsv-net-nb4xt` |
+| `postgres-pg3ka` | PostgreSQL 18.6 primary | `5432` | 5432 | `data-net-nd9pc` |
+| `postgres-replica-pg6vy` | PostgreSQL 18.6 hot standby | `5433` | 5432 | `data-net-nd9pc` |
+| `pgbackrest-pb2wj` | backup agent, scheduled | none | — | `data-net-nd9pc` |
+| `pgadmin-pa7fe` | PostgreSQL dashboard | `5050` | 80 | `data-net-nd9pc` |
+| `valkey-cache-vc5tn` | cache (DB 0) + Celery results (DB 1) | `6379` | 6379 | `app-net-na6hy` |
+| `valkey-channels-vh8dm` | Channels layer | `6380` | 6379 | `app-net-na6hy` |
+| `rabbitmq-rq4sx` | Celery broker | `5672` AMQP, `15672` management | 5672, 15672 | `app-net-na6hy` |
+| `celery-worker-cw8rt` | task worker | none | — | `app-net-na6hy`, `data-net-nd9pc` |
+| `celery-beat-cb4hq` | periodic task scheduler | none | — | `app-net-na6hy`, `data-net-nd9pc` |
+| `flower-fl9zd` | Celery dashboard | `5555` | 5555 | `app-net-na6hy` |
+| `mailpit-mp6gb` | SMTP capture | `1025` SMTP, `8025` web | 1025, 8025 | `app-net-na6hy` |
+| `seaweedfs-sw9cr` | S3 storage, all-in-one | `9333` master, `8082` volume, `8888` filer, `8333` S3 | 9333, 8080, 8888, 8333 | `app-net-na6hy` |
+| `prometheus-pm5db` | metrics collection | `9090` | 9090 | `obsv-net-nb4xt` |
+| `grafana-gf7qv` | metrics + logs visualization | `3000` | 3000 | `obsv-net-nb4xt` |
+| `loki-lk3ny` | log storage and query | `3100` | 3100 | `obsv-net-nb4xt` |
+| `alloy-al6wz` | log collection | `12345` | 12345 | `obsv-net-nb4xt` |
+| `cadvisor-cv8mh` | container metrics | `8090` | 8080 | `obsv-net-nb4xt` |
+| `postgres-exporter-pe4rk` | PostgreSQL metrics, both nodes | `9187` | 9187 | `data-net-nd9pc`, `obsv-net-nb4xt` |
+| `valkey-cache-exporter-ve7ts` | cache Valkey metrics | `9121` | 9121 | `app-net-na6hy`, `obsv-net-nb4xt` |
+| `valkey-channels-exporter-vx4nq` | channels Valkey metrics | `9122` | 9121 | `app-net-na6hy`, `obsv-net-nb4xt` |
+
+### 1.1 Why two Valkey exporters
+
+`redis_exporter` can scrape several instances from one process through `/scrape?target=`, and the obvious design is
+one exporter for both Valkey instances. Its README rules that out for us:
+
+> If authentication is needed for the Redis instances then you can set the password via the `--redis.password`
+> command line option of the exporter (this means you can currently only use one password across the instances you
+> try to scrape this way. Use several exporters if this is a problem).
+
+[conventions.md](./conventions.md) Section 5 requires a distinct credential per service, so the two instances have
+different passwords and one exporter cannot reach both. Two exporters is the resolution; sharing a password to save
+a container is not.
+
+PostgreSQL has the opposite shape — primary and standby are one cluster sharing one credential — so a single
+`postgres-exporter-pe4rk` covers both nodes.
+
+### 1.2 Port allocations that are not defaults
+
+Each is a deliberate remap. Reverting one reintroduces a collision.
+
+| Service | Default | Published as | Reason |
+|---|---|---|---|
+| `seaweedfs-sw9cr` volume | 8080 | `8082` | `traefik-tk2jp` owns host 8080 |
+| `cadvisor-cv8mh` | 8080 | `8090` | same |
+| `postgres-replica-pg6vy` | 5432 | `5433` | both PostgreSQL nodes reachable from the host at once |
+| `valkey-channels-vh8dm` | 6379 | `6380` | both Valkey instances reachable at once |
+| `valkey-channels-exporter-vx4nq` | 9121 | `9122` | both exporters reachable at once |
+
+### 1.3 Two flags that are not optional
+
+**SeaweedFS binds two extra ports by default in 4.46.** `weed server -s3` opens an Iceberg REST catalog on **8181**
+and a Lance namespace server on **9101** unless told otherwise, and 9101 is the conventional `node_exporter` port.
+This platform uses neither, so start it with both disabled:
+
+```text
+weed server -dir=/data -s3 -s3.config=/etc/seaweedfs/s3.json -s3.port.iceberg=0 -s3.port.lance=0
+```
+
+`-s3` implicitly enables the filer, so `-filer` is redundant. gRPC ports are derived as `10000 + port` — 19333,
+18080, 18888, 18333 — and stay container-internal.
+
+**Alloy listens on loopback by default.** Its default `--server.http.listen-addr` is `127.0.0.1:12345`, so without
+an override the UI and its metrics are unreachable from outside the container and the health check fails while the
+process is perfectly healthy:
+
+```text
+run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data /etc/alloy/config.alloy
+```
+
+## 2. Dependency order
+
+`depends_on` with `condition: service_healthy`. Every service another service connects to declares a real
+`healthcheck`; `service_started` is not sufficient and is not used for those.
+
+| Tier | Services | Waits for |
+|---|---|---|
+| 1 | `postgres-pg3ka`, `valkey-cache-vc5tn`, `valkey-channels-vh8dm`, `rabbitmq-rq4sx`, `mailpit-mp6gb`, `seaweedfs-sw9cr`, `loki-lk3ny` | nothing |
+| 2 | `postgres-replica-pg6vy`, `pgbackrest-pb2wj` | `postgres-pg3ka` healthy |
+| 3 | `django-uv5n2` | tier 1 healthy, plus `postgres-replica-pg6vy` healthy |
+| 4 | `celery-worker-cw8rt`, `celery-beat-cb4hq` | `rabbitmq-rq4sx` and `valkey-cache-vc5tn` healthy, and `django-uv5n2` healthy so migrations have run |
+| 5 | `traefik-tk2jp`, `flower-fl9zd`, `pgadmin-pa7fe` | their backends healthy |
+| 6 | `postgres-exporter-pe4rk`, `valkey-cache-exporter-ve7ts`, `valkey-channels-exporter-vx4nq`, `cadvisor-cv8mh`, `alloy-al6wz` | their scrape targets healthy |
+| 7 | `prometheus-pm5db` | exporters started |
+| 8 | `grafana-gf7qv` | `prometheus-pm5db` and `loki-lk3ny` healthy |
+
+`django-uv5n2` runs migrations in its entrypoint **before** binding its port, so tier 4 waiting on it healthy also
+waits on the schema being current. Celery workers never run migrations.
+
+### 2.1 Health checks
+
+Every row verified against upstream source or docs on 2026-09-13.
+
+| Service | Check | Note |
+|---|---|---|
+| `postgres-pg3ka`, `postgres-tp8vn` | `pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"` | |
+| `postgres-replica-pg6vy` | `pg_isready` **and** `psql -tAc "SELECT pg_is_in_recovery()"` returning `t` | `pg_isready` alone cannot tell a standby from a primary |
+| `valkey-*` | `valkey-cli -a "$PASSWORD" ping` returning `PONG` | |
+| `rabbitmq-*` | `rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_local_alarms` | upstream's documented **stage 3** check, verbatim. See the cost note below |
+| `mailpit-*` | `CMD ["/mailpit", "readyz"]` | **not** an HTTP probe. The image is Alpine with no `curl` or `wget`, and upstream's own `HEALTHCHECK` uses this CLI form. `/readyz` and `/livez` exist over HTTP but nothing inside the image can call them |
+| `seaweedfs-*` | `GET /healthz` on 9333 and 8333 | **the master has no `/status` route.** The S3 gateway accepts `/status`, `/healthz`, and `/readyz`; `/healthz` works on both, so use it uniformly |
+| `django-uv5n2` | `GET /health/`, served by `django-health-check` | |
+| `loki-lk3ny` | `GET /ready` | |
+| `prometheus-pm5db` | `GET /-/ready` | `/-/healthy` exists but answers liveness, not readiness |
+| `grafana-gf7qv` | `GET /api/health` | |
+| `alloy-al6wz` | `GET /` on 12345 | no documented `/-/healthy`; needs the listen-addr override from 1.3 |
+| `cadvisor-cv8mh` | `GET /healthz` | |
+
+**RabbitMQ health checks are expensive.** Each `rabbitmq-diagnostics` invocation joins and leaves the Erlang
+distribution cluster. Use `interval: 30s` or longer with a generous `start_period`. Upstream notes that its own
+Kubernetes Operator uses a plain **TCP check on the AMQP port** as the readiness probe and defines no liveness
+probe, calling that the best practice; stage 3 is a defensible richer check for a dev stack, provided it does not
+run every five seconds.
+
+## 3. Dashboards
+
+Every service either exposes a native UI or is given a companion.
+
+| Service | Dashboard | URL | Native / companion | Auth |
+|---|---|---|---|---|
+| `traefik-tk2jp` | Traefik dashboard | `http://localhost:8081/dashboard/` | native | basic auth, `TRAEFIK_DASHBOARD_AUTH` |
+| `django-uv5n2` | Django admin | `http://localhost:8000/admin/` | native | Django superuser |
+| `django-uv5n2` | Swagger UI | `http://localhost:8000/api/schema/swagger-ui/` | native, drf-spectacular | none locally; assets from the sidecar |
+| `django-uv5n2` | ReDoc | `http://localhost:8000/api/schema/redoc/` | native, drf-spectacular | none locally |
+| `django-uv5n2` | health detail | `http://localhost:8000/health/` | native, django-health-check | none locally |
+| `postgres-pg3ka`, `postgres-replica-pg6vy` | pgAdmin 4 | `http://localhost:5050/` | **companion** | `PGADMIN_DEFAULT_EMAIL` + `PGADMIN_DEFAULT_PASSWORD` |
+| `valkey-cache-vc5tn`, `valkey-channels-vh8dm` | Grafana dashboard fed by the two exporters | `http://localhost:3000/` | **companion** | Grafana login |
+| `rabbitmq-rq4sx` | management plugin | `http://localhost:15672/` | native | `RABBITMQ_DEFAULT_USER` + `RABBITMQ_DEFAULT_PASS` |
+| `celery-worker-cw8rt` | Flower | `http://localhost:5555/` | **companion** | `FLOWER_BASIC_AUTH` |
+| `celery-beat-cb4hq` | django-celery-beat admin pages | `http://localhost:8000/admin/django_celery_beat/` | companion, via Django admin | Django superuser |
+| `mailpit-mp6gb` | Mailpit web UI | `http://localhost:8025/` | native | none locally |
+| `seaweedfs-sw9cr` | master status UI | `http://localhost:9333/` | native | none locally |
+| `seaweedfs-sw9cr` | filer browser | `http://localhost:8888/` | native | none locally |
+| `prometheus-pm5db` | expression browser, targets | `http://localhost:9090/targets` | native | none locally |
+| `grafana-gf7qv` | Grafana | `http://localhost:3000/` | native | `GRAFANA_ADMIN_USER` + `GRAFANA_ADMIN_PASSWORD` |
+| `loki-lk3ny` | Grafana Explore | `http://localhost:3000/explore` | **companion** | Grafana login |
+| `alloy-al6wz` | Alloy component UI | `http://localhost:12345/` | native | none locally |
+| `cadvisor-cv8mh` | cAdvisor UI | `http://localhost:8090/containers/` | native | none locally |
+| `pgbackrest-pb2wj` | `pgbackrest info`, plus its logs in Loki | CLI and Grafana Explore | **companion** | container shell |
+| `postgres-exporter-pe4rk` | metrics page | `http://localhost:9187/metrics` | native, minimal | none locally |
+| `valkey-cache-exporter-ve7ts` | metrics page | `http://localhost:9121/metrics` | native, minimal | none locally |
+| `valkey-channels-exporter-vx4nq` | metrics page | `http://localhost:9122/metrics` | native, minimal | none locally |
+
+### 3.1 Dashboard configuration that is easy to get wrong
+
+**Traefik's dashboard router must match `/api` as well as `/dashboard`.** The dashboard is a single-page app that
+calls the API; a rule matching only `/dashboard` renders a blank page. Set `providers.docker.exposedByDefault:
+false` — it defaults to `true`, which would publish every container in the stack. Avoid `api.insecure: true`: it
+serves an unauthenticated dashboard on an auto-created `traefik` entrypoint at `:8080`, colliding with the web
+entrypoint.
+
+**pgAdmin needs three settings beyond the credentials.** `PGADMIN_LISTEN_ADDRESS=0.0.0.0` — the default `[::]` fails
+in IPv4-only setups. `PGADMIN_DISABLE_POSTFIX=True` avoids starting an unused mail server.
+`PGADMIN_SERVER_JSON_FILE` points at a mounted `servers.json` so both PostgreSQL nodes are pre-registered; those
+definitions load **only on first launch** unless `PGADMIN_REPLACE_SERVERS_ON_STARTUP=True`, which is what makes the
+registration declarative.
+
+**Flower's option is `basic_auth`.** The CLI flag `--basic-auth` and the env var `FLOWER_BASIC_AUTH` are the same
+option — every Flower option accepts a `FLOWER_`-prefixed env var. Multiple users are comma-separated. It is not the
+`auth` option, which is an OAuth email-allowlist regex.
+
+**postgres_exporter takes credentials split out.** `DATA_SOURCE_URI` accepts the host only; username and password go
+in `DATA_SOURCE_USER` and `DATA_SOURCE_PASS`, or `DATA_SOURCE_PASS_FILE` to keep the password out of the
+environment. `DATA_SOURCE_NAME` is the legacy single-string form and accepts a comma-separated list, which is how
+one exporter covers both PostgreSQL nodes. The process runs as uid/gid 65534, and its multi-target probe path is
+`/probe`, not `/scrape`.
+
+Grafana is provisioned as code: datasource and dashboard provider files are mounted read-only from
+`docker/grafana/provisioning/`, so wiping the volume loses nothing.
+
+## 4. Testing stack
+
+Seven services, one profile-gated. Every dashboard and UI service is dropped; nothing here listens for a human.
+
+| Container name | Role | Host ports | Networks | Default |
+|---|---|---|---|---|
+| `django-test-dt5qx` | pytest runner | none | `app-net-nt5rk`, `data-net-nt8fq` | yes |
+| `postgres-tp8vn` | PostgreSQL 18.6, single node | `25432` | `data-net-nt8fq` | yes |
+| `valkey-cache-tv4kq` | cache | `26379` | `app-net-nt5rk` | yes |
+| `valkey-channels-tv9zw` | Channels layer | `26380` | `app-net-nt5rk` | yes |
+| `rabbitmq-tr6mc` | Celery broker, no management plugin | `25672` | `app-net-nt5rk` | yes |
+| `seaweedfs-ts3jd` | S3 storage | `28333` S3, `29333` master | `app-net-nt5rk` | yes |
+| `mailpit-tm7bh` | SMTP capture | `21025` SMTP | `app-net-nt5rk` | **no — profile `smtp`** |
+
+Two networks, not four: there is no `edge` zone because no proxy runs, and no `obsv` zone because every
+observability service is excluded. Both are `internal: true`.
+
+Host ports are the development port plus 20000. That is what lets both stacks run at once and what makes host mode
+possible.
+
+### 4.1 Exclusions, and why
+
+| Excluded | Reason |
+|---|---|
+| `traefik-tk2jp` | Tests call the ASGI app directly. A proxy between the test and the code under test adds a failure mode and proves nothing |
+| `pgadmin-pa7fe`, `flower-fl9zd`, `grafana-gf7qv` | Dashboards. Headless rule |
+| `prometheus-pm5db` | Collection backend for dashboards. The metrics endpoint itself is asserted in-process against `django-prometheus` |
+| `loki-lk3ny`, `alloy-al6wz` | Log aggregation is an operator concern. Tests assert on Django's logging configuration |
+| `cadvisor-cv8mh`, all three exporters | They exist only to feed Prometheus, which is excluded |
+| `postgres-replica-pg6vy` | The `replica` alias points at `postgres-tp8vn`. Router paths are exercised; replication lag is not. See [../adr/0012-streaming-replication.md](../adr/0012-streaming-replication.md) |
+| `pgbackrest-pb2wj` | Time-based operational behaviour, verified in development by the phase 6 gate |
+| `celery-worker-cw8rt`, `celery-beat-cb4hq` | `CELERY_TASK_ALWAYS_EAGER=true` runs tasks in-process. The one test needing a real broker starts a worker with `docker compose run --rm` |
+| `mailpit-tm7bh` | Default `EMAIL_BACKEND` is `locmem`. The SMTP round-trip runs under `--profile smtp` |
+
+### 4.2 The two required modes
+
+| Mode | Command | Env file | Hostnames |
+|---|---|---|---|
+| Container | `docker compose ... run --rm django-test-dt5qx` | `.env.testing` | container names on the testing networks |
+| Host | `uv run pytest` with the testing stack up | `.env.testing.host` | `127.0.0.1` and the published ports above |
+
+Host mode is why every testing service publishes a host port even though container mode never uses them.
+
+## 5. Image pins
+
+Exact versions everywhere. `latest` is forbidden, including Dockerfile base images. All tags checked 2026-09-13.
+
+| Image | Tag |
+|---|---|
+| `docker.io/library/postgres` | `18.6` |
+| `docker.io/valkey/valkey` | `9.1.2` |
+| `docker.io/library/rabbitmq` | `4.3.5-management` (dev), `4.3.5` (testing) |
+| `docker.io/library/traefik` | `v3.7.13` |
+| `docker.io/axllent/mailpit` | `v1.31.1` |
+| `docker.io/chrislusf/seaweedfs` | `4.46` |
+| `docker.io/dpage/pgadmin4` | `9.17` |
+| `docker.io/prom/prometheus` | `v3.14.0` |
+| `docker.io/grafana/grafana-oss` | `13.2.1` |
+| `docker.io/grafana/loki` | `3.7.7` |
+| `docker.io/grafana/alloy` | `v1.19.2` |
+| `ghcr.io/google/cadvisor` | `v0.60.5` |
+| `quay.io/prometheuscommunity/postgres-exporter` | `v0.20.1` |
+| `docker.io/oliver006/redis_exporter` | `v1.91.1` |
+
+Built locally rather than pulled:
+
+| Image | Dockerfile | Base |
+|---|---|---|
+| `localforge/django` | `docker/django/Dockerfile` | `python:3.14-slim`, multi-stage with a `test` stage |
+| `localforge/pgbackrest` | `docker/pgbackrest/Dockerfile` | `postgres:18.6` plus PGDG `pgbackrest`. See [../adr/0011-pgbackrest-backups.md](../adr/0011-pgbackrest-backups.md) |
+
+Two registry facts that look like typos and are not:
+
+- **Valkey has no Docker Official Image.** `docker.io/library/valkey` returns 404; the reference is
+  `docker.io/valkey/valkey`.
+- **cAdvisor moved to GHCR.** `gcr.io/cadvisor/cadvisor` carries only versions below v0.53.0.
+
+## 6. Audit commands
+
+Run in phase 8 of [../build/plan.md](../build/plan.md).
+
+**Scope every audit to the Compose project.** This machine is shared and already runs unrelated containers, volumes,
+and networks — an unfiltered `docker ps` returns other people's work, and a count-based check against it fails for
+the wrong reason.
+
+### 6.1 Containers
+
+```console
+docker ps --filter "label=com.docker.compose.project=localforge-dev" --format "{{.Names}}\t{{.Status}}"
+```
+
+Expected: exactly 22 rows for development, every name matching `^[a-z][a-z-]*-[a-z2-9]{5}$`, every `Status`
+beginning with `Up` and containing `(healthy)` where a health check exists.
+
+Pass: the name set equals [conventions.md](./conventions.md) Section 2.2 exactly — nothing missing, nothing extra.
+
+Fail: any numeric suffix such as `-1`; any Docker-generated name shaped like `localforge-dev-postgres-1`; any
+container `Restarting` or `unhealthy`.
+
+### 6.2 Volumes
+
+```console
+docker volume ls --filter "label=com.docker.compose.project=localforge-dev" --format "{{.Name}}"
+docker volume ls --filter "dangling=true" --format "{{.Name}}"
+```
+
+Pass: the first lists one row per volume-registry entry. The second lists **no volume belonging to this project** —
+a 64-hex-character name under our project is an anonymous volume and an automatic fail. Dangling volumes from other
+projects on this machine are not ours to judge.
+
+### 6.3 Networks
+
+```console
+docker network ls --filter "label=com.docker.compose.project=localforge-dev" --format "{{.Name}}\t{{.Driver}}"
+```
+
+Pass: the registry networks are present and **no `localforge-dev_default` exists**. A `_default` network means some
+service omitted its `networks:` key.
+
+### 6.4 Mounts
+
+```console
+docker inspect postgres-pg3ka --format "{{range .Mounts}}{{.Type}} {{.Name}} -> {{.Destination}}{{println}}{{end}}"
+```
+
+Pass: every `volume` row carries a name from the registry; every `bind` row points inside the repository and is
+read-only. The two exceptions are the Docker socket mounts on `traefik-tk2jp` and `alloy-al6wz`, read-only by
+requirement.
+
+### 6.5 Offline enforcement
+
+```console
+docker exec postgres-pg3ka getent hosts example.com
+```
+
+Pass: non-zero exit and no output, because `data-net-nd9pc` is `internal: true`. A successful lookup means a network
+was declared without it. Containers on an internal network still reach each other normally — `internal` blocks
+outbound traffic, not traffic between members.

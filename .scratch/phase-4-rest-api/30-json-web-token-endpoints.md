@@ -1,0 +1,26 @@
+# 30: JSON web token endpoints
+
+**What to build:** `/jwt/create/`, `/jwt/refresh/`, and `/jwt/verify/` — the primary authentication scheme, issuing
+short-lived access tokens and longer-lived refresh tokens that can be rotated and revoked.
+
+**Blocked by:** 27, 18.
+
+**Status:** ready-for-agent
+
+- [ ] Create returns an access token and a refresh token for valid credentials on an active account.
+- [ ] Refresh exchanges a valid refresh token for a new access token.
+- [ ] Verify reports whether a token is valid without returning its contents.
+- [ ] Access token lifetime is short and refresh lifetime is longer; both come from the environment.
+- [ ] Refresh tokens rotate on use, and the previous refresh token is blacklisted so a stolen one cannot be
+      replayed.
+- [ ] Signing uses the symmetric algorithm with a dedicated signing key from the environment, distinct from the
+      framework's general-purpose secret. The asymmetric signing extra is not installed, since it is unused.
+- [ ] An expired, malformed, revoked, or blacklisted token is rejected with the unauthorized code and the standard
+      envelope.
+- [ ] Credential failures are indistinguishable between a wrong password and an unknown account.
+- [ ] Token claims carry no personal data beyond the user identifier.
+- [ ] The library's release-lag status from `docs/adr/0016-accept-release-lag.md` is checked before pinning; if the
+      unreleased breaking change that turns a not-found into an unauthorized is pulled in, the documented contract
+      is updated to match.
+- [ ] Integration tests cover create, refresh, rotation, verify for valid and invalid tokens, expiry using frozen
+      time, blacklist after rotation, and use of a token belonging to a deleted account.
