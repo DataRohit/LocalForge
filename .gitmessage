@@ -1,4 +1,4 @@
-<Imperative summary in 72 characters or fewer>
+<type>(<optional scope>): <imperative summary>
 
 <Description line one>
 <Description line two>
@@ -6,3 +6,10 @@
 
 - <Completed work item>
 - <Completed work item>
+
+# Title: type: summary or type(scope): summary; at most 72 characters.
+# Types: build, chore, ci, docs, feat, fix, perf, refactor, revert, style, test.
+# Use ! before the colon for breaking changes.
+# Keep two or three description lines and one or more work-item bullets.
+# Describe repository work only; omit tool credits and attribution trailers.
+# See COMMIT_CONVENTION.md for the complete policy.

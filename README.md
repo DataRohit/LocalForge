@@ -17,6 +17,13 @@ uv sync --all-groups
 uv run poe migrate
 ```
 
+Package downloads use the Microsoft package feed configured in `pyproject.toml`, with system certificate verification
+enabled. The lockfile records this feed's artifact URLs so `uv sync --all-groups --frozen` does not attempt direct
+downloads from `files.pythonhosted.org`, which fails TLS negotiation on this managed network.
+
+Changing the default index alone does not redirect URLs already recorded in `uv.lock`. After an approved index change,
+run `uv lock` and then `uv sync --all-groups --frozen`. Do not disable TLS certificate verification.
+
 Start the development server:
 
 ```console
@@ -90,10 +97,10 @@ Install the dependencies, then enable all configured hook types:
 ```console
 uv sync --all-groups
 uv run pre-commit install
-git config commit.template .gitmessage
 ```
 
 The installation enables pre-commit, commit-message, and pre-push hooks. Pre-push runs mypy, ty, and the full test suite.
+Configure the commit template and repository-local identity using [the commit convention](COMMIT_CONVENTION.md).
 
 Validate the complete repository at any time:
 

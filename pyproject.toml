@@ -41,6 +41,12 @@ Documentation = "https://github.com/DataRohit/LocalForge#readme"
 
 [tool.uv]
 package = false
+system-certs = true
+
+[[tool.uv.index]]
+name = "microsoft-package-feed"
+url = "https://packagefeedproxy.microsoft.io/pypi/simple/"
+default = true
 
 [dependency-groups]
 dev = [
@@ -48,7 +54,7 @@ dev = [
     "django-stubs[compatible-mypy]>=6.1.0",
     "factory-boy>=3.3.3",
     "freezegun>=1.5.5",
-    "hypothesis>=6.168.0",
+    "hypothesis>=6.167.1",
     "mypy>=2.3.1",
     "poethepoet>=0.48.0",
     "pre-commit>=4.6.2",
@@ -57,8 +63,8 @@ dev = [
     "pytest-django>=4.14.0",
     "pytest-mock>=3.15.1",
     "pytest-xdist>=3.8.0",
-    "ruff>=0.16.7",
-    "ty>=0.0.80",
+    "ruff>=0.16.6",
+    "ty>=0.0.78",
 ]
 
 [tool.ruff]
@@ -194,7 +200,7 @@ cmd = "mypy"
 
 [tool.poe.tasks.types-ty]
 help = "Run strict ty type checking"
-cmd = "uvx ty@0.0.80 check"
+cmd = "uvx ty@0.0.78 check"
 
 [tool.poe.tasks.typecheck]
 help = "Run all type checkers"

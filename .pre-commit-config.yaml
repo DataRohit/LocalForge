@@ -61,7 +61,7 @@ repos:
         pass_filenames: false
       - id: ty
         name: ty
-        entry: uvx ty@0.0.80 check
+        entry: uvx ty@0.0.78 check
         language: system
         stages:
           - pre-push

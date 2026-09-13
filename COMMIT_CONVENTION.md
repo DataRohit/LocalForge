@@ -1,9 +1,10 @@
 # Commit Convention
 
-Every ordinary commit message uses this structure:
+Every commit message uses a [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) title
+and the following repository-specific body:
 
 ```text
-Imperative summary in 72 characters or fewer
+type(scope): imperative summary
 
 Description line one explaining intent or context
 Description line two explaining impact or constraints
@@ -15,8 +16,20 @@ Optional third description line when more context is needed
 
 ## Title
 
-The title must be a single line, use the imperative mood, contain at most 72 characters, and not end in punctuation.
-It should describe the result clearly when displayed as a GitHub commit title.
+Use `type: summary` or `type(scope): summary`, with an optional `!` immediately before the colon for breaking changes.
+The type must be one of `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `style`, or `test`.
+An optional scope starts with a lowercase letter or digit and contains only lowercase letters, digits, `.`, `_`, `/`,
+or `-`.
+
+The title must be a single line, use the imperative mood, contain at most 72 characters including the prefix, and not
+end in punctuation. Use the standard colon syntax (`docs: ...`), not a parenthesized type (`(docs) ...`).
+
+Examples:
+
+- `docs: clarify local setup`
+- `feat(admin): add account management`
+- `fix(auth): reject expired sessions`
+- `refactor(api)!: simplify the response format`
 
 ## Description
 
@@ -28,15 +41,35 @@ at most 100 characters. Explain why the change was needed, the approach taken, a
 Leave one blank line after the description. Add one or more non-empty bullets beginning with a hyphen and one space.
 State concrete work that the commit completed. Do not add text after the bullet list.
 
+## Attribution
+
+Describe the repository change, its purpose, and completed work only. Messages must not contain agent references,
+including Copilot, Claude, Codex, or agent/session credits. This applies to the title, description, and bullets,
+regardless of capitalization. Omit co-author and generation trailers, including `Co-authored-by:`, `Generated-by:`,
+and `Assisted-by:`.
+
+## Repository identity
+
+Use `Rohit Vilas Ingole <rohit.vilas.ingole@gmail.com>` for both the author and committer of every commit.
+Configure this identity locally so other repositories retain their own settings. When rewriting history, update both
+identities while preserving commit dates and file contents.
+
 ## Special commits
 
-Git-generated merge and revert messages are exempt. Fixup and squash commits must be autosquashed before integration.
+Merge and revert commits follow the same format; edit Git's generated messages before committing.
+Use a `revert: ...` title for a revert. Fixup and squash commits must be autosquashed before integration.
 
 ## Local enforcement
 
-The commit-message hook validates this structure. Enable the repository hooks and template with:
+The existing commit-message hook validates the body structure. Follow the title, attribution, and identity rules above
+when composing messages. Enable the repository hooks and template with:
 
 ```console
-pre-commit install
-git config commit.template .gitmessage
+uv run pre-commit install
+git config --local commit.template .gitmessage
+git config --local user.name "Rohit Vilas Ingole"
+git config --local user.email rohit.vilas.ingole@gmail.com
 ```
+
+Before finalizing a history rewrite, check every rewritten message against this policy and verify both identities
+across all retained refs.
