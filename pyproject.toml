@@ -70,7 +70,7 @@ dev = [
 [tool.ruff]
 target-version = "py314"
 line-length = 100
-src = ["src", "tests"]
+src = ["src", "tests", "."]
 extend-exclude = [".agents"]
 force-exclude = true
 
@@ -81,8 +81,10 @@ ignore = ["COM812", "CPY001", "D"]
 [tool.ruff.lint.per-file-ignores]
 "src/config/settings.py" = ["S105"]
 "src/manage.py" = ["PLC0415"]
+"scripts/*.py" = ["T201", "TC003"]
+"scripts/preflight.py" = ["S603"]
 "tests/**/*.py" = ["S101"]
-".github/scripts/validate_commit_message.py" = ["C901", "PLR0912"]
+".github/scripts/validate_commit_message.py" = ["C901", "INP001", "PLR0912"]
 
 [tool.ruff.format]
 docstring-code-format = true
@@ -91,7 +93,7 @@ line-ending = "lf"
 [tool.mypy]
 python_version = "3.14"
 plugins = ["mypy_django_plugin.main"]
-files = ["src", "tests", ".github/scripts"]
+files = ["src", "tests", "scripts", ".github/scripts"]
 exclude = '(^|[\\/])\.agents([\\/]|$)'
 mypy_path = "src"
 strict = true
@@ -109,10 +111,10 @@ strict_settings = true
 [tool.ty.environment]
 python = ".venv"
 python-version = "3.14"
-root = ["./src"]
+root = ["./src", "."]
 
 [tool.ty.src]
-include = ["src", "tests", ".github/scripts"]
+include = ["src", "tests", "scripts", ".github/scripts"]
 exclude = [".agents/**"]
 
 [tool.ty.rules]
@@ -121,7 +123,7 @@ all = "error"
 [tool.pytest.ini_options]
 minversion = "9.1"
 DJANGO_SETTINGS_MODULE = "config.settings"
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 testpaths = ["tests"]
 addopts = [
     "-ra",
@@ -129,6 +131,7 @@ addopts = [
     "--strict-config",
     "--strict-markers",
     "--cov=src",
+    "--cov=scripts",
     "--cov-branch",
     "--cov-report=term-missing",
     "--cov-report=html:htmlcov",
@@ -145,7 +148,7 @@ xfail_strict = true
 
 [tool.coverage.run]
 branch = true
-source = ["src"]
+source = ["src", "scripts"]
 relative_files = true
 
 [tool.coverage.report]
@@ -189,15 +192,15 @@ sequence = [
 
 [tool.poe.tasks.lint]
 help = "Run Ruff lint checks"
-cmd = "ruff check src tests .github/scripts"
+cmd = "ruff check src tests scripts .github/scripts"
 
 [tool.poe.tasks.format]
 help = "Format Python code with Ruff"
-cmd = "ruff format src tests .github/scripts"
+cmd = "ruff format src tests scripts .github/scripts"
 
 [tool.poe.tasks.format-check]
 help = "Verify Python formatting without changing files"
-cmd = "ruff format --check src tests .github/scripts"
+cmd = "ruff format --check src tests scripts .github/scripts"
 
 [tool.poe.tasks.types-mypy]
 help = "Run strict mypy type checking"
