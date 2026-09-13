@@ -1,10 +1,77 @@
 # LocalForge
 
-LocalForge is a production-oriented, local-first Python project intended to run through Docker.
+LocalForge is a local Django project using SQLite and `uv` for dependency management.
 
-The repository currently contains governance, collaboration, formatting, and Git hygiene files only. Application
-scaffolding, dependency metadata, container definitions, and runtime configuration will be added when the project
-architecture is selected.
+## Requirements
+
+- Python 3.14 or newer
+- `uv`
+
+## Setup
+
+Create the Python 3.14 virtual environment, install all dependency groups, and initialize the database:
+
+```console
+uv venv --python 3.14 .venv
+uv sync --all-groups
+uv run poe migrate
+```
+
+Start the development server:
+
+```console
+uv run poe dev
+```
+
+Open `http://127.0.0.1:8000/admin/` to verify that Django is running.
+
+## Quality checks
+
+Run linting and formatting checks:
+
+```console
+uv run poe lint
+uv run poe format-check
+```
+
+Run both type checkers:
+
+```console
+uv run poe typecheck
+```
+
+The ty task runs the locked release from uv's trusted tool cache, which also works on Windows systems that block
+executables launched directly from a project virtual environment.
+
+Run unit and integration tests with branch coverage:
+
+```console
+uv run poe test
+uv run poe test-parallel
+```
+
+Run a focused group without applying the whole-suite coverage threshold:
+
+```console
+uv run poe test-unit
+uv run poe test-integration
+```
+
+The test command requires 100% line and branch coverage. It writes the browsable report to `htmlcov/index.html` and
+the machine-readable reports to `coverage.xml` and `test-results/pytest.xml`. No source lines are excluded from
+measurement.
+
+Run every local quality check with one command:
+
+```console
+uv run poe check
+```
+
+List all configured commands and their descriptions with `uv run poe`.
+
+## License
+
+LocalForge is available under the [MIT License](LICENSE).
 
 ## Repository policies
 
@@ -18,15 +85,18 @@ architecture is selected.
 
 ## Local repository setup
 
-Install `pre-commit`, then enable both configured hook types:
+Install the dependencies, then enable all configured hook types:
 
 ```console
-pre-commit install
+uv sync --all-groups
+uv run pre-commit install
 git config commit.template .gitmessage
 ```
+
+The installation enables pre-commit, commit-message, and pre-push hooks. Pre-push runs mypy, ty, and the full test suite.
 
 Validate the complete repository at any time:
 
 ```console
-pre-commit run --all-files
+uv run pre-commit run --all-files
 ```

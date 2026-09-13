@@ -10,3 +10,7 @@ release lifecycle exists.
 ### Added
 
 - Repository governance and quality baseline.
+- Initial Django project using a `src/config` layout, SQLite, and `uv` dependency management.
+- Strict linting, dual type checking, unit and integration testing, and 100% branch coverage enforcement.
+- Pyproject-native development, database, testing, and quality commands powered by Poe the Poet.
+- Complete project metadata and MIT licensing.

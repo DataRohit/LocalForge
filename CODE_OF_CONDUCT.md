@@ -23,9 +23,9 @@ identity, experience, ability, appearance, beliefs, or personal characteristics.
 
 ## Reporting and enforcement
 
-Report concerns privately to the repository maintainers through an established private channel. Include relevant dates,
-context, evidence, and the outcome needed to feel safe. Maintainers will protect confidentiality as far as practical,
-acknowledge reports promptly, investigate impartially, and communicate the resulting action to affected parties.
+Report concerns privately to `datarohit@outlook.com`. Include relevant dates, context, evidence, and the outcome needed
+to feel safe. Maintainers will protect confidentiality as far as practical, acknowledge reports promptly, investigate
+impartially, and communicate the resulting action to affected parties.
 
 Maintainers may correct behavior, issue warnings, temporarily restrict participation, or permanently remove access based
 on severity, impact, and repeated conduct. Deliberately false or retaliatory reports may also result in action.

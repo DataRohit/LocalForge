@@ -7,9 +7,8 @@ fixes.
 
 ## Reporting a vulnerability
 
-Do not disclose suspected vulnerabilities in public issues, discussions, commit messages, or pull requests. Contact the
-maintainers through an established private channel. If the repository is later hosted on GitHub with private security
-reporting enabled, use the repository's private vulnerability-reporting form.
+Do not disclose suspected vulnerabilities in public issues, discussions, commit messages, or pull requests. Email
+`datarohit@outlook.com` or use GitHub private vulnerability reporting when it is enabled for the repository.
 
 Include the affected component, reproduction steps, impact, prerequisite access, relevant logs with secrets removed,
 and any proposed mitigation. Do not access data that is not yours, degrade services, or expand testing beyond the

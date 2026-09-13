@@ -1,0 +1,221 @@
+[project]
+name = "localforge"
+version = "0.1.0"
+description = "A local-first Django application with strict quality standards"
+readme = "README.md"
+requires-python = ">=3.14"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Rohit Vilas Ingole", email = "datarohit@outlook.com" },
+]
+maintainers = [
+    { name = "Rohit Vilas Ingole", email = "datarohit@outlook.com" },
+]
+keywords = [
+    "django",
+    "local-first",
+    "python",
+    "web-application",
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Framework :: Django",
+    "Framework :: Django :: 6.0",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Internet :: WWW/HTTP",
+]
+dependencies = [
+    "django>=6.0,<6.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/DataRohit/LocalForge"
+Repository = "https://github.com/DataRohit/LocalForge.git"
+Issues = "https://github.com/DataRohit/LocalForge/issues"
+Changelog = "https://github.com/DataRohit/LocalForge/blob/master/CHANGELOG.md"
+Documentation = "https://github.com/DataRohit/LocalForge#readme"
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "coverage[toml]>=7.16.0",
+    "django-stubs[compatible-mypy]>=6.1.0",
+    "factory-boy>=3.3.3",
+    "freezegun>=1.5.5",
+    "hypothesis>=6.168.0",
+    "mypy>=2.3.1",
+    "poethepoet>=0.48.0",
+    "pre-commit>=4.6.2",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "pytest-django>=4.14.0",
+    "pytest-mock>=3.15.1",
+    "pytest-xdist>=3.8.0",
+    "ruff>=0.16.7",
+    "ty>=0.0.80",
+]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["COM812", "CPY001", "D"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/config/settings.py" = ["S105"]
+"src/manage.py" = ["PLC0415"]
+"tests/**/*.py" = ["S101"]
+".github/scripts/validate_commit_message.py" = ["C901", "PLR0912"]
+
+[tool.ruff.format]
+docstring-code-format = true
+line-ending = "lf"
+
+[tool.mypy]
+python_version = "3.14"
+plugins = ["mypy_django_plugin.main"]
+files = ["src", "tests", ".github/scripts"]
+mypy_path = "src"
+strict = true
+extra_checks = true
+warn_unreachable = true
+warn_unused_configs = true
+show_error_codes = true
+show_column_numbers = true
+pretty = true
+
+[tool.django-stubs]
+django_settings_module = "config.settings"
+strict_settings = true
+
+[tool.ty.environment]
+python = ".venv"
+python-version = "3.14"
+root = ["./src"]
+
+[tool.ty.src]
+include = ["src", "tests", ".github/scripts"]
+
+[tool.ty.rules]
+all = "error"
+
+[tool.pytest.ini_options]
+minversion = "9.1"
+DJANGO_SETTINGS_MODULE = "config.settings"
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = [
+    "-ra",
+    "--strict-config",
+    "--strict-markers",
+    "--cov=src",
+    "--cov-branch",
+    "--cov-report=term-missing",
+    "--cov-report=html:htmlcov",
+    "--cov-report=xml:coverage.xml",
+    "--cov-fail-under=100",
+    "--no-cov-on-fail",
+    "--junitxml=test-results/pytest.xml",
+]
+markers = [
+    "unit: isolated unit tests",
+    "integration: tests spanning Django components",
+]
+xfail_strict = true
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+relative_files = true
+
+[tool.coverage.report]
+fail_under = 100
+precision = 2
+show_missing = true
+skip_covered = false
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+[tool.coverage.xml]
+output = "coverage.xml"
+
+[tool.poe.tasks.dev]
+help = "Start the Django development server"
+cmd = "python src/manage.py runserver"
+
+[tool.poe.tasks.migrate]
+help = "Apply database migrations"
+cmd = "python src/manage.py migrate"
+
+[tool.poe.tasks.migrations]
+help = "Create database migrations"
+cmd = "python src/manage.py makemigrations"
+
+[tool.poe.tasks.superuser]
+help = "Create a Django superuser"
+cmd = "python src/manage.py createsuperuser"
+
+[tool.poe.tasks.shell]
+help = "Open the Django shell"
+cmd = "python src/manage.py shell"
+
+[tool.poe.tasks.django-check]
+help = "Run Django system and migration checks"
+sequence = [
+    { cmd = "python src/manage.py check" },
+    { cmd = "python src/manage.py makemigrations --check --dry-run" },
+]
+
+[tool.poe.tasks.lint]
+help = "Run Ruff lint checks"
+cmd = "ruff check src tests .github/scripts"
+
+[tool.poe.tasks.format]
+help = "Format Python code with Ruff"
+cmd = "ruff format src tests .github/scripts"
+
+[tool.poe.tasks.format-check]
+help = "Verify Python formatting without changing files"
+cmd = "ruff format --check src tests .github/scripts"
+
+[tool.poe.tasks.types-mypy]
+help = "Run strict mypy type checking"
+cmd = "mypy"
+
+[tool.poe.tasks.types-ty]
+help = "Run strict ty type checking"
+cmd = "uvx ty@0.0.80 check"
+
+[tool.poe.tasks.typecheck]
+help = "Run all type checkers"
+sequence = ["types-mypy", "types-ty"]
+
+[tool.poe.tasks.test]
+help = "Run all tests with 100 percent coverage enforcement"
+cmd = "pytest"
+
+[tool.poe.tasks.test-unit]
+help = "Run focused unit tests without the whole-suite coverage gate"
+cmd = "pytest -m unit --no-cov"
+
+[tool.poe.tasks.test-integration]
+help = "Run focused integration tests without the whole-suite coverage gate"
+cmd = "pytest -m integration --no-cov"
+
+[tool.poe.tasks.test-parallel]
+help = "Run all tests in parallel with coverage enforcement"
+cmd = "pytest -n auto"
+
+[tool.poe.tasks.check]
+help = "Run the complete local quality gate"
+sequence = ["django-check", "format-check", "lint", "typecheck", "test"]
