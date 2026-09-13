@@ -207,10 +207,12 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `VALKEY_CHANNELS_HOST` | `django-uv5n2` | Channels host | `valkey-channels-vh8dm` | no | yes |
 | `VALKEY_CHANNELS_PORT` | `django-uv5n2` | Channels port | `6379` | no | yes |
 | `VALKEY_CHANNELS_PASSWORD` | `valkey-channels-vh8dm` | `requirepass` | `<GENERATED>` | **yes** | yes |
+| `RABBITMQ_HOST` | `celery-worker-cw8rt` | broker host | `rabbitmq-rq4sx` | no | yes |
+| `RABBITMQ_PORT` | `celery-worker-cw8rt` | broker AMQP port | `5672` | no | yes |
 | `RABBITMQ_DEFAULT_USER` | `rabbitmq-rq4sx` | broker user | `localforge_broker` | no | yes |
 | `RABBITMQ_DEFAULT_PASS` | `rabbitmq-rq4sx` | broker password | `<GENERATED>` | **yes** | yes |
 | `RABBITMQ_DEFAULT_VHOST` | `rabbitmq-rq4sx` | broker vhost | `localforge` | no | yes |
-| `CELERY_BROKER_URL` | `celery-worker-cw8rt` | AMQP URL | composed from the three above | **yes** | yes |
+| `CELERY_BROKER_URL` | `celery-worker-cw8rt` | AMQP URL | composed from the five above | **yes** | yes |
 | `CELERY_RESULT_BACKEND` | `celery-worker-cw8rt` | result store, DB 1 | composed | **yes** | yes |
 | `CELERY_TASK_ALWAYS_EAGER` | `django-test-dt5qx` | run tasks inline | `false` dev, `true` testing | no | no |
 | `FLOWER_BASIC_AUTH` | `flower-fl9zd` | dashboard credentials | `<GENERATED>` | **yes** | yes |
@@ -238,11 +240,21 @@ Testing overrides, present only in `.env.testing`:
 
 | Variable | Value | Reason |
 |---|---|---|
+| `COMPOSE_PROJECT_NAME` | `localforge-test` | selects the testing project namespace |
 | `DJANGO_SETTINGS_MODULE` | `config.settings.testing` | selects the testing module |
 | `DJANGO_DEBUG` | `false` | tests must not depend on debug behaviour |
+| `DJANGO_ALLOWED_HOSTS` | replaces `django-uv5n2` with `django-test-dt5qx` | the test runner's own container name; the development app does not run here |
 | `POSTGRES_HOST`, `POSTGRES_REPLICA_HOST` | `postgres-tp8vn` | single node; the replica alias points at it |
+| `VALKEY_CACHE_HOST` | `valkey-cache-tv4kq` | the testing cache container |
+| `VALKEY_CHANNELS_HOST` | `valkey-channels-tv9zw` | the testing channel-layer container |
+| `RABBITMQ_HOST` | `rabbitmq-tr6mc` | the testing broker container |
+| `S3_ENDPOINT_URL` | `http://seaweedfs-ts3jd:8333` | the testing storage container |
+| `EMAIL_HOST` | `mailpit-tm7bh` | the testing mail container, profile `smtp` |
 | `EMAIL_BACKEND` | `django.core.mail.backends.locmem.EmailBackend` | default; SMTP only under the `smtp` profile |
 | `CELERY_TASK_ALWAYS_EAGER` | `true` | default; the broker integration test overrides it |
+
+Every `*_HOST` override follows from the testing registry in Section 2.3: the testing stack runs its own
+containers, so a host left naming a development container would resolve to nothing on the testing networks.
 
 `.env.testing.host` is the same file with every `*_HOST` set to `127.0.0.1` and every port set to the published host
 port from [service-inventory.md](./service-inventory.md) Section 4.
@@ -261,9 +273,11 @@ image with no Python. The development machine is Windows, so a `.sh` entrypoint 
 |---|---|
 | Responsibility | Create or top up `.env.development`, `.env.testing`, `.env.testing.host` |
 | Inputs | `--environment {development,testing,all}`, `--force`; `.env.example` is the variable manifest |
-| Generation | `secrets.token_urlsafe(64)` for `DJANGO_SECRET_KEY`; `token_urlsafe(32)` for passwords; `token_hex(20)` for S3 keys; bcrypt for `TRAEFIK_DASHBOARD_AUTH` |
-| Idempotency | Default run **never overwrites an existing key**; it appends only absent variables, so adding an inventory row fills the gap without invalidating a running stack. `--force` regenerates everything and warns that credential-derived volumes must be recreated |
-| Exit codes | `0` ok; `2` `.env.example` missing or unparsable; `3` refused to write a Git-tracked file; `4` `--force` without `--environment` |
+| Generation | `secrets.token_urlsafe(64)` for `DJANGO_SECRET_KEY`; `token_urlsafe(32)` for passwords; `token_hex(20)` for S3 keys; bcrypt at cost 12 for `TRAEFIK_DASHBOARD_AUTH`. `FLOWER_BASIC_AUTH` is a **plaintext** `user:password` pair, because Flower compares its configured value literally — hashing it would make the digest itself the password |
+| Quoting | A value containing `$` is written single-quoted. Compose expands unquoted values in **both** `env_file:` and `--env-file`, so a bare bcrypt hash loses everything from its third `$` onward and yields a credential that cannot authenticate. Verified against Compose v5.5.1 on 2026-09-13 |
+| Idempotency | Default run **never overwrites an existing value**, and never discards one it does not recognise; it appends only absent variables, so adding an inventory row fills the gap without invalidating a running stack. A composed value is the exception: it is re-derived whenever the variables it is built from change, because a URL that disagrees with the password beside it is worse than no URL. `--force` regenerates everything and warns that credential-derived volumes must be recreated |
+| Sharing | `.env.testing` and `.env.testing.host` address the same containers and therefore hold the same credentials. They are resolved together, so a run that regenerates one because the other is missing cannot leave the pair disagreeing |
+| Exit codes | `0` ok; `2` `.env.example` missing or unparsable; `3` refused to write a Git-tracked file, **or could not determine whether a file is tracked**; `4` `--force` without `--environment` |
 | Never | Prints a secret, logs a value, or writes into a `.sops` file |
 
 ### 4.2 `scripts/preflight.py`
@@ -274,8 +288,14 @@ as warnings.
 
 ### 4.3 `scripts/sops_env.py`
 
-`--mode {encrypt,decrypt} --environment <name>`, age recipient from `.sops.yaml`. Exit `0` ok; `2` `sops` or `age`
-not on `PATH`; `3` no age key; `4` decrypt would overwrite newer plaintext without `--force`.
+`--mode {encrypt,decrypt} --environment <name>`, age recipient from `.sops.yaml`. Exit `0` ok; `1` the operation
+failed — a missing source file, or `sops` itself refusing; `2` `sops` or `age` not on `PATH`; `3` no age key; `4`
+decrypt would overwrite newer plaintext without `--force`.
+
+`1` is deliberately separate from `3`. A missing age key is a one-time setup problem with a known remedy, while a
+`sops` failure is anything else, and collapsing the two would tell an operator to generate a key they already have.
+The tool's own error text is not reproduced in the output: it is written against a file of credentials, and nothing
+guarantees a future version will not quote the line it failed on.
 
 ### 4.4 `scripts/wait_for_services.py`
 
@@ -321,7 +341,15 @@ published port matches [service-inventory.md](./service-inventory.md). Exit `0` 
 3. `detect-private-key` is an active pre-commit hook. Do not disable it or add exclusions.
 4. Secrets are generated on the machine that runs the platform and never copied between machines in plaintext.
 5. On suspected exposure: `gen_secrets.py --force`, then recreate every volume whose contents derive from the old
-   value — `postgres-pg3ka-data`, `rabbitmq-rq4sx-data`, `grafana-gf7qv-data`, `pgadmin-pa7fe-data`.
+   value. The set depends on the environment being regenerated:
+
+   | Environment | Volumes to recreate |
+   |---|---|
+   | development | `postgres-pg3ka-data`, `postgres-replica-pg6vy-data`, `rabbitmq-rq4sx-data`, `grafana-gf7qv-data`, `pgadmin-pa7fe-data` |
+   | testing | `postgres-tp8vn-data`, `rabbitmq-tr6mc-data` |
+
+   The standby is listed because it holds a copy initialised with the old replication credential, so leaving it in
+   place after re-seeding the primary produces a standby that cannot reconnect.
 6. Every credential is distinct. No password is reused across services, which is why `VALKEY_CACHE_PASSWORD` and
    `VALKEY_CHANNELS_PASSWORD` are separate even though both run the same image — and why the platform runs two
    `redis_exporter` instances rather than one. See [service-inventory.md](./service-inventory.md) Section 1.1.

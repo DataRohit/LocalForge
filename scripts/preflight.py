@@ -432,7 +432,7 @@ TOOL_CHECKS: tuple[ToolCheck, ...] = (
             title="SOPS",
             minimum_label="3.13",
             required=False,
-            remediation="winget install --id getsops.sops --exact",
+            remediation="winget install --id SecretsOPerationS.SOPS --exact",
             matters_when=SECRETS_TOOLING_NOTE,
         ),
         command=("sops", "--version"),

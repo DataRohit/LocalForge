@@ -50,6 +50,7 @@ default = true
 
 [dependency-groups]
 dev = [
+    "bcrypt>=5.0.0",
     "coverage[toml]>=7.16.0",
     "django-stubs[compatible-mypy]>=6.1.0",
     "factory-boy>=3.3.3",
@@ -82,7 +83,9 @@ ignore = ["COM812", "CPY001", "D"]
 "src/config/settings.py" = ["S105"]
 "src/manage.py" = ["PLC0415"]
 "scripts/*.py" = ["T201", "TC003"]
+"scripts/gen_secrets.py" = ["S603"]
 "scripts/preflight.py" = ["S603"]
+"scripts/sops_env.py" = ["S603"]
 "tests/**/*.py" = ["S101"]
 ".github/scripts/validate_commit_message.py" = ["C901", "INP001", "PLR0912"]
 

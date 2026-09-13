@@ -1,0 +1,3 @@
+creation_rules:
+  - path_regex: \.env\.(development|testing)$
+    age: age19dmj3p6lz7gy7rckfhgrufzctd97gydmk7k3qpcpe9qyp2pcze7slvd7zy

@@ -20,11 +20,15 @@ re-verify, because the machine may have moved on.
 | 8 | Disk | `docker system df`, free space | 20 GB | **C: 277 GB free, Q: 1.5 TB free.** Docker already holds 2.2 GB images and 3.3 GB volumes from other work — pass | Free space, or move Docker's data root |
 | 9 | kubectl | `kubectl version --client` | 1.30 | **v1.37.0**, Kustomize v5.8.1 — pass | `winget install Kubernetes.kubectl` |
 | 10 | kind *or* minikube | `kind version` / `minikube version` | kind 0.33, minikube 1.39 | **NOT PRESENT** — optional, see Section 3 | `winget install Kubernetes.kind` |
-| 11 | SOPS | `sops --version` | 3.13 | **NOT PRESENT** — required before the first commit of an encrypted env file | `winget install getsops.sops` |
-| 12 | age | `age --version` | 1.3 | **NOT PRESENT** — same | `winget install FiloSottile.age` |
+| 11 | SOPS | `sops --version` | 3.13 | **3.13.3** — pass | `winget install --id SecretsOPerationS.SOPS --exact` |
+| 12 | age | `age --version` | 1.3 | **1.3.1** — pass | `winget install --id FiloSottile.age --exact` |
 | 13 | `psql` on the host | `psql --version` | 16 | **NOT PRESENT** — optional | `docker exec -it postgres-pg3ka psql` needs no host client |
 
-Items 1 through 9 pass. Nothing blocks phase 4.
+Items 1 through 9 pass, and SOPS and age were installed during ticket 02. Nothing blocks phase 4.
+
+The published winget identifiers are not the ones an obvious guess produces: SOPS is
+**`SecretsOPerationS.SOPS`**, not `getsops.sops`, and both IDs need `--exact` to resolve. `winget install
+getsops.sops` returns "No package found matching input criteria".
 
 ## 2. The Python gap
 
@@ -41,10 +45,10 @@ It changes how every command is run:
 
 ## 3. What is genuinely missing, and when it matters
 
-**SOPS and age (items 11, 12)** are the only missing items on the critical path, and not until the encrypted env
-files are first committed. Phases 4 through 8 run without them: `gen_secrets.py` writes plaintext `.env` files that
-are git-ignored, and `sops_env.py` exits `2` with a clear message if the binaries are absent. Install them before
-committing `.env.development.sops`.
+**SOPS and age (items 11, 12)** were the only missing items on the critical path, and not until the encrypted env
+files are first committed. They were installed during ticket 02 and are now present. Phases 4 through 8 run without
+them regardless: `gen_secrets.py` writes plaintext `.env` files that are git-ignored, and `sops_env.py` exits `2`
+with a clear message if the binaries are absent.
 
 **kind and minikube (item 10)** are not needed at all in this phase. Kubernetes is reasoning-only — see
 [../platform/kubernetes-mapping.md](../platform/kubernetes-mapping.md). Note that a Docker network named `kind`

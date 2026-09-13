@@ -55,6 +55,7 @@ venv.bak/
 .env
 .env.*
 !.env.example
+!.env.*.sops
 pip-log.txt
 pip-delete-this-directory.txt
 .ipynb_checkpoints/

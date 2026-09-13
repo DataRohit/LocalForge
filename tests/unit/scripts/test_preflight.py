@@ -424,7 +424,7 @@ def test_every_failing_row_names_a_remediation() -> None:
         (6, "pipx install uv"),
         (9, "winget install --id Kubernetes.kubectl --exact"),
         (10, "winget install --id Kubernetes.kind --exact"),
-        (11, "winget install --id getsops.sops --exact"),
+        (11, "winget install --id SecretsOPerationS.SOPS --exact"),
         (12, "winget install --id FiloSottile.age --exact"),
         (13, "winget install --id PostgreSQL.PostgreSQL --exact"),
     ],
