@@ -52,6 +52,7 @@ Listed so scope creep is recognisable. None exists.
 | `docker/alloy/config.alloy` | Log discovery and shipping |
 | `docker/pgadmin/servers.json` | Pre-registered PostgreSQL servers |
 | `docker/seaweedfs/s3.json` | S3 identities and keys |
+| `docker/postgres-exporter/auth_modules.yaml` | Probe credentials for the standby, rendered at start from the environment |
 | `scripts/*.py`, `scripts/*.sh` | The nine scripts in [../platform/conventions.md](../platform/conventions.md) Section 4 |
 | `.env.example` | Committed variable manifest, placeholders only |
 | `.env.development.sops`, `.env.testing.sops` | Committed encrypted env files |

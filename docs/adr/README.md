@@ -18,7 +18,7 @@ Format follows `.agents/skills/domain-modeling/ADR-FORMAT.md`: sequential number
 | [0006](./0006-mailpit-smtp-capture.md) | Local SMTP capture | Mailpit | v1.31.1 | accepted |
 | [0007](./0007-traefik-reverse-proxy.md) | Reverse proxy | Traefik | v3.7.13 | accepted |
 | [0008](./0008-celery-rabbitmq.md) | Task queue + scheduler | Celery + django-celery-beat + RabbitMQ | 5.6.3 / 2.9.0 / 4.3.5 | accepted |
-| [0009](./0009-prometheus-grafana.md) | Monitoring | Prometheus + Grafana OSS | v3.14.0 / 13.2.1 | accepted |
+| [0009](./0009-prometheus-grafana.md) | Monitoring | Prometheus + Grafana OSS | v3.14.0 / 13.0.2 | accepted |
 | [0010](./0010-loki-alloy-logging.md) | Centralized logging | Loki + Grafana Alloy | 3.7.7 / v1.19.2 | accepted |
 | [0011](./0011-pgbackrest-backups.md) | Backup automation | pgBackRest | 2.59.1 | accepted |
 | [0012](./0012-streaming-replication.md) | Read replication | PostgreSQL native streaming replication | 18.6 | accepted |

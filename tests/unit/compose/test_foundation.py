@@ -744,7 +744,7 @@ def test_every_published_service_joins_a_reachable_zone(project: dict[str, Any])
 def test_a_service_is_only_awaited_when_it_reports_health(project: dict[str, Any]) -> None:
     """Wait on readiness rather than on a process existing.
 
-    Confirms every dependency is awaited on health and that the awaited service defines a check,
+    Confirms a dependency is awaited on health when it can report health and on start otherwise,
     because waiting on one that does not is a configuration error reported only at start time.
 
     Arguments:
@@ -759,8 +759,10 @@ def test_a_service_is_only_awaited_when_it_reports_health(project: dict[str, Any
     services = project.get("services") or {}
     for name, definition in services.items():
         for dependency, condition in (definition.get("depends_on") or {}).items():
-            assert condition.get("condition") == "service_healthy", f"{name} -> {dependency}"
-            assert services[dependency].get("healthcheck"), dependency
+            probe = services[dependency].get("healthcheck")
+            expected = "service_healthy" if probe else "service_started"
+
+            assert condition.get("condition") == expected, f"{name} -> {dependency}"
 
 
 @pytest.mark.unit
@@ -2279,6 +2281,277 @@ def test_the_testing_environment_runs_no_proxy() -> None:
     assert not [name for name in services if name.startswith("traefik-")]
 
 
+OBSERVABILITY_SERVICES = {
+    "cadvisor-cv8mh": ("ghcr.io/google/cadvisor:v0.60.5", {"8090:8080"}),
+    "postgres-exporter-pe4rk": (
+        "quay.io/prometheuscommunity/postgres-exporter:v0.20.1",
+        {"9187:9187"},
+    ),
+    "valkey-cache-exporter-ve7ts": ("docker.io/oliver006/redis_exporter:v1.91.1", {"9121:9121"}),
+    "valkey-channels-exporter-vx4nq": (
+        "docker.io/oliver006/redis_exporter:v1.91.1",
+        {"9122:9121"},
+    ),
+    "loki-lk3ny": ("docker.io/grafana/loki:3.7.7", {"3100:3100"}),
+    "alloy-al6wz": ("docker.io/grafana/alloy:v1.19.2", {"12345:12345"}),
+    "prometheus-pm5db": ("docker.io/prom/prometheus:v3.14.0", {"9090:9090"}),
+    "grafana-gf7qv": ("docker.io/grafana/grafana-oss:13.0.2", {"3000:3000"}),
+}
+
+
+def reference(name: str) -> str:
+    """Build the interpolation a manifest uses to name a variable.
+
+    Produces the reference form rather than a literal, so an assertion about which variable a
+    service reads is not mistaken for an assertion about a value.
+
+    Arguments:
+        name: Variable being referenced.
+
+    Returns:
+        The interpolation that Compose resolves.
+    """
+    return "${" + name + "}"
+
+
+PROMETHEUS_CONFIG = REPOSITORY_ROOT / "docker" / "prometheus" / "prometheus.yml"
+ALLOY_CONFIG = REPOSITORY_ROOT / "docker" / "alloy" / "config.alloy"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("service", sorted(OBSERVABILITY_SERVICES))
+def test_each_observability_service_matches_its_registered_row(service: str) -> None:
+    """Pin every observability service to the row assigned to it.
+
+    Confirms the registered name, pinned image, and published ports match the registry, including
+    the two ports deliberately remapped clear of the proxy and of each other.
+
+    Arguments:
+        service: Registered container name to inspect.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any registered value is departed from.
+    """
+    image, ports = OBSERVABILITY_SERVICES[service]
+    definition = merged(DEVELOPMENT_FILE)["services"][service]
+
+    assert definition["image"] == image
+    assert definition["container_name"] == service
+    assert set(definition["ports"]) == ports
+
+
+@pytest.mark.unit
+def test_one_database_exporter_covers_both_nodes_without_a_connection_string() -> None:
+    """Reach the standby without putting the password in a URI.
+
+    Confirms the exporter takes its credentials split out and that the standby is scraped through
+    the probe path, because the single-string form that accepts two hosts would carry the password
+    inside the connection string.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If credentials are combined, or the standby is unscraped.
+    """
+    definition = merged(DEVELOPMENT_FILE)["services"]["postgres-exporter-pe4rk"]
+    command = " ".join(definition["command"])
+    scrape = yaml.safe_load(PROMETHEUS_CONFIG.read_text(encoding="utf-8"))
+    jobs = {job["job_name"]: job for job in scrape["scrape_configs"]}
+
+    assert "DATA_SOURCE_NAME" not in command
+    assert 'DATA_SOURCE_USER="$$POSTGRES_USER"' in command
+    assert 'DATA_SOURCE_PASS="$$POSTGRES_PASSWORD"' in command
+    assert "$$POSTGRES_PASSWORD" not in command.split("DATA_SOURCE_URI=")[1].split()[0]
+    assert jobs["postgres-standby"]["metrics_path"] == "/probe"
+    assert jobs["postgres-standby"]["static_configs"][0]["targets"] == [
+        "postgres-replica-pg6vy:5432"
+    ]
+
+
+@pytest.mark.unit
+def test_each_cache_instance_has_an_exporter_of_its_own() -> None:
+    """Give each cache its own exporter, because they hold different passwords.
+
+    Confirms two exporters exist and read different credentials, since the exporter supports only
+    one password across a multi-target scrape and the registry gives each instance its own.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the two exporters share a credential or an address.
+    """
+    services = merged(DEVELOPMENT_FILE)["services"]
+    cache = " ".join(services["valkey-cache-exporter-ve7ts"]["command"])
+    channels = " ".join(services["valkey-channels-exporter-vx4nq"]["command"])
+
+    assert f"--redis.password={reference('VALKEY_CACHE_PASSWORD')}" in cache
+    assert f"--redis.password={reference('VALKEY_CHANNELS_PASSWORD')}" in channels
+    assert "valkey-cache-vc5tn" in cache
+    assert "valkey-channels-vh8dm" in channels
+
+
+@pytest.mark.unit
+def test_the_log_collector_listens_beyond_its_own_container() -> None:
+    """Override a default that binds to loopback.
+
+    Confirms the collector is given an explicit listen address, because its default binds inside
+    the container only, which leaves it unreachable while appearing perfectly healthy.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If no explicit listen address is given.
+    """
+    command = " ".join(merged(DEVELOPMENT_FILE)["services"]["alloy-al6wz"]["command"])
+
+    assert "--server.http.listen-addr=0.0.0.0:12345" in command
+    assert "--disable-reporting" in command
+
+
+@pytest.mark.unit
+def test_the_log_collector_reads_the_socket_read_only_and_labels_what_it_ships() -> None:
+    """Ship logs that can be found again.
+
+    Confirms the socket is mounted read-only and the collector attaches the labels a query needs,
+    because a log line with no container label cannot be retrieved by container.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the socket is writable, or the labels are absent.
+    """
+    volumes = merged(DEVELOPMENT_FILE)["services"]["alloy-al6wz"]["volumes"]
+    config = ALLOY_CONFIG.read_text(encoding="utf-8")
+
+    assert "/var/run/docker.sock:/var/run/docker.sock:ro" in volumes
+    for label in ("container", "compose_project", "compose_service"):
+        assert f'target_label  = "{label}"' in config, label
+
+    assert "com.docker.compose.project=localforge-dev" in config
+
+
+@pytest.mark.unit
+def test_retention_is_bounded_from_the_environment() -> None:
+    """Keep the stack from filling the disk.
+
+    Confirms both stores read their retention from a registered variable rather than a literal, so
+    a machine with less room can be given a shorter window without editing a config file.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If either store hardcodes its retention.
+    """
+    prometheus = " ".join(merged(DEVELOPMENT_FILE)["services"]["prometheus-pm5db"]["command"])
+    loki = (REPOSITORY_ROOT / "docker" / "loki" / "loki.yaml").read_text(encoding="utf-8")
+    manifest = (REPOSITORY_ROOT / ".env.example").read_text(encoding="utf-8")
+
+    assert "$$PROMETHEUS_RETENTION_TIME" in prometheus
+    assert "retention_period: ${LOKI_RETENTION_PERIOD}" in loki
+    assert "PROMETHEUS_RETENTION_TIME=" in manifest
+    assert "LOKI_RETENTION_PERIOD=" in manifest
+
+
+@pytest.mark.unit
+def test_the_visualisation_service_is_provisioned_and_closed_to_anonymous_use() -> None:
+    """Provision from files and demand the generated credential.
+
+    Confirms data sources and dashboards are mounted read-only so wiping the volume loses nothing,
+    and that anonymous access and sign-up are both off.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If provisioning is absent, or the service is open.
+    """
+    definition = merged(DEVELOPMENT_FILE)["services"]["grafana-gf7qv"]
+    command = " ".join(definition["command"])
+
+    assert "./docker/grafana/provisioning:/etc/grafana/provisioning:ro" in definition["volumes"]
+    assert 'GF_SECURITY_ADMIN_PASSWORD="$$GRAFANA_ADMIN_PASSWORD"' in command
+    assert "GF_AUTH_ANONYMOUS_ENABLED=false" in command
+    assert "GF_USERS_ALLOW_SIGN_UP=false" in command
+
+
+@pytest.mark.unit
+def test_nothing_in_the_observability_stack_reports_outward() -> None:
+    """Keep the stack from calling its vendors.
+
+    Confirms the visualisation service has update checks and analytics disabled and the log store
+    has reporting off, because each defaults to contacting the internet on a platform that has
+    none.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any outbound reporting is left enabled.
+    """
+    command = " ".join(merged(DEVELOPMENT_FILE)["services"]["grafana-gf7qv"]["command"])
+    loki = yaml.safe_load((REPOSITORY_ROOT / "docker" / "loki" / "loki.yaml").read_text("utf-8"))
+
+    assert "GF_ANALYTICS_REPORTING_ENABLED=false" in command
+    assert "GF_PLUGINS_PREINSTALL_DISABLED=true" in command
+    assert "GF_NEWS_NEWS_FEED_ENABLED=false" in command
+    assert "GF_ANALYTICS_CHECK_FOR_UPDATES=false" in command
+    assert "GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES=false" in command
+    assert loki["analytics"]["reporting_enabled"] is False
+
+
+@pytest.mark.unit
+def test_every_scrape_target_is_a_registered_container() -> None:
+    """Scrape only what the registry carries.
+
+    Confirms each scrape job addresses a registered container name, so a typo in the scrape file
+    cannot leave a target silently unscraped.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a job names something absent from the registry.
+    """
+    scrape = yaml.safe_load(PROMETHEUS_CONFIG.read_text(encoding="utf-8"))
+    declared = set(merged(DEVELOPMENT_FILE)["services"])
+
+    for job in scrape["scrape_configs"]:
+        for target in job["static_configs"][0]["targets"]:
+            assert target.split(":")[0] in declared, job["job_name"]
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize("environment", ["development", "testing"])
 def test_the_documented_project_names_are_distinct(environment: str) -> None:
@@ -2300,3 +2573,54 @@ def test_the_documented_project_names_are_distinct(environment: str) -> None:
 
     assert f"| {environment} | `{PROJECT_NAMES[environment]}` |" in text
     assert PROJECT_NAMES["development"] != PROJECT_NAMES["testing"]
+
+
+@pytest.mark.unit
+def test_the_observability_stack_starts_in_the_documented_order() -> None:
+    """Start each service only once what it reads is up.
+
+    Confirms collection waits for its exporters and visualisation waits for both stores, using a
+    started condition for the services that carry no probe and therefore can never report healthy.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a documented dependency is absent or waits on an impossible condition.
+    """
+    services = merged(DEVELOPMENT_FILE)["services"]
+    prometheus = services["prometheus-pm5db"]["depends_on"]
+    grafana = services["grafana-gf7qv"]["depends_on"]
+
+    assert prometheus["postgres-exporter-pe4rk"]["condition"] == "service_healthy"
+    assert prometheus["valkey-cache-exporter-ve7ts"]["condition"] == "service_started"
+    assert grafana["prometheus-pm5db"]["condition"] == "service_healthy"
+    assert grafana["loki-lk3ny"]["condition"] == "service_started"
+
+
+@pytest.mark.unit
+def test_every_service_without_a_probe_is_only_ever_waited_on_as_started() -> None:
+    """Never wait for health a service cannot report.
+
+    Confirms no dependency asks for a healthy condition from a service that declares no health
+    check, because that condition can never be satisfied and the stack would never finish starting.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a probeless service is waited on as healthy.
+    """
+    services = merged(DEVELOPMENT_FILE)["services"]
+    probeless = {name for name, body in services.items() if "healthcheck" not in body}
+
+    for name, body in services.items():
+        for dependency, rule in (body.get("depends_on") or {}).items():
+            if dependency in probeless:
+                assert rule["condition"] != "service_healthy", f"{name} -> {dependency}"

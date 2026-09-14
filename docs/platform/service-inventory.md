@@ -22,7 +22,7 @@ would otherwise have surfaced as a mysterious failure at build time.
 | `pgadmin-pa7fe` | PostgreSQL dashboard | `5050` | 80 | `data-net-nd9pc`, `access-net-ha4mz` |
 | `valkey-cache-vc5tn` | cache (DB 0) + Celery results (DB 1) | `6379` | 6379 | `app-net-na6hy`, `access-net-ha4mz` |
 | `valkey-channels-vh8dm` | Channels layer | `6380` | 6379 | `app-net-na6hy`, `access-net-ha4mz` |
-| `rabbitmq-rq4sx` | Celery broker | `5672` AMQP, `15672` management | 5672, 15672 | `app-net-na6hy`, `access-net-ha4mz` |
+| `rabbitmq-rq4sx` | Celery broker | `5672` AMQP, `15672` management | 5672, 15672, 15692 | `app-net-na6hy`, `access-net-ha4mz` |
 | `celery-worker-cw8rt` | task worker | none | — | `app-net-na6hy`, `data-net-nd9pc` |
 | `celery-beat-cb4hq` | periodic task scheduler | none | — | `app-net-na6hy`, `data-net-nd9pc` |
 | `flower-fl9zd` | Celery dashboard | `5555` | 5555 | `app-net-na6hy`, `access-net-ha4mz` |
@@ -115,7 +115,7 @@ run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data /
 | 5 | `traefik-tk2jp`, `flower-fl9zd`, `pgadmin-pa7fe` | their backends healthy |
 | 6 | `postgres-exporter-pe4rk`, `valkey-cache-exporter-ve7ts`, `valkey-channels-exporter-vx4nq`, `cadvisor-cv8mh`, `alloy-al6wz` | their scrape targets healthy |
 | 7 | `prometheus-pm5db` | exporters started |
-| 8 | `grafana-gf7qv` | `prometheus-pm5db` and `loki-lk3ny` healthy |
+| 8 | `grafana-gf7qv` | `prometheus-pm5db` healthy, `loki-lk3ny` started — that image carries no probe, so it can never report healthy |
 
 `django-uv5n2` runs migrations in its entrypoint **before** binding its port, so tier 4 waiting on it healthy also
 waits on the schema being current. Celery workers never run migrations.
@@ -131,12 +131,12 @@ Every row verified against upstream source or docs on 2026-09-13.
 | `valkey-*` | `valkey-cli --no-auth-warning -a "$PASSWORD" ping` returning `PONG` | |
 | `rabbitmq-*` | `rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_local_alarms` | upstream's documented **stage 3** check, verbatim. See the cost note below |
 | `mailpit-*` | `CMD ["/mailpit", "readyz"]` | **not** an HTTP probe. The image is Alpine with no `curl` or `wget`, and upstream's own `HEALTHCHECK` uses this CLI form. `/readyz` and `/livez` exist over HTTP but nothing inside the image can call them |
+| `loki-lk3ny`, `valkey-*-exporter-*` | **none** | measured 2026-09-14: these three images ship no shell and no HTTP client, so no in-container probe is possible. `/ready` and `/metrics` answer over HTTP but nothing inside can call them, and unlike Mailpit they carry no CLI probe either. Their liveness is asserted by Prometheus, whose targets page is the criterion that matters. Depend on them with `service_started`, never `service_healthy` |
+| `alloy-al6wz` | `bash -c "exec 3<>/dev/tcp/127.0.0.1/12345"` | the image carries no `curl` or `wget` but does carry a full Debian userland, so bash opens the socket directly. Alloy is the one service whose silent death stops log collection with no other symptom, so it keeps a probe |
 | `seaweedfs-*` | `GET /healthz` on 9333 and 8333 | **the master has no `/status` route.** The S3 gateway accepts `/status`, `/healthz`, and `/readyz`; `/healthz` works on both, so use it uniformly |
 | `django-uv5n2` | `GET /health/`, served by `django-health-check` | |
-| `loki-lk3ny` | `GET /ready` | |
 | `prometheus-pm5db` | `GET /-/ready` | `/-/healthy` exists but answers liveness, not readiness |
 | `grafana-gf7qv` | `GET /api/health` | |
-| `alloy-al6wz` | `GET /` on 12345 | no documented `/-/healthy`; needs the listen-addr override from 1.3 |
 | `cadvisor-cv8mh` | `GET /healthz` | |
 
 **RabbitMQ health checks are expensive.** Each `rabbitmq-diagnostics` invocation joins and leaves the Erlang
@@ -199,11 +199,20 @@ registration declarative.
 option — every Flower option accepts a `FLOWER_`-prefixed env var. Multiple users are comma-separated. It is not the
 `auth` option, which is an OAuth email-allowlist regex.
 
+**A generated password reaches `redis_exporter` through its argument list.** That image carries no shell, so the render pattern used elsewhere is unavailable, and the two instances need different values from one environment file. The password is therefore visible in `docker inspect` and `docker compose config`. Accepted knowingly, on the same footing as Valkey's own `--requirepass`; the security audit owns whether that stands.
+
 **postgres_exporter takes credentials split out.** `DATA_SOURCE_URI` accepts the host only; username and password go
 in `DATA_SOURCE_USER` and `DATA_SOURCE_PASS`, or `DATA_SOURCE_PASS_FILE` to keep the password out of the
-environment. `DATA_SOURCE_NAME` is the legacy single-string form and accepts a comma-separated list, which is how
-one exporter covers both PostgreSQL nodes. The process runs as uid/gid 65534, and its multi-target probe path is
-`/probe`, not `/scrape`.
+environment. The process runs as uid/gid 65534, and its multi-target probe path is `/probe`, not `/scrape`.
+
+**One exporter reaches both nodes through `/probe`, not through a list.** Measured 2026-09-14 against v0.20.1:
+`DATA_SOURCE_URI` is a single URI, so a comma-separated value is swallowed into the last query parameter and the
+exporter reports `unsupported sslmode "disable,postgres-replica-…"`. Only the legacy `DATA_SOURCE_NAME` accepts a
+list, and that is one connection string with the password inside it, which the ticket's own criterion forbids. The
+resolution keeps both: the primary is scraped at `/metrics` using the split variables, and the standby is scraped
+at `/probe?target=…&auth_module=…`, whose module carries the username and password as discrete fields and supplies
+`sslmode: disable` — without it the probe defaults to requiring TLS and fails against a server that has none. The
+module file is rendered at start from the environment, so no credential is committed.
 
 Grafana is provisioned as code: datasource and dashboard provider files are mounted read-only from
 `docker/grafana/provisioning/`, so wiping the volume loses nothing.
@@ -344,7 +353,7 @@ docker inspect postgres-pg3ka --format "{{range .Mounts}}{{.Type}} {{.Name}} -> 
 ```
 
 Pass: every `volume` row carries a name from the registry; every `bind` row points inside the repository and is
-read-only. The two exceptions are the Docker socket mounts on `traefik-tk2jp` and `alloy-al6wz`, read-only by
+read-only. Three services see the Docker socket, all read-only: `traefik-tk2jp` and `alloy-al6wz` mount it directly, and `cadvisor-cv8mh` receives it inside its `/var/run` mount, which it needs to resolve container names. A read-only bind does not make the API read-only, so all three are root-equivalent over the daemon; the security audit owns that. Read-only by
 requirement.
 
 ### 6.5 Offline enforcement

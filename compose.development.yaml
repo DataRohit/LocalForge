@@ -265,6 +265,221 @@ services:
       retries: 10
       start_period: 20s
 
+  cadvisor-cv8mh:
+    image: ghcr.io/google/cadvisor:v0.60.5
+    container_name: cadvisor-cv8mh
+    restart: unless-stopped
+    env_file:
+      - .env.development
+    ports:
+      - "8090:8080"
+    networks:
+      - obsv-net-nb4xt
+      - access-net-ha4mz
+    volumes:
+      - /:/rootfs:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  postgres-exporter-pe4rk:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+    container_name: postgres-exporter-pe4rk
+    restart: unless-stopped
+    env_file:
+      - .env.development
+    ports:
+      - "9187:9187"
+    networks:
+      - data-net-nd9pc
+      - obsv-net-nb4xt
+      - access-net-ha4mz
+    volumes:
+      - ./docker/postgres-exporter/auth_modules.yaml:/etc/pe/auth_modules.yaml.template:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        sed -e "s|__POSTGRES_USER__|$$POSTGRES_USER|"
+        -e "s|__POSTGRES_PASSWORD__|$$POSTGRES_PASSWORD|" -e "s|__POSTGRES_DB__|$$POSTGRES_DB|"
+        /etc/pe/auth_modules.yaml.template > /tmp/auth_modules.yaml
+        && DATA_SOURCE_URI="postgres-pg3ka:5432/localforge?sslmode=disable"
+        DATA_SOURCE_USER="$$POSTGRES_USER"
+        DATA_SOURCE_PASS="$$POSTGRES_PASSWORD"
+        exec /bin/postgres_exporter --config.file=/tmp/auth_modules.yaml
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9187/metrics"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  valkey-cache-exporter-ve7ts:
+    image: docker.io/oliver006/redis_exporter:v1.91.1
+    container_name: valkey-cache-exporter-ve7ts
+    restart: unless-stopped
+    env_file:
+      - .env.development
+    ports:
+      - "9121:9121"
+    networks:
+      - app-net-na6hy
+      - obsv-net-nb4xt
+      - access-net-ha4mz
+    command:
+      - --redis.addr=redis://valkey-cache-vc5tn:6379
+      - --redis.password=${VALKEY_CACHE_PASSWORD}
+
+  valkey-channels-exporter-vx4nq:
+    image: docker.io/oliver006/redis_exporter:v1.91.1
+    container_name: valkey-channels-exporter-vx4nq
+    restart: unless-stopped
+    env_file:
+      - .env.development
+    ports:
+      - "9122:9121"
+    networks:
+      - app-net-na6hy
+      - obsv-net-nb4xt
+      - access-net-ha4mz
+    command:
+      - --redis.addr=redis://valkey-channels-vh8dm:6379
+      - --redis.password=${VALKEY_CHANNELS_PASSWORD}
+
+  loki-lk3ny:
+    image: docker.io/grafana/loki:3.7.7
+    container_name: loki-lk3ny
+    restart: unless-stopped
+    env_file:
+      - .env.development
+    ports:
+      - "3100:3100"
+    networks:
+      - obsv-net-nb4xt
+      - access-net-ha4mz
+    volumes:
+      - loki-lk3ny-data:/loki
+      - ./docker/loki/loki.yaml:/etc/loki/loki.yaml:ro
+    command:
+      - -config.file=/etc/loki/loki.yaml
+      - -config.expand-env=true
+
+  alloy-al6wz:
+    image: docker.io/grafana/alloy:v1.19.2
+    container_name: alloy-al6wz
+    restart: unless-stopped
+    env_file:
+      - .env.development
+    ports:
+      - "12345:12345"
+    networks:
+      - obsv-net-nb4xt
+      - access-net-ha4mz
+    depends_on:
+      loki-lk3ny:
+        condition: service_started
+    volumes:
+      - alloy-al6wz-data:/var/lib/alloy/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./docker/alloy/config.alloy:/etc/alloy/config.alloy:ro
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - --disable-reporting
+      - /etc/alloy/config.alloy
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - exec 3<>/dev/tcp/127.0.0.1/12345
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  prometheus-pm5db:
+    image: docker.io/prom/prometheus:v3.14.0
+    container_name: prometheus-pm5db
+    restart: unless-stopped
+    env_file:
+      - .env.development
+    ports:
+      - "9090:9090"
+    networks:
+      - obsv-net-nb4xt
+      - access-net-ha4mz
+    depends_on:
+      postgres-exporter-pe4rk:
+        condition: service_healthy
+      valkey-cache-exporter-ve7ts:
+        condition: service_started
+      valkey-channels-exporter-vx4nq:
+        condition: service_started
+      cadvisor-cv8mh:
+        condition: service_healthy
+    volumes:
+      - prometheus-pm5db-data:/prometheus
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        exec /bin/prometheus
+        --config.file=/etc/prometheus/prometheus.yml
+        --storage.tsdb.path=/prometheus
+        --storage.tsdb.retention.time="$$PROMETHEUS_RETENTION_TIME"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9090/-/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  grafana-gf7qv:
+    image: docker.io/grafana/grafana-oss:13.0.2
+    container_name: grafana-gf7qv
+    restart: unless-stopped
+    env_file:
+      - .env.development
+    ports:
+      - "3000:3000"
+    networks:
+      - obsv-net-nb4xt
+      - access-net-ha4mz
+    depends_on:
+      prometheus-pm5db:
+        condition: service_healthy
+      loki-lk3ny:
+        condition: service_started
+    volumes:
+      - grafana-gf7qv-data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        export GF_SECURITY_ADMIN_USER="$$GRAFANA_ADMIN_USER"
+        GF_SECURITY_ADMIN_PASSWORD="$$GRAFANA_ADMIN_PASSWORD"
+        GF_ANALYTICS_REPORTING_ENABLED=false
+        GF_ANALYTICS_CHECK_FOR_UPDATES=false
+        GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES=false
+        GF_USERS_ALLOW_SIGN_UP=false
+        GF_AUTH_ANONYMOUS_ENABLED=false
+        GF_PLUGINS_PREINSTALL_DISABLED=true
+        GF_NEWS_NEWS_FEED_ENABLED=false
+        && exec /run.sh
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 45s
+
 networks:
   edge-net-ne2vk:
     name: edge-net-ne2vk
