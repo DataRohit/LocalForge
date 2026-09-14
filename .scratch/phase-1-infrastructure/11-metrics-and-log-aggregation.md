@@ -16,7 +16,9 @@ broker metrics on dashboards that were provisioned from files, plus every contai
 - [ ] The log collector is started with an explicit listen address, because its default binds to loopback and would
       be unreachable from outside its container while appearing perfectly healthy.
 - [ ] The log collector reads the Docker socket read-only and ships every container's logs with useful labels.
-- [ ] Log storage is queryable and a line emitted by a container is retrievable within thirty seconds.
+- [ ] Log storage is queryable and a line emitted by a container is retrievable within thirty seconds. This also
+      closes criterion 10 of ticket 05 and the request-log criterion of ticket 10: verify a line from
+      `pgbackrest-pb2wj` and one from `traefik-tk2jp` are both retrievable.
 - [ ] Data sources and dashboards are provisioned from mounted files, so wiping the visualization volume loses
       nothing.
 - [ ] The visualization UI requires the generated admin credential.

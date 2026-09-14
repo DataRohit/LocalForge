@@ -42,6 +42,8 @@ Listed so scope creep is recognisable. None exists.
 | `docker/django/Dockerfile` | Multi-stage app image with a `test` stage |
 | `docker/django/entrypoint.sh` | Wait for dependencies, migrate, collectstatic, exec the server |
 | `docker/pgbackrest/Dockerfile` | pgBackRest image; no first-party image exists upstream |
+| `docker/pgbackrest/pgbackrest.conf` | Stanza and repository paths |
+| `docs/runbooks/restore-drill.md` | The restore drill ticket 05 requires be documented and performed |
 | `docker/postgres/primary/` | `postgresql.conf` fragments, init SQL for the replication role and slot |
 | `docker/traefik/traefik.yaml` | Static Traefik configuration |
 | `docker/prometheus/prometheus.yml` | Scrape configuration |

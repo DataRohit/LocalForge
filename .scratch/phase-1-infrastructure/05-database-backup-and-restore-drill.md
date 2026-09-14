@@ -6,17 +6,19 @@ instance and finds the expected data.
 
 **Blocked by:** 04.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The backup image is built from the same PostgreSQL base as the database, installing the backup tool from the
+- [x] The backup image is built from the same PostgreSQL base as the database, installing the backup tool from the
       vendor package repository already configured in that image.
-- [ ] The image build runs an update before installing, because the base image ships no package lists.
-- [ ] The primary archives its write-ahead log through the backup tool, and the database is restarted after the
+- [x] The image build runs an update before installing, because the base image ships no package lists.
+- [x] The primary archives its write-ahead log through the backup tool, and the database is restarted after the
       change so archiving is actually active.
-- [ ] The stanza is created idempotently: an existing stanza is detected and not recreated.
-- [ ] A configuration check passes, confirming the primary and the agent agree on the data directory.
-- [ ] Full and differential backups run on separate schedules from the environment, and retention is bounded.
-- [ ] The backup tool's own archive timeout is set deliberately rather than left at its default.
-- [ ] Backup status is queryable and reports at least one successful full backup.
-- [ ] A restore drill is documented and performed once: restore into a scratch instance and confirm a known row.
-- [ ] Backup logs reach the log aggregation stack so a silent failure is visible.
+- [x] The stanza is created idempotently: an existing stanza is detected and not recreated.
+- [x] A configuration check passes, confirming the primary and the agent agree on the data directory.
+- [x] Full and differential backups run on separate schedules from the environment, and retention is bounded.
+- [x] The backup tool's own archive timeout is set deliberately rather than left at its default.
+- [x] Backup status is queryable and reports at least one successful full backup.
+- [x] A restore drill is documented and performed once: restore into a scratch instance and confirm a known row.
+- [x] Backup logs are written to the container's standard streams so the log collector can pick them up without
+      further configuration. The end-to-end assertion that a backup line is retrievable from log storage belongs to
+      ticket 11, which introduces the collector and the store; this ticket cannot assert it because neither exists.

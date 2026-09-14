@@ -257,7 +257,7 @@ Built locally rather than pulled:
 | Image | Dockerfile | Base |
 |---|---|---|
 | `localforge/django` | `docker/django/Dockerfile` | `python:3.14-slim`, multi-stage with a `test` stage |
-| `localforge/pgbackrest` | `docker/pgbackrest/Dockerfile` | `postgres:18.6` plus PGDG `pgbackrest`. See [../adr/0011-pgbackrest-backups.md](../adr/0011-pgbackrest-backups.md) |
+| `localforge/pgbackrest` | `docker/pgbackrest/Dockerfile` | `postgres:18.6` plus PGDG `pgbackrest`, tagged `18.6`. Run by **both** `pgbackrest-pb2wj` and `postgres-pg3ka`, because `archive_command` executes on the primary and therefore needs the binary there. See [../adr/0011-pgbackrest-backups.md](../adr/0011-pgbackrest-backups.md) |
 
 Two registry facts that look like typos and are not:
 

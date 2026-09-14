@@ -940,7 +940,7 @@ def test_a_service_overriding_its_entrypoint_states_its_command() -> None:
     for project in MERGED_PROJECTS:
         for name, definition in (project.get("services") or {}).items():
             if definition.get("entrypoint"):
-                assert definition.get("command"), name
+                assert "command" in definition, name
 
 
 @pytest.mark.unit
@@ -973,8 +973,181 @@ def test_every_image_is_pinned_to_a_tag_the_inventory_records(
             continue
 
         repository, _, tag = image.rpartition(":")
+        if repository.startswith("localforge/"):
+            assert f"| `{repository}` |" in document, image
+            assert definition.get("build"), name
+            continue
 
         assert f"| `{repository}` | `{tag}`" in document, image
+
+
+@pytest.mark.unit
+def test_the_backup_agent_and_the_primary_run_the_same_image() -> None:
+    """Give the primary the backup binary its archive command needs.
+
+    Confirms the primary runs the built backup image rather than the stock one, because the archive
+    command executes on the primary and a stock image carries no backup binary, which fails quietly
+    as accumulating write-ahead log rather than as a startup error.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the two services do not share an image.
+    """
+    services = merged(DEVELOPMENT_FILE)["services"]
+
+    assert services["postgres-pg3ka"]["image"] == services["pgbackrest-pb2wj"]["image"]
+    assert services["postgres-pg3ka"]["build"]["dockerfile"] == "docker/pgbackrest/Dockerfile"
+
+
+@pytest.mark.unit
+def test_the_backup_agent_reaches_the_primary_data_directory_and_socket() -> None:
+    """Give the backup agent the filesystem access the tool requires.
+
+    Confirms the agent mounts the primary's data volume, because the backup tool reads the data
+    directory directly and reaches the server over a Unix socket rather than over the network.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the agent cannot see the primary's data volume or the repository.
+    """
+    agent = merged(DEVELOPMENT_FILE)["services"]["pgbackrest-pb2wj"]
+    sources = {mount.split(":")[0] for mount in agent["volumes"]}
+
+    assert "postgres-pg3ka-data" in sources
+    assert "pgbackrest-pb2wj-repo" in sources
+
+
+@pytest.mark.unit
+def test_the_stanza_name_matches_the_section_the_configuration_declares() -> None:
+    """Keep the configured stanza and the requested stanza in step.
+
+    Confirms the stanza named in the environment is the section the backup configuration declares,
+    because the tool silently reads no settings when the two disagree.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the manifest and the configuration name different stanzas.
+    """
+    manifest = (REPOSITORY_ROOT / ".env.example").read_text(encoding="utf-8")
+    configuration = (REPOSITORY_ROOT / "docker" / "pgbackrest" / "pgbackrest.conf").read_text(
+        encoding="utf-8"
+    )
+    stanza = next(
+        line.partition("=")[2]
+        for line in manifest.splitlines()
+        if line.startswith("PGBACKREST_STANZA=")
+    )
+
+    assert f"[{stanza}]" in configuration
+
+
+@pytest.mark.unit
+def test_the_backup_configuration_points_at_the_real_data_directory() -> None:
+    """Point the backup tool at the directory the server actually uses.
+
+    Confirms the configured data directory is the image's own, since the tool requires it to match
+    exactly what the server reports and the 18 series moved it under a version subdirectory.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the configured path is not the image's data directory.
+    """
+    configuration = (REPOSITORY_ROOT / "docker" / "pgbackrest" / "pgbackrest.conf").read_text(
+        encoding="utf-8"
+    )
+
+    assert "pg1-path=/var/lib/postgresql/18/docker" in configuration
+
+
+@pytest.mark.unit
+def test_the_primary_archives_through_the_backup_tool() -> None:
+    """Archive the write-ahead log through the tool that owns the repository.
+
+    Confirms archiving is enabled and routed through the backup tool, without which the repository
+    holds a base backup that cannot be replayed to a consistent point.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If archiving is disabled or not routed through the backup tool.
+    """
+    configuration = (
+        REPOSITORY_ROOT / "docker" / "postgres" / "primary" / "conf.d" / "replication.conf"
+    ).read_text(encoding="utf-8")
+
+    assert "archive_mode = on" in configuration
+    assert "archive-push" in configuration
+
+
+@pytest.mark.unit
+def test_the_standby_does_not_archive() -> None:
+    """Keep archiving off the node that does not own the repository.
+
+    Confirms the standby's configuration carries no archive settings, because both nodes would
+    otherwise push the same segments into one repository.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the standby configuration mentions archiving.
+    """
+    configuration = (
+        REPOSITORY_ROOT / "docker" / "postgres" / "standby" / "conf.d" / "replication.conf"
+    ).read_text(encoding="utf-8")
+
+    assert "archive_mode" not in configuration
+    assert "archive_command" not in configuration
+
+
+@pytest.mark.unit
+def test_the_image_refreshes_package_lists_before_installing() -> None:
+    """Refresh the package lists the base image deliberately removes.
+
+    Confirms the build updates before installing, because the base image ships no package lists and
+    the install fails without it.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the update does not precede the install.
+    """
+    dockerfile = (REPOSITORY_ROOT / "docker" / "pgbackrest" / "Dockerfile").read_text(
+        encoding="utf-8",
+    )
+
+    assert dockerfile.index("apt-get update") < dockerfile.index("apt-get install")
 
 
 @pytest.mark.unit

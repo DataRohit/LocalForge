@@ -1,6 +1,9 @@
 services:
   postgres-pg3ka:
-    image: docker.io/library/postgres:18.6
+    image: localforge/pgbackrest:18.6
+    build:
+      context: .
+      dockerfile: docker/pgbackrest/Dockerfile
     container_name: postgres-pg3ka
     restart: unless-stopped
     env_file:
@@ -14,6 +17,8 @@ services:
       access-net-ha4mz: {}
     volumes:
       - postgres-pg3ka-data:/var/lib/postgresql
+      - postgres-pg3ka-socket:/var/run/pgsocket
+      - pgbackrest-pb2wj-repo:/var/lib/pgbackrest
       - ./docker/postgres/primary/conf.d:/etc/postgresql/conf.d:ro
       - ./docker/postgres/primary/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
@@ -54,6 +59,34 @@ services:
       retries: 10
       start_period: 300s
 
+  pgbackrest-pb2wj:
+    image: localforge/pgbackrest:18.6
+    build:
+      context: .
+      dockerfile: docker/pgbackrest/Dockerfile
+    container_name: pgbackrest-pb2wj
+    restart: on-failure:5
+    user: postgres
+    env_file:
+      - .env.development
+    networks:
+      - data-net-nd9pc
+    volumes:
+      - pgbackrest-pb2wj-repo:/var/lib/pgbackrest
+      - postgres-pg3ka-data:/var/lib/postgresql:ro
+      - postgres-pg3ka-socket:/var/run/pgsocket
+    entrypoint: ["/usr/local/bin/pgbackrest_entrypoint.sh"]
+    command: []
+    depends_on:
+      postgres-pg3ka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pgbackrest --stanza=$$PGBACKREST_STANZA info | grep -q 'status: ok'"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 180s
+
 networks:
   edge-net-ne2vk:
     name: edge-net-ne2vk
@@ -80,8 +113,8 @@ networks:
 volumes:
   postgres-pg3ka-data:
     name: postgres-pg3ka-data
-  postgres-pg3ka-wal:
-    name: postgres-pg3ka-wal
+  postgres-pg3ka-socket:
+    name: postgres-pg3ka-socket
   postgres-replica-pg6vy-data:
     name: postgres-replica-pg6vy-data
   pgbackrest-pb2wj-repo:

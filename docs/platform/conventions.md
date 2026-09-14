@@ -68,7 +68,7 @@ duplicates.**
 |---|---|---|---|
 | `traefik-tk2jp` | `tk2jp` | reverse proxy | `docker.io/library/traefik:v3.7.13` |
 | `django-uv5n2` | `uv5n2` | Django ASGI app | built, `docker/django/Dockerfile` |
-| `postgres-pg3ka` | `pg3ka` | PostgreSQL primary | `docker.io/library/postgres:18.6` |
+| `postgres-pg3ka` | `pg3ka` | PostgreSQL primary | built, `docker/pgbackrest/Dockerfile` |
 | `postgres-replica-pg6vy` | `pg6vy` | PostgreSQL hot standby | `docker.io/library/postgres:18.6` |
 | `pgbackrest-pb2wj` | `pb2wj` | backup agent | built, `docker/pgbackrest/Dockerfile` |
 | `pgadmin-pa7fe` | `pa7fe` | PostgreSQL dashboard | `docker.io/dpage/pgadmin4:9.17` |
@@ -134,7 +134,7 @@ zones exist. Measured 2026-09-13; see
 | Volume | Owner | Contents | Environment |
 |---|---|---|---|
 | `postgres-pg3ka-data` | `postgres-pg3ka` | `PGDATA`, mounted at `/var/lib/postgresql` | development |
-| `postgres-pg3ka-wal` | `postgres-pg3ka` | WAL archive staging for pgBackRest | development |
+| `postgres-pg3ka-socket` | `postgres-pg3ka` | Unix socket the backup agent connects through | development |
 | `postgres-replica-pg6vy-data` | `postgres-replica-pg6vy` | standby `PGDATA` | development |
 | `pgbackrest-pb2wj-repo` | `pgbackrest-pb2wj` | backup repository, full + incremental + WAL | development |
 | `pgadmin-pa7fe-data` | `pgadmin-pa7fe` | server list, preferences | development |
@@ -199,10 +199,13 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `POSTGRES_REPLICATION_USER` | `postgres-pg3ka` | replication role | `localforge_repl` | no | yes |
 | `POSTGRES_REPLICATION_PASSWORD` | `postgres-pg3ka` | replication password | `<GENERATED>` | **yes** | yes |
 | `POSTGRES_REPLICATION_SLOT` | `postgres-pg3ka` | physical slot name | `localforge_standby` | no | yes |
-| `PGBACKREST_STANZA` | `pgbackrest-pb2wj` | stanza name | `localforge` | no | yes |
-| `PGBACKREST_FULL_SCHEDULE` | `pgbackrest-pb2wj` | cron, full backup | `0 2 * * 0` | no | yes |
-| `PGBACKREST_DIFF_SCHEDULE` | `pgbackrest-pb2wj` | cron, differential | `0 2 * * 1-6` | no | yes |
-| `PGBACKREST_RETENTION_FULL` | `pgbackrest-pb2wj` | full backups retained | `2` | no | yes |
+| `PGBACKREST_STANZA` | `pgbackrest-pb2wj`, `postgres-pg3ka` | stanza name | `localforge` | no | yes |
+| `LOCALFORGE_BACKUP_FULL_SCHEDULE` | `pgbackrest-pb2wj` | cron, full backup. Deliberately outside the `PGBACKREST_` prefix, which the tool claims entirely | `0 2 * * 0` | no | yes |
+| `LOCALFORGE_BACKUP_DIFF_SCHEDULE` | `pgbackrest-pb2wj` | cron, differential | `0 2 * * 1-6` | no | yes |
+| `LOCALFORGE_BACKUP_WAIT_SECONDS` | `pgbackrest-pb2wj` | seconds to wait for the primary before giving up | `180` | no | no |
+| `PGBACKREST_REPO1_RETENTION_FULL` | `pgbackrest-pb2wj` | full backups retained | `2` | no | yes |
+| `PGBACKREST_REPO1_RETENTION_DIFF` | `pgbackrest-pb2wj` | differential backups retained | `6` | no | yes |
+| `PGBACKREST_ARCHIVE_TIMEOUT` | `pgbackrest-pb2wj`, `postgres-pg3ka` | seconds a WAL segment may take to reach the repository | `120` | no | yes |
 | `PGADMIN_DEFAULT_EMAIL` | `pgadmin-pa7fe` | dashboard login | `dev@localforge.invalid` | no | yes |
 | `PGADMIN_DEFAULT_PASSWORD` | `pgadmin-pa7fe` | dashboard password | `<GENERATED>` | **yes** | yes |
 | `PGADMIN_LISTEN_ADDRESS` | `pgadmin-pa7fe` | bind address | `0.0.0.0` | no | yes |
@@ -324,8 +327,12 @@ Shell, because it runs inside `postgres:18.6`, which has no Python.
 
 ### 4.6 `scripts/pgbackrest_entrypoint.sh`
 
-Creates the stanza if `pgbackrest info` does not already report it, then runs the backup schedule loop. Exit `0`
-clean shutdown; `1` stanza creation failed; `2` a scheduled backup failed. Shell, same reason.
+Runs `stanza-create` unconditionally, which upstream documents as safe to repeat and which skips an existing
+stanza, then `check`, then the backup schedule loop. Exit `0` clean shutdown, on `TERM` or `INT`; `1` stanza
+creation or the configuration check failed; `2` a scheduled backup failed. Shell, same reason.
+
+An existence probe based on `pgbackrest info` was tried and is wrong: `info --stanza=X` echoes `stanza: X` even
+when the stanza is missing, so the probe always reported it present and the stanza was never created.
 
 ### 4.7 `scripts/seed_storage.py`
 

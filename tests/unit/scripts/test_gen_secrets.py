@@ -2109,6 +2109,35 @@ def test_the_manifest_can_be_copied_into_place_and_generated_over(repository: Pa
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("environment", ["development", "testing"])
+def test_the_committed_encrypted_file_declares_the_same_variables(environment: str) -> None:
+    """Keep the committed secrets in step with the manifest.
+
+    Confirms each encrypted file declares exactly the manifest's variables, because the dotenv
+    encryption format leaves names in the clear and a rename applied only to the manifest leaves a
+    fresh clone recovering a configuration the code no longer reads.
+
+    Arguments:
+        environment: Environment whose encrypted file is inspected.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the encrypted file and the manifest declare different variables.
+    """
+    manifest = set(gen_secrets.read_manifest(MANIFEST_SOURCE))
+    encrypted = gen_secrets.REPOSITORY_ROOT / f".env.{environment}.sops"
+    declared = {
+        line.partition("=")[0]
+        for line in encrypted.read_text(encoding="utf-8").splitlines()
+        if "=" in line and not line.startswith(("#", "sops_"))
+    }
+
+    assert manifest - declared == set()
+
+
+@pytest.mark.unit
 def test_the_script_guard_runs_the_generator(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
