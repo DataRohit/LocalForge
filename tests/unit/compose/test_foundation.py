@@ -7,7 +7,7 @@ environments stay able to run at the same time.
 
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import pytest
 import yaml
@@ -66,6 +66,60 @@ def merged(overlay: Path) -> dict[str, Any]:
 
 
 MERGED_PROJECTS = [merged(DEVELOPMENT_FILE), merged(TESTING_FILE)]
+
+ENVIRONMENT_FILES = {"development": DEVELOPMENT_FILE, "testing": TESTING_FILE}
+
+
+class ValkeyInstance(NamedTuple):
+    """One registered Valkey server.
+
+    Carries the registry row for a single instance so the assertions below compare against assigned
+    values rather than against whatever the manifest happens to say. Inherits from NamedTuple.
+
+    Attributes:
+        service: Registered container name.
+        port: Published host port.
+        password: Environment variable holding its credential.
+        evicts: Whether the instance is allowed to discard keys under memory pressure.
+    """
+
+    service: str
+    port: int
+    password: str
+    evicts: bool
+
+
+VALKEY_INSTANCES = {
+    "development": (
+        ValkeyInstance("valkey-cache-vc5tn", 6379, "VALKEY_CACHE_PASSWORD", evicts=True),
+        ValkeyInstance("valkey-channels-vh8dm", 6380, "VALKEY_CHANNELS_PASSWORD", evicts=False),
+    ),
+    "testing": (
+        ValkeyInstance("valkey-cache-tv4kq", 26379, "VALKEY_CACHE_PASSWORD", evicts=True),
+        ValkeyInstance("valkey-channels-tv9zw", 26380, "VALKEY_CHANNELS_PASSWORD", evicts=False),
+    ),
+}
+
+
+def valkey_services(environment: str) -> dict[str, Any]:
+    """Collect the Valkey servers an environment declares.
+
+    Selects by image rather than by name prefix, so the metrics exporters added in a later phase are
+    not mistaken for servers and graded against the server contract.
+
+    Arguments:
+        environment: Environment whose overlay is inspected.
+
+    Returns:
+        The declared Valkey services, keyed by container name.
+    """
+    project = merged(ENVIRONMENT_FILES[environment])
+
+    return {
+        name: definition
+        for name, definition in (project.get("services") or {}).items()
+        if "valkey/valkey" in definition.get("image", "")
+    }
 
 
 def registry_rows(heading: str) -> set[str]:
@@ -1148,6 +1202,245 @@ def test_the_image_refreshes_package_lists_before_installing() -> None:
     )
 
     assert dockerfile.index("apt-get update") < dockerfile.index("apt-get install")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("environment", sorted(VALKEY_INSTANCES))
+def test_both_valkey_instances_are_declared(environment: str) -> None:
+    """Refuse to let a deleted instance look like a passing suite.
+
+    Confirms each environment declares exactly the two registered Valkey services, so that the
+    assertions below iterate over a populated set instead of silently skipping when a service is
+    renamed or removed.
+
+    Arguments:
+        environment: Environment whose overlay is inspected.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If either registered instance is absent.
+    """
+    declared = valkey_services(environment)
+    expected = {instance.service for instance in VALKEY_INSTANCES[environment]}
+
+    assert set(declared) == expected
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("environment", sorted(VALKEY_INSTANCES))
+def test_the_cache_evicts_under_pressure_and_the_channel_layer_does_not(environment: str) -> None:
+    """Let the cache evict and never let the channel layer do so.
+
+    Confirms the cache carries both a memory ceiling and an eviction policy while the channel layer
+    carries neither, because evicting a key from the channel layer silently drops a websocket
+    message whereas evicting a cache entry is the entire point of a cache.
+
+    Arguments:
+        environment: Environment whose overlay is inspected.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the channel layer is given a ceiling, or the cache is not.
+    """
+    declared = valkey_services(environment)
+
+    for instance in VALKEY_INSTANCES[environment]:
+        command = " ".join(declared[instance.service]["command"])
+
+        if instance.evicts:
+            assert "--maxmemory $$VALKEY_CACHE_MAXMEMORY" in command.replace('"', "")
+            assert "--maxmemory-policy $$VALKEY_CACHE_MAXMEMORY_POLICY" in command.replace('"', "")
+        else:
+            assert "--maxmemory" not in command
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("environment", sorted(VALKEY_INSTANCES))
+def test_each_valkey_instance_requires_its_own_password(environment: str) -> None:
+    """Give each instance a credential of its own.
+
+    Confirms both instances demand a password and that the cache and the channel layer read
+    different variables, which is what stops one leaked credential unlocking both.
+
+    Arguments:
+        environment: Environment whose overlay is inspected.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If an instance runs open, or both read the same variable.
+    """
+    declared = valkey_services(environment)
+    referenced = set()
+
+    for instance in VALKEY_INSTANCES[environment]:
+        command = " ".join(declared[instance.service]["command"])
+
+        assert "--requirepass" in command, instance.service
+        assert instance.password in command, instance.service
+        referenced.add(instance.password)
+
+    assert len(referenced) == len(VALKEY_INSTANCES[environment])
+
+
+@pytest.mark.unit
+def test_the_two_valkey_passwords_hold_different_values() -> None:
+    """Keep distinct variables from carrying one shared secret.
+
+    Confirms the generated environment files give the cache and the channel layer different
+    password values, because two variable names holding one value is the single leaked credential
+    the split exists to prevent.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any environment reuses one value for both instances.
+    """
+    checked = 0
+
+    for environment in sorted(VALKEY_INSTANCES):
+        source = REPOSITORY_ROOT / f".env.{environment}"
+        if not source.exists():
+            continue
+
+        values = {
+            line.partition("=")[0]: line.partition("=")[2]
+            for line in source.read_text(encoding="utf-8").splitlines()
+            if "=" in line
+        }
+        secrets = {values[instance.password] for instance in VALKEY_INSTANCES[environment]}
+
+        assert len(secrets) == len(VALKEY_INSTANCES[environment]), environment
+        checked += 1
+
+    if not checked:
+        pytest.skip("no environment file has been generated in this checkout")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("environment", sorted(VALKEY_INSTANCES))
+def test_every_valkey_health_check_authenticates(environment: str) -> None:
+    """Prove the server answers rather than that a socket opened.
+
+    Confirms each health check runs an authenticated ping through the client and asserts the reply,
+    because an unauthenticated connection succeeds against a server that would reject every real
+    command.
+
+    Arguments:
+        environment: Environment whose overlay is inspected.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a check does not authenticate or does not assert the reply.
+    """
+    declared = valkey_services(environment)
+
+    for instance in VALKEY_INSTANCES[environment]:
+        check = declared[instance.service]["healthcheck"]["test"]
+
+        assert check[0] == "CMD-SHELL", instance.service
+        assert "valkey-cli" in check[1], instance.service
+        assert "ping" in check[1], instance.service
+        assert instance.password in check[1], instance.service
+        assert "PONG" in check[1], instance.service
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("environment", sorted(VALKEY_INSTANCES))
+def test_each_valkey_instance_matches_its_registered_port_and_volume(environment: str) -> None:
+    """Pin every instance to the row that was assigned to it.
+
+    Confirms the published host port and the mounted data volume match the registry exactly, so a
+    transposed port or a volume mounted on the wrong instance fails here rather than at runtime.
+
+    Arguments:
+        environment: Environment whose overlay is inspected.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a port or volume departs from the registered value.
+    """
+    declared = valkey_services(environment)
+
+    for instance in VALKEY_INSTANCES[environment]:
+        definition = declared[instance.service]
+
+        assert definition["ports"] == [f"{instance.port}:6379"], instance.service
+        assert definition["volumes"] == [f"{instance.service}-data:/data"], instance.service
+        assert definition["container_name"] == instance.service
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("environment", sorted(VALKEY_INSTANCES))
+def test_every_valkey_instance_drops_root_before_serving(environment: str) -> None:
+    """Keep the server from owning its own persistence files.
+
+    Confirms each command re-enters the image entrypoint, which chowns the data directory and drops
+    to the unprivileged account, because running the server as root leaves a root-owned snapshot
+    that later refuses to be rewritten.
+
+    Arguments:
+        environment: Environment whose overlay is inspected.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If an instance execs the server directly.
+    """
+    declared = valkey_services(environment)
+
+    for instance in VALKEY_INSTANCES[environment]:
+        command = " ".join(declared[instance.service]["command"])
+
+        assert "exec docker-entrypoint.sh valkey-server" in command, instance.service
+
+
+@pytest.mark.unit
+def test_the_cache_and_result_databases_are_documented_as_distinct() -> None:
+    """Keep clearing the cache from destroying pending task results.
+
+    Confirms the manifest reserves different logical databases for cache entries and task results,
+    because clearing the cache issues a database-wide flush that would otherwise wipe every pending
+    result.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the two indexes are equal, or the requirement is undocumented.
+    """
+    manifest = (REPOSITORY_ROOT / ".env.example").read_text(encoding="utf-8")
+    document = CONVENTIONS_DOCUMENT.read_text(encoding="utf-8")
+    values = {
+        line.partition("=")[0]: line.partition("=")[2]
+        for line in manifest.splitlines()
+        if "=" in line
+    }
+    sentences = [
+        line
+        for line in document.splitlines()
+        if "VALKEY_CACHE_DB" in line and "VALKEY_RESULTS_DB" in line and "must differ" in line
+    ]
+
+    assert values["VALKEY_CACHE_DB"] != values["VALKEY_RESULTS_DB"]
+    assert sentences
 
 
 @pytest.mark.unit

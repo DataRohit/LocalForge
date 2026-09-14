@@ -217,6 +217,7 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `VALKEY_CACHE_DB` | `django-uv5n2` | cache DB index | `0` | no | yes |
 | `VALKEY_RESULTS_DB` | `celery-worker-cw8rt` | Celery result DB index | `1` | no | yes |
 | `VALKEY_CACHE_MAXMEMORY` | `valkey-cache-vc5tn` | eviction ceiling | `256mb` | no | yes |
+| `VALKEY_CACHE_MAXMEMORY_POLICY` | `valkey-cache-vc5tn` | eviction policy once the ceiling is reached | `allkeys-lru` | no | yes |
 | `VALKEY_CHANNELS_HOST` | `django-uv5n2` | Channels host | `valkey-channels-vh8dm` | no | yes |
 | `VALKEY_CHANNELS_PORT` | `django-uv5n2` | Channels port | `6379` | no | yes |
 | `VALKEY_CHANNELS_PASSWORD` | `valkey-channels-vh8dm` | `requirepass` | `<GENERATED>` | **yes** | yes |

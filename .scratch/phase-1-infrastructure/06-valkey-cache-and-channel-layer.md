@@ -6,15 +6,15 @@ can never evict a channel message.
 
 **Blocked by:** 03.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Two separate instances run with the registry names, on separate host ports.
-- [ ] The cache instance has a memory ceiling and an eviction policy; the channel instance has neither, so it never
+- [x] Two separate instances run with the registry names, on separate host ports.
+- [x] The cache instance has a memory ceiling and an eviction policy; the channel instance has neither, so it never
       drops keys under pressure.
-- [ ] Each instance requires its own distinct password, supplied from the environment.
-- [ ] Health checks authenticate and confirm the server answers, rather than merely opening a socket.
-- [ ] Each instance persists to its own named volume.
-- [ ] The cache instance reserves separate logical databases for cache entries and Celery results, so clearing the
+- [x] Each instance requires its own distinct password, supplied from the environment.
+- [x] Health checks authenticate and confirm the server answers, rather than merely opening a socket.
+- [x] Each instance persists to its own named volume.
+- [x] The cache instance reserves separate logical databases for cache entries and Celery results, so clearing the
       cache cannot destroy pending task results.
-- [ ] The reserved database indexes are set from the environment and are documented as required to differ.
-- [ ] Both instances are reachable from the host at the ports in `docs/platform/service-inventory.md`.
+- [x] The reserved database indexes are set from the environment and are documented as required to differ.
+- [x] Both instances are reachable from the host at the ports in `docs/platform/service-inventory.md`.

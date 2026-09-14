@@ -113,7 +113,7 @@ Every row verified against upstream source or docs on 2026-09-13.
 |---|---|---|
 | `postgres-pg3ka`, `postgres-tp8vn` | `pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"` | |
 | `postgres-replica-pg6vy` | `pg_isready` **and** `psql -tAc "SELECT pg_is_in_recovery()"` returning `t` | `pg_isready` alone cannot tell a standby from a primary |
-| `valkey-*` | `valkey-cli -a "$PASSWORD" ping` returning `PONG` | |
+| `valkey-*` | `valkey-cli --no-auth-warning -a "$PASSWORD" ping` returning `PONG` | |
 | `rabbitmq-*` | `rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_local_alarms` | upstream's documented **stage 3** check, verbatim. See the cost note below |
 | `mailpit-*` | `CMD ["/mailpit", "readyz"]` | **not** an HTTP probe. The image is Alpine with no `curl` or `wget`, and upstream's own `HEALTHCHECK` uses this CLI form. `/readyz` and `/livez` exist over HTTP but nothing inside the image can call them |
 | `seaweedfs-*` | `GET /healthz` on 9333 and 8333 | **the master has no `/status` route.** The S3 gateway accepts `/status`, `/healthz`, and `/readyz`; `/healthz` works on both, so use it uniformly |
