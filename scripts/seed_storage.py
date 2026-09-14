@@ -25,6 +25,10 @@ class BucketClient(Protocol):
 
     Attributes:
         None. The protocol declares behaviour only.
+
+    Members:
+        create_bucket: Create a bucket.
+        head_bucket: Read a bucket back.
     """
 
     def create_bucket(self, **kwargs: str) -> object:
@@ -95,6 +99,9 @@ class SeedError(Exception):
 
     Attributes:
         code: Exit code the contract assigns to this failure.
+
+    Members:
+        __init__: Record the failure and the code it maps to.
     """
 
     def __init__(self, message: str, code: int) -> None:

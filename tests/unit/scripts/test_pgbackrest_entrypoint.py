@@ -130,7 +130,8 @@ def reached_loop(directory: Path) -> bool:
 def tools(tmp_path: Path) -> Path:
     """Provide a directory of fabricated tools that all succeed.
 
-    Starts every test from a working machine, so a test changes only the one behaviour it is about.
+    Starts every test from a machine where every tool succeeds, so a test replaces only the one
+    command whose failure it is about and inherits the rest.
 
     Arguments:
         tmp_path: Temporary directory supplied by the test framework.

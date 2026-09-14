@@ -295,7 +295,7 @@ def test_every_registry_network_is_declared(path: Path, environment: str) -> Non
     belonging to the other or quietly gain one that was never registered.
 
     Arguments:
-        project: Merged project to inspect.
+        path: Compose file to inspect.
         environment: Environment the file configures.
 
     Returns:
@@ -321,7 +321,7 @@ def test_every_registry_volume_is_declared(path: Path, environment: str) -> None
     mounting state belonging to the other.
 
     Arguments:
-        project: Merged project to inspect.
+        path: Compose file to inspect.
         environment: Environment the file configures.
 
     Returns:
@@ -389,7 +389,7 @@ def test_the_internal_flag_matches_the_registry(path: Path, environment: str) ->
     document rather than restated here, so relaxing a zone in one place and not the other fails.
 
     Arguments:
-        project: Merged project to inspect.
+        path: Compose file to inspect.
         environment: Environment the file configures.
 
     Returns:
@@ -508,7 +508,7 @@ def test_no_service_relies_on_the_default_network(project: dict[str, Any]) -> No
     Compose-generated default network that the registry does not carry.
 
     Arguments:
-        path: Compose file to inspect.
+        project: Merged project to inspect.
 
     Returns:
         None.
@@ -524,9 +524,8 @@ def inline_literals(definition: dict[str, Any]) -> list[str]:
     """List the variables a service sets to a literal value inline.
 
     Distinguishes a pass-through, which names a variable and takes its value from the environment,
-    from a literal, which silently overrides the generated env file. Handles both the mapping and
-    the list form Compose accepts, because the list form carries bare names that have no value at
-    all and would otherwise fail to unpack.
+    from a literal that silently overrides the generated env file. Handles both Compose forms,
+    including bare list names that carry no value and would otherwise fail to unpack.
 
     Arguments:
         definition: Service definition to inspect.
@@ -589,7 +588,7 @@ def test_no_service_sets_a_value_inline(project: dict[str, Any]) -> None:
     generated env file and produces a stack that ignores its own configuration.
 
     Arguments:
-        path: Compose file to inspect.
+        project: Merged project to inspect.
 
     Returns:
         None.
@@ -610,7 +609,7 @@ def test_every_service_names_itself_after_its_compose_key(project: dict[str, Any
     matches the registry rather than a Compose-generated name.
 
     Arguments:
-        path: Compose file to inspect.
+        project: Merged project to inspect.
 
     Returns:
         None.
@@ -694,7 +693,7 @@ def test_no_service_mounts_an_anonymous_volume(project: dict[str, Any]) -> None:
     naming audit.
 
     Arguments:
-        path: Compose file to inspect.
+        project: Merged project to inspect.
 
     Returns:
         None.
@@ -864,10 +863,9 @@ def test_every_database_volume_is_mounted_where_the_image_expects(
 ) -> None:
     """Mount the database volume at the path the image declares.
 
-    Confirms every PostgreSQL service mounts its data volume at the image's own volume path. The
-    18 series moved the data directory under a version subdirectory, so a volume mounted at the
-    older path is reported as an unused mount and the server refuses to start, printing a long
-    advisory rather than a short error.
+    Confirms every PostgreSQL service mounts its data volume at the path the image declares.
+    PostgreSQL 18 moved data under a version subdirectory, so older-path mounts are unused.
+    The server then refuses to start with a long advisory instead of a short error.
 
     Arguments:
         project: Merged project to inspect.
@@ -2765,9 +2763,8 @@ def test_the_dashboard_health_check_reads_the_configuration_database() -> None:
     """Prove the registrations imported, not that a port answered.
 
     Confirms the probe inspects the configuration database for the administrator and both
-    registered hosts, because the ping route answers unconditionally and the image's entrypoint
-    does not stop when the server import fails, so the dashboard can serve with neither node
-    registered.
+    registered hosts, because the ping route answers unconditionally and the entrypoint keeps
+    serving even if import fails, leaving the dashboard with neither node registered.
 
     Arguments:
         None.

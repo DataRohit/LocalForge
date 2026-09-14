@@ -98,11 +98,15 @@ force-exclude = true
 
 [tool.ruff.lint]
 select = ["ALL"]
-ignore = ["COM812", "CPY001", "D"]
+ignore = ["COM812", "CPY001"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 "src/config/settings/*.py" = ["F403"]
 "src/manage.py" = ["PLC0415"]
+"**/migrations/*.py" = ["D", "RUF012"]
 "scripts/*.py" = ["T201", "TC003"]
 "scripts/gen_secrets.py" = ["S603"]
 "scripts/preflight.py" = ["S603"]
@@ -219,6 +223,10 @@ sequence = [
     { cmd = "python src/manage.py makemigrations --check --dry-run", env = { DJANGO_SETTINGS_MODULE = "config.settings.testing" } },
 ]
 
+[tool.poe.tasks.docs-standard]
+help = "Check the no-comment rule and the docstring section structure"
+cmd = "python scripts/check_docstrings.py"
+
 [tool.poe.tasks.lint]
 help = "Run Ruff lint checks"
 cmd = "ruff check src tests scripts .github/scripts"
@@ -261,4 +269,4 @@ cmd = "pytest -n auto"
 
 [tool.poe.tasks.check]
 help = "Run the complete local quality gate"
-sequence = ["django-check", "format-check", "lint", "typecheck", "test"]
+sequence = ["django-check", "format-check", "lint", "docs-standard", "typecheck", "test"]

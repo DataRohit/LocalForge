@@ -83,6 +83,13 @@ class FakeProbes:
         free_bytes: Free space in bytes keyed by path, defaulting to the fallback.
         fallback_free_bytes: Free space reported for any path not named in free_bytes.
         volumes: Volume identity keyed by path; an unlisted path reports its own string form.
+
+    Members:
+        capture: Return fabricated ambient command output.
+        capture_outside_virtualenv: Return fabricated host command output.
+        docker_resources: Return fabricated container engine resources.
+        free_disk_bytes: Return fabricated free space for a volume.
+        volume_identity: Return fabricated volume identity for a path.
     """
 
     outputs: dict[tuple[str, ...], str] = field(default_factory=dict)
@@ -125,6 +132,9 @@ class FakeProbes:
 
         Reports whatever the fixture was configured with, including the absent case that stands in
         for a container engine that is not running.
+
+        Arguments:
+            None.
 
         Returns:
             The configured processor count and memory in bytes, or None.
@@ -169,6 +179,9 @@ def passing_probes() -> FakeProbes:
     Supplies a version at or above every floor, ample resources on every volume, and the optional
     tooling, so the resulting report contains no warning and no failure.
 
+    Arguments:
+        None.
+
     Returns:
         A probe surface describing a fully satisfactory machine.
     """
@@ -187,6 +200,9 @@ def warning_probes() -> FakeProbes:
 
     Removes the host interpreter, the cluster tooling, the encryption tooling, and the database
     client, which is the state this machine is actually in before the secrets work begins.
+
+    Arguments:
+        None.
 
     Returns:
         A probe surface describing a machine that can build the platform with warnings.
@@ -207,6 +223,9 @@ def failing_probes() -> FakeProbes:
     Reports every tool as absent, the container engine as unreachable, and every volume as
     unmeasurable, which drives every required row to a failure and every optional row to a warning.
 
+    Arguments:
+        None.
+
     Returns:
         A probe surface describing a machine that cannot build the platform.
     """
@@ -218,6 +237,9 @@ def checklist_rows() -> dict[int, str]:
 
     Parses the numbered table in Section 1 so the tests grade the script against the authoritative
     document rather than against a second hand-written copy of it.
+
+    Arguments:
+        None.
 
     Returns:
         The documented minimum for each row, keyed by row number.

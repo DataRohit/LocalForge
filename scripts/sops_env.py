@@ -59,7 +59,7 @@ class Environment(Protocol):
     exercised without SOPS or age installed. Inherits Protocol, so any object providing these three
     methods satisfies it structurally.
 
-    Attributes:
+    Members:
         which: Report whether a tool is on the search path.
         age_key_file: Report the age key file SOPS would use.
         run: Run a command and report what it produced.
@@ -68,7 +68,8 @@ class Environment(Protocol):
     def which(self, tool: str) -> str | None:
         """Report whether a tool is on the search path.
 
-        Resolves the tool by name so an absent binary is reported before a command is attempted.
+        Resolves the tool by name before commands run, so an absent binary is reported in the
+        precondition check rather than by a later command failure.
 
         Arguments:
             tool: Executable name to resolve.
@@ -82,6 +83,9 @@ class Environment(Protocol):
 
         Looks where SOPS itself looks, so the helper's verdict about a missing key matches what
         SOPS would do when asked to decrypt.
+
+        Arguments:
+            None.
 
         Returns:
             The path to an existing key file, or None when no key is available.
@@ -105,12 +109,14 @@ class HostEnvironment:
     """Host surface backed by the real search path, filesystem, and subprocesses.
 
     Implements the Environment surface against this machine, resolving the age key from the
-    override SOPS honours before the platform default, and running SOPS from a bound repository so
-    it discovers that repository's own recipient configuration. Inherits nothing; it satisfies
-    Environment structurally.
+    override SOPS honours before the platform default. Inherits nothing; it satisfies Environment
+    structurally, and runs SOPS from a bound repository so it reads that repository's recipients.
 
     Attributes:
         root: Repository SOPS is run from, which is where it looks for its configuration.
+
+    Members:
+        __init__: Bind the host surface to one repository.
         which: Report whether a tool is on the search path.
         age_key_file: Report the age key file SOPS would use.
         run: Run a command and report what it produced.
@@ -133,7 +139,9 @@ class HostEnvironment:
     def which(self, tool: str) -> str | None:
         """Report whether a tool is on the search path.
 
-        Delegates to the standard resolver, which honours the platform's executable extensions.
+        Delegates to the standard resolver, which consults the search path and the platform's
+        executable extensions, so a tool installed for this user is found the same way a shell
+        would find it.
 
         Arguments:
             tool: Executable name to resolve.
@@ -147,9 +155,11 @@ class HostEnvironment:
         """Report the age key file SOPS would use.
 
         Checks the explicit override first and then the per-platform default, returning the first
-        that exists so the helper agrees with SOPS about whether a key is available. A home
-        directory the operating system cannot resolve is skipped rather than raised, because an
-        unresolvable home is indistinguishable from having no key there.
+        existing file so the helper agrees with SOPS about key availability. An unresolvable home
+        directory is skipped because it is indistinguishable from having no key there.
+
+        Arguments:
+            None.
 
         Returns:
             The path to an existing key file, or None when no key is available.
@@ -172,8 +182,8 @@ class HostEnvironment:
         """Run a command and report what it produced.
 
         Captures both streams and treats an unstartable process or a timeout as an ordinary
-        failure, so the helper always reports rather than raises. The executable is resolved before
-        running, so an absent tool is reported rather than raised out of the process layer.
+        failure, so the helper always reports rather than raises. Resolves the executable first so
+        an absent tool is reported from the process layer instead of raised by it.
 
         Arguments:
             command: Argument vector to execute.
@@ -354,6 +364,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     Requires both the mode and the environment, because neither has a safe default when the
     operation either publishes or replaces a file full of credentials.
+
+    Arguments:
+        None.
 
     Returns:
         The configured argument parser.

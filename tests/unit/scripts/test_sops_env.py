@@ -44,6 +44,11 @@ class FakeHost:
         key_file: Age key file to report, or None when no key exists.
         result: Outcome every command reports.
         commands: Argument vectors the helper asked to run, in order.
+
+    Members:
+        which: Report whether a tool is installed.
+        age_key_file: Report the fabricated age key file.
+        run: Record a command and report the fabricated outcome.
     """
 
     tools: frozenset[str] = field(default_factory=lambda: frozenset(sops_env.REQUIRED_TOOLS))
@@ -56,7 +61,8 @@ class FakeHost:
     def which(self, tool: str) -> str | None:
         """Report whether a tool is installed on the fabricated host.
 
-        Reads the configured set, treating an unlisted tool as absent.
+        Reads the configured set, treating an unlisted tool as absent so each prerequisite branch
+        can be graded.
 
         Arguments:
             tool: Executable name to resolve.
@@ -71,6 +77,9 @@ class FakeHost:
 
         Returns whatever the fixture was configured with, including the absent case that stands in
         for a machine that has never generated a key.
+
+        Arguments:
+            None.
 
         Returns:
             The configured key file, or None.

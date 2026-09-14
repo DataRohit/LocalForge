@@ -143,6 +143,9 @@ def generate_secret_key() -> str:
     Produces the widest secret the platform uses, because the signing key protects sessions,
     password reset tokens, and every other signed value Django issues.
 
+    Arguments:
+        None.
+
     Returns:
         A URL-safe token holding the documented number of random bytes.
     """
@@ -154,6 +157,9 @@ def generate_password() -> str:
 
     Produces the default secret for every service credential, so no password is ever chosen by a
     person or shared between two services.
+
+    Arguments:
+        None.
 
     Returns:
         A URL-safe token holding the documented number of random bytes.
@@ -167,6 +173,9 @@ def generate_access_key() -> str:
     Produces a hexadecimal token, because S3 access keys and secrets are conventionally hexadecimal
     and some clients reject the URL-safe alphabet.
 
+    Arguments:
+        None.
+
     Returns:
         A hexadecimal token holding the documented number of random bytes.
     """
@@ -178,6 +187,9 @@ def generate_plain_auth() -> str:
 
     Produces a user and password pair, because the task dashboard compares the configured value
     literally rather than as a hash, so hashing it would make the digest itself the password.
+
+    Arguments:
+        None.
 
     Returns:
         A single user and password pair separated by a colon.
@@ -266,9 +278,8 @@ def verify_dashboard_auth(values: Mapping[str, str], current: str) -> bool:
     """Check an existing basic-authentication entry against its password.
 
     Verifies rather than recomputes, because the hash carries a random salt and a fresh one never
-    equals the stored entry, which would make every run report the value as out of date. Also
-    rejects an entry naming another user or hashed at another cost, so a weakened or hand-edited
-    credential is rebuilt instead of preserved.
+    equals the stored entry. Also rejects an entry naming another user or hashed at another cost,
+    so a weakened or hand-edited credential is rebuilt instead of preserved.
 
     Arguments:
         values: Variables resolved so far for this environment.
@@ -323,7 +334,7 @@ class VersionControl(Protocol):
     file can be exercised without a repository. Inherits Protocol, so any object providing the
     method satisfies it structurally.
 
-    Attributes:
+    Members:
         tracked_files: Report the paths Git currently tracks.
     """
 
@@ -332,6 +343,9 @@ class VersionControl(Protocol):
 
         Lists the index relative to the repository root, which is what determines whether writing a
         generated file would put a secret under version control.
+
+        Arguments:
+            None.
 
         Returns:
             Repository-relative paths, with forward slashes.
@@ -344,13 +358,15 @@ class VersionControl(Protocol):
 class GitIndex:
     """Version control queries backed by the real Git index.
 
-    Implements the VersionControl surface by asking Git directly, distinguishing a directory that
-    is not a repository, where nothing can be tracked, from a repository whose index cannot be
-    read, where the tracking status is genuinely unknown. Inherits nothing; it satisfies
-    VersionControl structurally.
+    Implements the VersionControl surface by asking Git directly, distinguishing a non-repository
+    where nothing can be tracked from a repository whose tracking status is unknown. Inherits
+    nothing and satisfies VersionControl structurally.
 
     Attributes:
         root: Repository whose index is queried.
+
+    Members:
+        __init__: Bind the query surface to one repository.
         tracked_files: Report the paths Git currently tracks.
     """
 
@@ -371,11 +387,12 @@ class GitIndex:
     def tracked_files(self) -> frozenset[str]:
         """Report the paths Git currently tracks.
 
-        Answers an empty index only where the answer is provable: a directory that is not a
-        repository at all tracks nothing, whatever tooling happens to be installed. A repository
-        whose index cannot be read raises instead, including when Git itself is absent, because a
-        checkout can be committed later by another client and an unreadable index is not evidence
-        that a file is safe to write.
+        Answers an empty index only outside a repository, where no file can be tracked.
+        Raises for unreadable repositories, including absent Git, because a later commit could
+        still track the file and an unreadable index is not evidence that writing is safe.
+
+        Arguments:
+            None.
 
         Returns:
             Repository-relative paths, with forward slashes.
@@ -517,10 +534,9 @@ def read_manifest(path: Path) -> dict[str, str]:
 def render_value(name: str, value: str) -> str:
     """Render one value for an environment file.
 
-    Single-quotes a value containing a dollar sign, because Compose expands unquoted values in both
-    env_file and --env-file: an unquoted bcrypt hash such as admin:$2b$12$abc silently loses
-    everything from the third dollar onward, producing a credential nobody can authenticate with.
-    Single quotes suppress that expansion and are stripped when the file is read.
+    Single-quotes values containing dollar signs because Compose expands unquoted env_file values,
+    so an unquoted bcrypt hash such as admin:$2b$12$abc would lose everything from the third dollar.
+    The quotes suppress expansion and are stripped when the file is read.
 
     Arguments:
         name: Variable the value belongs to, named in any refusal.
@@ -596,11 +612,9 @@ def groups_for(environments: Sequence[str]) -> list[tuple[str, ...]]:
 def apply_composed(resolved: dict[str, str], *, force: bool) -> None:
     """Reconcile every composed value with the variables it is built from.
 
-    Derives a composed value that carries nothing real yet, which covers the absent case, the
-    manifest placeholder, and a forced run, since forcing resets the value to that placeholder
-    first. A value that is present and real but disagrees with its components is refused rather
-    than rewritten, because the generator cannot prove whether it is stale or a deliberate edit,
-    and guessing either way is worse than saying so.
+    Derives composed values for absent placeholders and forced runs, then preserves entries that
+    already verify against their inputs. A present real value that disagrees is refused rather than
+    rewritten, because the generator cannot prove whether it is stale or deliberate.
 
     Arguments:
         resolved: Variables resolved so far, updated in place.
@@ -645,19 +659,9 @@ def resolve_values(
 ) -> tuple[dict[str, str], list[str], list[str]]:
     """Decide the final value of every variable for one environment.
 
-    Keeps an existing value unless regeneration is forced, which is what makes a repeated run safe
-    against a running stack, and fills anything absent from the environment's own defaults. A
-    variable already in the file but absent from the manifest is preserved rather than discarded,
-    because the generator owns the variables it knows about and not the file as a whole.
-
-    A composed value is always re-derived from the variables it is built from. That is not an
-    overwrite in the ordinary case, since re-deriving from unchanged inputs reproduces the same
-    string; it matters when an input did change, where a preserved URL would otherwise disagree
-    with the password stored beside it.
-
-    A composed value is checked against the variables it is built from. It is rebuilt when one of
-    those variables changed in this run, and a mismatch with no such change is refused, so a stale
-    URL is corrected while a deliberate edit is never silently discarded.
+    Keeps existing values unless regeneration is forced, fills absent values from defaults, and
+    preserves variables outside the manifest because the generator owns only known names.
+    Re-derives composed values, correcting changed inputs while refusing unproven mismatches.
 
     Arguments:
         manifest: Variables read from the manifest.
@@ -995,6 +999,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     Leaves the environment selection without a default, so forcing regeneration without naming an
     environment is a distinguishable error rather than a silent regeneration of everything.
+
+    Arguments:
+        None.
 
     Returns:
         The configured argument parser.

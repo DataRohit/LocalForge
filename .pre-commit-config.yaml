@@ -53,6 +53,13 @@ repos:
         language: system
         types:
           - python
+      - id: docs-standard
+        name: documentation standard
+        entry: uv run python scripts/check_docstrings.py
+        language: system
+        pass_filenames: false
+        types:
+          - python
       - id: mypy
         name: mypy
         entry: uv run mypy

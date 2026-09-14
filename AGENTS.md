@@ -191,6 +191,7 @@ These predate this work.
 | What should I work on next | [.scratch/README.md](./.scratch/README.md) — 52 tickets, phased, with blockers |
 | Which tool, and why that one | [docs/adr/](./docs/adr/README.md) — one decision per file, indexed |
 | Names, IDs, variables, secrets, script contracts | [docs/platform/conventions.md](./docs/platform/conventions.md) |
+| What a docstring must contain, and which comments are allowed | [docs/platform/documentation-standard.md](./docs/platform/documentation-standard.md) |
 | Ports, startup order, health checks, dashboards, audits | [docs/platform/service-inventory.md](./docs/platform/service-inventory.md) |
 | How this becomes Kubernetes later | [docs/platform/kubernetes-mapping.md](./docs/platform/kubernetes-mapping.md) |
 | What must be installed first | [docs/build/prerequisites.md](./docs/build/prerequisites.md) |

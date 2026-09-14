@@ -11,6 +11,9 @@ mechanically rather than by review.
 
 ## The structure
 
+The worked reference, with one correct example per level, is
+[../platform/documentation-standard.md](../platform/documentation-standard.md).
+
 | Level | Required sections |
 |---|---|
 | File | One-line title, then a 2–3 line description |
@@ -19,6 +22,12 @@ mechanically rather than by review.
 
 A callable that raises nothing omits the raises section rather than carrying an empty one; the same applies to a
 class with no attributes. The checker allows that; it does not force ceremony.
+
+Clarified 2026-09-14, when the checker was written: "allows" is the operative word in both directions. The checker
+demands a section only when the construct has something to put in it — a callable that raises gets a required
+`Raises:`, a class with attributes a required `Attributes:` — and it rejects a heading with nothing underneath. It
+does **not** forbid an explicit `None.`, which is the form this repository already uses throughout and which
+distinguishes "this cannot fail" from an author who forgot. A generator documents `Yields:` in place of `Returns:`.
 
 ## Why a ban rather than a guideline
 

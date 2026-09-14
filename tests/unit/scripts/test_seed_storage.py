@@ -54,6 +54,11 @@ class FakeClient:
         create_error: Error to raise from create_bucket, or None to succeed.
         head_error: Error to raise from head_bucket, or None to succeed.
         calls: Names of the operations that were invoked, in order.
+
+    Members:
+        __init__: Record which operations should fail.
+        create_bucket: Record bucket creation and fail if configured.
+        head_bucket: Record bucket read-back and fail if configured.
     """
 
     def __init__(
@@ -80,7 +85,8 @@ class FakeClient:
     def create_bucket(self, **_: object) -> None:
         """Record the call and fail if configured to.
 
-        Mimics the SDK operation, raising whichever error the test supplied.
+        Mimics the SDK operation by recording the call first, then raising whichever error the test
+        supplied for the creation path.
 
         Arguments:
             _: Keyword arguments the SDK accepts and this stand-in ignores.
@@ -98,7 +104,8 @@ class FakeClient:
     def head_bucket(self, **_: object) -> None:
         """Record the call and fail if configured to.
 
-        Mimics the SDK operation used to read the bucket back after creating it.
+        Mimics the SDK operation by recording the call first, then raising whichever error the test
+        supplied for the read-back path.
 
         Arguments:
             _: Keyword arguments the SDK accepts and this stand-in ignores.
@@ -654,6 +661,18 @@ def test_an_explicit_endpoint_overrides_the_environment_file(
     seen: list[str] = []
 
     def record(endpoint: str, *_: str) -> FakeClient:
+        """Record the endpoint used to build the client.
+
+        Captures the override value before returning a successful fake client, so the test can
+        assert on selection without contacting the gateway.
+
+        Arguments:
+            endpoint: Endpoint the entry point passed into the client builder.
+            _: Other client-builder arguments the test does not inspect.
+
+        Returns:
+            A successful fake client.
+        """
         seen.append(endpoint)
 
         return FakeClient()

@@ -57,14 +57,16 @@ CONVENTIONS_DOCUMENT = gen_secrets.REPOSITORY_ROOT / "docs" / "platform" / "conv
 class FakeVersionControl:
     """Fabricated version control index.
 
-    Reports whichever paths a test declares tracked, or refuses to answer at all, so both the
-    refusal to overwrite a committed file and the refusal to proceed on an unreadable index can be
-    exercised without a repository. Inherits nothing; it satisfies the VersionControl protocol
-    structurally.
+    Reports whichever paths a test declares tracked, or refuses to answer at all, so overwrite
+    and unreadable-index refusals can be exercised without a repository. Inherits nothing and
+    satisfies the VersionControl protocol structurally.
 
     Attributes:
         tracked: Repository-relative paths to report as tracked.
         available: Whether the index can be read at all.
+
+    Members:
+        tracked_files: Report the fabricated tracked paths.
     """
 
     tracked: frozenset[str] = field(default_factory=frozenset)
@@ -75,6 +77,9 @@ class FakeVersionControl:
 
         Returns whatever the fixture was configured with, or raises when the fixture describes an
         index that cannot be read.
+
+        Arguments:
+            None.
 
         Returns:
             The configured repository-relative paths.
@@ -96,8 +101,11 @@ def fast_bcrypt() -> Iterator[None]:
     Keeps the suite fast without weakening the generator, because the cost factor the platform
     ships is deliberately expensive and every test that generates a file pays it twice.
 
+    Arguments:
+        None.
+
     Yields:
-        None, for the duration of the test.
+        Control, for the duration of one test, with the cost factor lowered.
     """
     with patch.object(gen_secrets, "BCRYPT_ROUNDS", MINIMUM_BCRYPT_ROUNDS):
         yield
@@ -146,6 +154,9 @@ def documented_variables() -> set[str]:
     Parses the Section 3.2 table so the tests grade the manifest against the authoritative
     inventory rather than against itself, which is what lets a documented-but-unimplemented
     variable be detected.
+
+    Arguments:
+        None.
 
     Returns:
         Every variable name the inventory declares.
@@ -2322,6 +2333,17 @@ def test_siblings_holding_different_dashboard_entries_are_refused() -> None:
     shared = {"TRAEFIK_DASHBOARD_PASSWORD": sample}
 
     def entry_for(value: str) -> str:
+        """Build one dashboard basic-auth entry.
+
+        Hashes the supplied password with the generator's current cost, so the test can create two
+        valid entries without sharing the generator's reconciliation path.
+
+        Arguments:
+            value: Plaintext password to hash.
+
+        Returns:
+            The basic-auth entry for the fixed dashboard user.
+        """
         salt = bcrypt.gensalt(rounds=gen_secrets.BCRYPT_ROUNDS)
 
         return f"admin:{bcrypt.hashpw(value.encode(), salt).decode()}"

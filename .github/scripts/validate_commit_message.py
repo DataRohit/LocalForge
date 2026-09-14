@@ -1,3 +1,10 @@
+"""Validate repository commit messages.
+
+Checks the staged message's title length and punctuation, its two-or-three line description, its
+work-item bullets, body line lengths, and the attribution rules, then reports every violation at
+once so the author fixes the message in one edit.
+"""
+
 import re
 import sys
 from pathlib import Path
@@ -10,6 +17,17 @@ FORBIDDEN_REFERENCES = re.compile(r"copilot|claude|codex", re.IGNORECASE)
 
 
 def fail(errors: list[str]) -> int:
+    """Print validation errors and return failure.
+
+    Renders every collected problem in the hook's stderr output, so Git shows one actionable
+    report instead of stopping at the first invalid line.
+
+    Arguments:
+        errors: Human-readable validation failures to print.
+
+    Returns:
+        The process exit code for a rejected message.
+    """
     details = "\n".join(f"- {error}" for error in errors)
     sys.stderr.write(
         f"Commit message validation failed:\n{details}\n"
@@ -19,11 +37,33 @@ def fail(errors: list[str]) -> int:
 
 
 def visible_lines(path: Path) -> list[str]:
+    """Read the user-authored message lines.
+
+    Drops Git editor comments and trims only trailing whitespace, so the validator grades the
+    message Git will keep without treating status prose as part of the commit.
+
+    Arguments:
+        path: Commit message file Git asked the hook to validate.
+
+    Returns:
+        The visible message lines in their original order.
+    """
     lines = path.read_text(encoding="utf-8").splitlines()
     return [line.rstrip() for line in lines if not line.startswith("#")]
 
 
 def validate(lines: list[str]) -> list[str]:
+    """Validate one visible commit message.
+
+    Applies the repository's title, description, bullet-list, line-length, and attribution rules,
+    returning every violation so the author can fix the message in one edit.
+
+    Arguments:
+        lines: Visible message lines to validate.
+
+    Returns:
+        Human-readable validation failures, or an empty list when the message is valid.
+    """
     while lines and not lines[-1]:
         lines.pop()
     if not lines:
@@ -67,6 +107,17 @@ def validate(lines: list[str]) -> list[str]:
 
 
 def main() -> int:
+    """Validate the commit message file Git passed to the hook.
+
+    Rejects calls that do not name exactly one file, then reports the message-level validation
+    failures through the same path used for content errors.
+
+    Arguments:
+        None.
+
+    Returns:
+        Zero when the message is valid, one when it is rejected.
+    """
     if len(sys.argv) != EXPECTED_ARGUMENT_COUNT:
         return fail(["a commit message file path is required"])
     errors = validate(visible_lines(Path(sys.argv[1])))

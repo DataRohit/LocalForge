@@ -131,10 +131,9 @@ class SystemProbes(Protocol):
     against a fabricated machine without running a subprocess or contacting a daemon. Inherits
     Protocol, so any object providing these four methods satisfies it structurally.
 
-    Attributes:
+    Members:
         capture: Run a command on the ambient search path and return its output.
-        capture_outside_virtualenv: Run a command with the project virtualenv removed from the
-            search path.
+        capture_outside_virtualenv: Run a command with the virtualenv removed.
         docker_resources: Report the processors and memory the container engine offers.
         free_disk_bytes: Report free space on the volume holding a path.
         volume_identity: Report which volume a path lives on.
@@ -173,6 +172,9 @@ class SystemProbes(Protocol):
 
         Queries the container engine for the processor count and total memory it makes available to
         containers, which is what the platform is actually limited by.
+
+        Arguments:
+            None.
 
         Returns:
             A pair of processor count and total memory in bytes, or None when the engine could not
@@ -213,11 +215,10 @@ class RealProbes:
     external command collapsed into a single absent-result value. Inherits nothing; it satisfies
     SystemProbes structurally.
 
-    Attributes:
+    Members:
         run: Resolve and run a command on a given search path.
         capture: Run a command on the ambient search path and return its output.
-        capture_outside_virtualenv: Run a command with the project virtualenv removed from the
-            search path.
+        capture_outside_virtualenv: Run a command with the virtualenv removed.
         docker_resources: Report the processors and memory the container engine offers.
         free_disk_bytes: Report free space on the volume holding a path.
         volume_identity: Report which volume a path lives on.
@@ -297,6 +298,9 @@ class RealProbes:
 
         Asks the container engine for its processor count and total memory in one formatted query,
         and rejects any answer that does not parse as two integers.
+
+        Arguments:
+            None.
 
         Returns:
             A pair of processor count and total memory in bytes, or None when the engine could not
@@ -835,10 +839,9 @@ def volumes_to_grade(probes: SystemProbes, paths: Iterable[Path]) -> dict[str, P
 def evaluate_free_disk(probes: SystemProbes, root: Path, docker_data_root: Path) -> CheckResult:
     """Evaluate free space on every volume the build consumes.
 
-    Grades the repository volume and the volume holding the container engine's data together,
-    because image layers and named volumes land on the latter while build output lands on the
-    former, and either running short stops the build. Reports what the engine already holds
-    alongside the free figures, as the checklist does.
+    Grades the repository volume and the container engine data volume together, because image
+    layers, named volumes, and build output can each stop the build when short on space. Reports
+    what the engine already holds alongside the free figures, as the checklist does.
 
     Arguments:
         probes: Machine inspection surface to query.
@@ -1063,6 +1066,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     Exposes the single output-format switch, keeping the default human-readable so the script is
     useful without arguments.
+
+    Arguments:
+        None.
 
     Returns:
         The configured argument parser.

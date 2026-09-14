@@ -282,7 +282,6 @@ port from [service-inventory.md](./service-inventory.md) Section 4.
 
 Each is a **separate file**. Nothing here is inlined into a Compose file, a Dockerfile `RUN`, or a settings module.
 None exists yet.
-
 Implementation language is Python, run as `uv run python scripts/<name>.py`, except where a script runs inside an
 image with no Python. The development machine is Windows, so a `.sh` entrypoint would not run on the host.
 
@@ -362,6 +361,20 @@ published port matches [service-inventory.md](./service-inventory.md). Exit `0` 
 ### 4.9 `scripts/run_tests.py`
 
 `--mode {container,host,both}`. Exit `0` both pass; `1` container failed; `2` host failed; `3` both failed.
+
+### 4.10 `scripts/check_docstrings.py`
+
+Enforces the documentation standard in [documentation-standard.md](./documentation-standard.md), which is the part
+of [../adr/0020-no-comments-structured-docstrings.md](../adr/0020-no-comments-structured-docstrings.md) that the
+linter cannot express. Checks two things across `src`, `tests`, `scripts`, and `.github/scripts`: that no comment
+line survives outside the named pragma allowlist, and that every module, class, and callable carries a docstring
+with the sections its level requires. Positional arguments override the default roots.
+
+Generated and vendored paths are excluded by name — `migrations`, `__pycache__`, `.venv`, `.agents` — because a
+file written by `makemigrations` cannot be held to a hand-written standard.
+
+Exit `0` clean; `1` violations, printed one per line as `FAIL <path>:<line> <rule> <detail>` followed by a count.
+Runs in `uv run poe check` and as a pre-commit hook.
 
 ## 5. Secret handling
 
