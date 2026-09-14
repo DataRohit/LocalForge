@@ -137,6 +137,37 @@ services:
       retries: 10
       start_period: 45s
 
+  mailpit-tm7bh:
+    image: docker.io/axllent/mailpit:v1.31.1
+    container_name: mailpit-tm7bh
+    restart: unless-stopped
+    profiles:
+      - smtp
+    env_file:
+      - .env.testing
+    ports:
+      - "21025:1025"
+      - "28025:8025"
+    networks:
+      - app-net-nt5rk
+      - access-net-ht6pn
+    volumes:
+      - mailpit-tm7bh-data:/data
+    command:
+      - --database
+      - /data/mailpit.db
+      - --disable-version-check
+      - --smtp-disable-rdns
+      - --block-remote-css-and-fonts
+      - --allowed-hosts
+      - localhost,127.0.0.1
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
 networks:
   access-net-ht6pn:
     name: access-net-ht6pn

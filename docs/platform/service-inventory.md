@@ -220,7 +220,7 @@ Seven services, one profile-gated. Every dashboard and UI service is dropped; no
 | `valkey-channels-tv9zw` | Channels layer | `26380` | `app-net-nt5rk`, `access-net-ht6pn` | yes |
 | `rabbitmq-tr6mc` | Celery broker, no management plugin | `25672` | `app-net-nt5rk`, `access-net-ht6pn` | yes |
 | `seaweedfs-ts3jd` | S3 storage | `28333` S3, `29333` master | `app-net-nt5rk`, `access-net-ht6pn` | yes |
-| `mailpit-tm7bh` | SMTP capture | `21025` SMTP | `app-net-nt5rk`, `access-net-ht6pn` | **no — profile `smtp`** |
+| `mailpit-tm7bh` | SMTP capture | `21025` SMTP, `28025` web | `app-net-nt5rk`, `access-net-ht6pn` | **no — profile `smtp`** |
 
 Three networks, not five: there is no `edge` zone because no proxy runs, and no `obsv` zone because every
 observability service is excluded. The two service zones are `internal: true`; `access-net-ht6pn` is not, because
@@ -242,7 +242,7 @@ possible.
 | `postgres-replica-pg6vy` | The `replica` alias points at `postgres-tp8vn`. Router paths are exercised; replication lag is not. See [../adr/0012-streaming-replication.md](../adr/0012-streaming-replication.md) |
 | `pgbackrest-pb2wj` | Time-based operational behaviour, verified in development by the phase 6 gate |
 | `celery-worker-cw8rt`, `celery-beat-cb4hq` | `CELERY_TASK_ALWAYS_EAGER=true` runs tasks in-process. The one test needing a real broker starts a worker with `docker compose run --rm` |
-| `mailpit-tm7bh` | Default `EMAIL_BACKEND` is `locmem`. The SMTP round-trip runs under `--profile smtp` |
+| `mailpit-tm7bh` | Default `EMAIL_BACKEND` is `locmem`. The SMTP round-trip runs under `--profile smtp`. The web port is published so a host-mode run can assert through the REST API, not only send |
 
 ### 4.2 The two required modes
 

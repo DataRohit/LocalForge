@@ -5,13 +5,13 @@ and a REST API, so mail can be asserted on in tests and read by a human.
 
 **Blocked by:** 03.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The service runs with the registry name, its own named volume, and both the SMTP and web ports reachable from
+- [x] The service runs with the registry name, its own named volume, and both the SMTP and web ports reachable from
       the host.
-- [ ] The health check uses the binary's own readiness subcommand, because the image carries no HTTP client to call
+- [x] The health check uses the binary's own readiness subcommand, because the image carries no HTTP client to call
       the readiness endpoint with.
-- [ ] Sending a message to the SMTP port makes it retrievable through the REST API.
-- [ ] The REST API can delete all stored messages, giving tests a clean starting point.
-- [ ] Captured messages persist across a container restart.
-- [ ] No mail can leave the machine: the service sits on an internal network.
+- [x] Sending a message to the SMTP port makes it retrievable through the REST API.
+- [x] The REST API can delete all stored messages, giving tests a clean starting point.
+- [x] Captured messages persist across a container restart.
+- [x] No mail can leave the machine: the service sits on an internal network.

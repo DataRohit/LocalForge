@@ -1867,6 +1867,213 @@ def test_the_bring_up_creates_the_media_bucket() -> None:
         assert f"scripts/seed_storage.py --environment {environment}" in plan
 
 
+MAIL_INSTANCES = {
+    "development": ("mailpit-mp6gb", {"1025:1025", "8025:8025"}, None),
+    "testing": ("mailpit-tm7bh", {"21025:1025", "28025:8025"}, "smtp"),
+}
+
+MAIL_NETWORKS = {
+    "development": {"app-net-na6hy", "access-net-ha4mz"},
+    "testing": {"app-net-nt5rk", "access-net-ht6pn"},
+}
+
+MAIL_RELAY_FLAGS = (
+    "--smtp-relay-config",
+    "--smtp-relay-all",
+    "--smtp-relay-matching",
+    "--smtp-forward-config",
+    "--webhook-url",
+)
+
+MAIL_RELAY_VARIABLES = ("MP_SMTP_RELAY_", "MP_SMTP_FORWARD_", "MP_WEBHOOK_URL")
+
+MAIL_OFFLINE_FLAGS = (
+    "--disable-version-check",
+    "--smtp-disable-rdns",
+    "--block-remote-css-and-fonts",
+    "--allowed-hosts",
+)
+
+MAIL_COMMANDS = {
+    "development": [
+        "--database",
+        "/data/mailpit.db",
+        "--disable-version-check",
+        "--smtp-disable-rdns",
+        "--block-remote-css-and-fonts",
+        "--allowed-hosts",
+        "localhost,127.0.0.1",
+    ],
+    "testing": [
+        "--database",
+        "/data/mailpit.db",
+        "--disable-version-check",
+        "--smtp-disable-rdns",
+        "--block-remote-css-and-fonts",
+        "--allowed-hosts",
+        "localhost,127.0.0.1",
+    ],
+}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("environment", sorted(MAIL_INSTANCES))
+def test_each_mail_service_matches_its_registered_ports_and_volume(environment: str) -> None:
+    """Pin mail capture to the rows assigned to it.
+
+    Confirms the registered name, image, networks, published ports, and volume match the registry,
+    so the two environments can capture mail at the same time without colliding.
+
+    Arguments:
+        environment: Environment whose overlay is inspected.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any registered value is departed from.
+    """
+    service, ports, _ = MAIL_INSTANCES[environment]
+    definition = merged(ENVIRONMENT_FILES[environment])["services"][service]
+
+    assert definition["image"] == "docker.io/axllent/mailpit:v1.31.1"
+    assert definition["container_name"] == service
+    assert set(definition["ports"]) == ports
+    assert set(definition["networks"]) == MAIL_NETWORKS[environment]
+    assert definition["volumes"] == [f"{service}-data:/data"]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("environment", sorted(MAIL_INSTANCES))
+def test_every_mail_service_stores_messages_on_its_volume(environment: str) -> None:
+    """Keep captured mail from living only in memory.
+
+    Confirms the database file is named on the mounted volume, because Mailpit keeps messages in
+    memory unless told otherwise and would lose every captured message on restart.
+
+    Arguments:
+        environment: Environment whose overlay is inspected.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If no database path is given, or it is not on the volume.
+    """
+    service, _, _ = MAIL_INSTANCES[environment]
+    command = merged(ENVIRONMENT_FILES[environment])["services"][service]["command"]
+
+    assert command == MAIL_COMMANDS[environment]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("environment", sorted(MAIL_INSTANCES))
+def test_no_mail_service_is_allowed_to_forward(environment: str) -> None:
+    """Keep captured mail from reaching a real recipient.
+
+    Confirms no forwarding, relay, or webhook route is configured by flag or by variable, which is
+    what actually stops mail leaving: the service publishes host ports, so it joins a non-internal
+    access zone and network placement alone cannot make that guarantee.
+
+    Arguments:
+        environment: Environment whose overlay is inspected.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any forwarding route is configured anywhere.
+    """
+    service, _, _ = MAIL_INSTANCES[environment]
+    command = " ".join(merged(ENVIRONMENT_FILES[environment])["services"][service]["command"])
+    manifest = (REPOSITORY_ROOT / ".env.example").read_text(encoding="utf-8")
+    generated = REPOSITORY_ROOT / f".env.{environment}"
+
+    for flag in MAIL_RELAY_FLAGS:
+        assert flag not in command, flag
+
+    sources = [manifest]
+    if generated.exists():
+        sources.append(generated.read_text(encoding="utf-8"))
+
+    for source in sources:
+        for variable in MAIL_RELAY_VARIABLES:
+            assert variable not in source, variable
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("environment", sorted(MAIL_INSTANCES))
+def test_no_mail_service_calls_out_on_its_own(environment: str) -> None:
+    """Stop the service contacting anyone but the machine it runs on.
+
+    Confirms the update check and the reverse-DNS lookup are both disabled, because each reaches
+    the network unprompted from a service that sits on a zone with real egress.
+
+    Arguments:
+        environment: Environment whose overlay is inspected.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If either outbound behaviour is left enabled.
+    """
+    service, _, _ = MAIL_INSTANCES[environment]
+    command = " ".join(merged(ENVIRONMENT_FILES[environment])["services"][service]["command"])
+
+    for flag in MAIL_OFFLINE_FLAGS:
+        assert flag in command, flag
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("environment", sorted(MAIL_INSTANCES))
+def test_every_mail_health_check_uses_the_bundled_client(environment: str) -> None:
+    """Probe with the only client the image carries.
+
+    Confirms the check runs the binary's own readiness subcommand rather than an HTTP request,
+    because the image is Alpine with neither curl nor wget to call the endpoint with.
+
+    Arguments:
+        environment: Environment whose overlay is inspected.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the probe is not the bundled subcommand.
+    """
+    service, _, _ = MAIL_INSTANCES[environment]
+    check = merged(ENVIRONMENT_FILES[environment])["services"][service]["healthcheck"]["test"]
+
+    assert check == ["CMD", "/mailpit", "readyz"]
+
+
+@pytest.mark.unit
+def test_only_the_testing_mail_service_is_gated_behind_a_profile() -> None:
+    """Keep the suite from depending on a mail container.
+
+    Confirms testing puts mail behind the documented profile while development starts it always,
+    because the suite defaults to an in-process backend and only the SMTP round-trip needs the
+    real service.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the gating is absent or applied to the wrong environment.
+    """
+    for environment, (service, _, profile) in MAIL_INSTANCES.items():
+        definition = merged(ENVIRONMENT_FILES[environment])["services"][service]
+
+        if profile is None:
+            assert "profiles" not in definition, environment
+        else:
+            assert definition["profiles"] == [profile], environment
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize("environment", ["development", "testing"])
 def test_the_documented_project_names_are_distinct(environment: str) -> None:

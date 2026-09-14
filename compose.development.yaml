@@ -208,6 +208,35 @@ services:
       retries: 10
       start_period: 45s
 
+  mailpit-mp6gb:
+    image: docker.io/axllent/mailpit:v1.31.1
+    container_name: mailpit-mp6gb
+    restart: unless-stopped
+    env_file:
+      - .env.development
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - app-net-na6hy
+      - access-net-ha4mz
+    volumes:
+      - mailpit-mp6gb-data:/data
+    command:
+      - --database
+      - /data/mailpit.db
+      - --disable-version-check
+      - --smtp-disable-rdns
+      - --block-remote-css-and-fonts
+      - --allowed-hosts
+      - localhost,127.0.0.1
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
 networks:
   edge-net-ne2vk:
     name: edge-net-ne2vk

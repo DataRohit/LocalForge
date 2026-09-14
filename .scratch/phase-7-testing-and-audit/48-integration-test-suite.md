@@ -18,6 +18,8 @@ broker, real channel layer, real object storage — covering every documented ro
 - [ ] Object storage is asserted live, which the phase-1 compose tests cannot reach because they parse the manifest
       where no Docker client exists: the S3 API, master UI, and file browser each answer on their documented host
       ports; an upload read back is byte-identical; and an unauthenticated request to the bucket is refused.
+- [ ] Mail capture is asserted live, in both run modes: a message sent to the SMTP port is retrievable through the
+      REST API, deleting all messages empties the store, and captured mail survives a container recreate.
 - [ ] WebSocket tests cover connection, authentication success and every failure, group delivery, and cross-process
       delivery.
 - [ ] The health endpoint is tested healthy and degraded, with a dependency genuinely stopped.
