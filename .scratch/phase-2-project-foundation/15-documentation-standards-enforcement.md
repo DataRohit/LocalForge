@@ -6,19 +6,19 @@ missing or malformed.
 
 **Blocked by:** 13.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The linter's docstring rules are switched on with a chosen convention, replacing the blanket ignore currently
+- [x] The linter's docstring rules are switched on with a chosen convention, replacing the blanket ignore currently
       in place.
-- [ ] Missing docstrings on modules, classes, functions, and methods are errors, in application code and in tests
+- [x] Missing docstrings on modules, classes, functions, and methods are errors, in application code and in tests
       alike.
-- [ ] A check rejects comment lines in project Python files, permitting only the pragmas the toolchain genuinely
+- [x] A check rejects comment lines in project Python files, permitting only the pragmas the toolchain genuinely
       requires, which are enumerated.
-- [ ] A check enforces the section structure: file docstrings carry a one-line title and a two-to-three line
+- [x] A check enforces the section structure: file docstrings carry a one-line title and a two-to-three line
       description; class docstrings add what they inherit and their attributes and members; callable docstrings add
       arguments, returns, and raises.
-- [ ] A callable that raises nothing and a class with no attributes are handled without forcing empty sections.
-- [ ] The checks run in the existing quality gate and in the pre-commit hooks.
-- [ ] The standard is documented with one correct example each for a module, a class, and a method.
-- [ ] Every file the project already owns is brought into compliance in this ticket, so the gate starts green.
-- [ ] The checker is itself covered by tests, including a compliant file and one failing file per rule.
+- [x] A callable that raises nothing and a class with no attributes are handled without forcing empty sections.
+- [x] The checks run in the existing quality gate and in the pre-commit hooks.
+- [x] The standard is documented with one correct example each for a module, a class, and a method.
+- [x] Every file the project already owns is brought into compliance in this ticket, so the gate starts green.
+- [x] The checker is itself covered by tests, including a compliant file and one failing file per rule.
