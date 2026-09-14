@@ -20,6 +20,11 @@ unhealthy instance out of rotation.
 - [ ] The response body leaks no credentials, hostnames, or version details to an unauthenticated caller; detail is
       available only to an authorised caller or on an internal-only path.
 - [ ] The reverse proxy discovers the application by label and routes traffic to it.
+- [ ] The host name the proxy is exercised with is accepted by the application: the build plan's proxy gate sends
+      `Host: localforge.localhost`, which must appear in the allowed hosts and, for browser use, in the trusted
+      origins beside the existing `http://localhost:8080`.
+- [ ] The proxy declares the application as a dependency, so the startup order matches the tier the inventory
+      assigns it. Ticket 10 left `traefik-tk2jp` without one because no backend existed to depend on yet.
 - [ ] The proxy uses the health endpoint for its own backend health checking, and an instance failing it stops
       receiving traffic.
 - [ ] The container health check uses the same endpoint, so Compose ordering and proxy routing agree.

@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
+import bcrypt
 import pytest
 
 from scripts import gen_secrets
@@ -45,6 +46,7 @@ SECRET_VARIABLES = (
     "S3_ACCESS_KEY_ID",
     "S3_SECRET_ACCESS_KEY",
     "GRAFANA_ADMIN_PASSWORD",
+    "TRAEFIK_DASHBOARD_PASSWORD",
     "TRAEFIK_DASHBOARD_AUTH",
     "FLOWER_BASIC_AUTH",
 )
@@ -762,11 +764,12 @@ def test_the_cache_and_result_databases_differ(repository: Path) -> None:
 
 
 @pytest.mark.unit
-def test_the_dashboard_credential_is_hashed_rather_than_stored(repository: Path) -> None:
-    """Store the proxy dashboard credential irreversibly.
+def test_the_dashboard_hash_is_built_from_the_stored_password(repository: Path) -> None:
+    """Keep the entry the proxy reads and the password a developer types in step.
 
-    Confirms the edge proxy credential is an htpasswd entry carrying a bcrypt hash, so the file
-    never holds the dashboard password itself.
+    Confirms the htpasswd entry is the stored password hashed for the expected user at the
+    expected cost, because a hash that does not match its password locks everyone out of the
+    dashboard while still looking well formed.
 
     Arguments:
         repository: Temporary repository holding the manifest.
@@ -775,14 +778,16 @@ def test_the_dashboard_credential_is_hashed_rather_than_stored(repository: Path)
         None.
 
     Raises:
-        AssertionError: If the credential is not a bcrypt htpasswd entry.
+        AssertionError: If the entry does not verify against the password beside it.
     """
     gen_secrets.main([], root=repository, version_control=FakeVersionControl())
-    credential = values_in(repository, ".env.development")["TRAEFIK_DASHBOARD_AUTH"]
+    values = values_in(repository, ".env.development")
+    credential = values["TRAEFIK_DASHBOARD_AUTH"]
     user, _, digest = credential.partition(":")
 
-    assert user == "admin"
-    assert digest.startswith(("$2a$", "$2b$", "$2y$"))
+    assert user == gen_secrets.BASIC_AUTH_USER
+    assert digest.startswith(f"$2b${gen_secrets.BCRYPT_ROUNDS:02d}$")
+    assert bcrypt.checkpw(values["TRAEFIK_DASHBOARD_PASSWORD"].encode(), digest.encode())
 
 
 @pytest.mark.unit
@@ -2166,3 +2171,237 @@ def test_the_script_guard_runs_the_generator(
     capsys.readouterr()
 
     assert raised.value.code == gen_secrets.EXIT_FORCE_WITHOUT_ENVIRONMENT
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("values", "current"),
+    [
+        ({"TRAEFIK_DASHBOARD_PASSWORD": "secret"}, "no-colon-here"),
+        ({}, "admin:$2b$12$abcdefghijklmnopqrstuv"),
+        ({"TRAEFIK_DASHBOARD_PASSWORD": "secret"}, "admin:not-a-bcrypt-digest"),
+    ],
+)
+def test_an_unreadable_dashboard_entry_is_treated_as_absent(
+    values: dict[str, str],
+    current: str,
+) -> None:
+    """Rebuild an entry that cannot be checked.
+
+    Confirms a malformed entry, an absent password, and a digest bcrypt refuses to parse are each
+    reported as not matching, so the value is rebuilt rather than raising out of the generator.
+
+    Arguments:
+        values: Variables resolved so far.
+        current: The entry already written to the file.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If an unreadable entry is treated as valid.
+    """
+    assert gen_secrets.verify_dashboard_auth(values, current) is False
+
+
+@pytest.mark.unit
+def test_a_composed_value_missing_its_components_is_left_alone() -> None:
+    """Skip a value this group cannot build.
+
+    Confirms a composed value whose inputs are absent is passed over rather than raising, so a
+    partial manifest cannot abort the whole run.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the value is invented from nothing.
+    """
+    shared: dict[str, str] = {}
+    gen_secrets.share_composed(shared, {})
+
+    assert "TRAEFIK_DASHBOARD_AUTH" not in shared
+
+
+@pytest.mark.unit
+def test_a_password_too_long_to_hash_is_refused() -> None:
+    """Refuse a password the hash cannot carry.
+
+    Confirms an over-long password ends in the module's own refusal rather than an unhandled error
+    from the hashing library, so the run reports a documented exit code.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the over-long password is not refused by name.
+    """
+    values = {"TRAEFIK_DASHBOARD_PASSWORD": "x" * (gen_secrets.BCRYPT_MAXIMUM_BYTES + 1)}
+
+    with pytest.raises(gen_secrets.RefusalError) as raised:
+        gen_secrets.compose_dashboard_auth(values)
+
+    assert "TRAEFIK_DASHBOARD_PASSWORD" in str(raised.value)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("user", ["not-admin", ""])
+def test_an_entry_naming_another_user_is_rejected(user: str) -> None:
+    """Rebuild an entry that names someone else.
+
+    Confirms only the registered user is accepted, so a hand-edited entry granting another account
+    is replaced rather than preserved. The digest is correct for the password, so the user is the
+    only thing that can decide the outcome.
+
+    Arguments:
+        user: Account name carried by the entry.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If an entry for another user is accepted.
+    """
+    sample = "correct-horse"
+    salt = bcrypt.gensalt(rounds=gen_secrets.BCRYPT_ROUNDS)
+    digest = bcrypt.hashpw(sample.encode(), salt).decode()
+    values = {"TRAEFIK_DASHBOARD_PASSWORD": sample}
+
+    assert gen_secrets.verify_dashboard_auth(values, f"{user}:{digest}") is False
+    assert gen_secrets.verify_dashboard_auth(values, f"admin:{digest}") is True
+
+
+@pytest.mark.unit
+def test_an_entry_hashed_at_a_weaker_cost_is_rejected() -> None:
+    """Rebuild an entry hashed below the required cost.
+
+    Confirms a digest computed at a lower bcrypt cost is not kept, because the registry fixes the
+    cost and a weakened entry would otherwise survive every future run.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a weaker digest is accepted.
+    """
+    sample = "correct-horse"
+    other = bcrypt.hashpw(
+        sample.encode(), bcrypt.gensalt(rounds=gen_secrets.BCRYPT_ROUNDS + 1)
+    ).decode()
+    values = {"TRAEFIK_DASHBOARD_PASSWORD": sample}
+
+    assert gen_secrets.verify_dashboard_auth(values, f"admin:{other}") is False
+
+
+@pytest.mark.unit
+def test_siblings_holding_different_dashboard_entries_are_refused() -> None:
+    """Refuse to choose between two valid entries.
+
+    Confirms a group whose members carry different correct hashes is refused rather than silently
+    reconciled, which is how the generator already treats a disagreeing shared credential.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the divergence is accepted.
+    """
+    sample = "shared-password"
+    shared = {"TRAEFIK_DASHBOARD_PASSWORD": sample}
+
+    def entry_for(value: str) -> str:
+        salt = bcrypt.gensalt(rounds=gen_secrets.BCRYPT_ROUNDS)
+
+        return f"admin:{bcrypt.hashpw(value.encode(), salt).decode()}"
+
+    entries = {
+        name: {"TRAEFIK_DASHBOARD_AUTH": entry_for(sample)} for name in ("testing", "testing-host")
+    }
+
+    with pytest.raises(gen_secrets.RefusalError):
+        gen_secrets.share_composed(shared, entries)
+
+
+@pytest.mark.unit
+def test_a_surviving_sibling_entry_is_adopted_rather_than_rebuilt() -> None:
+    """Keep the entry the remaining file already holds.
+
+    Confirms a group regenerating one deleted sibling adopts the survivor's hash, so both files end
+    up carrying the identical credential.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the surviving entry is replaced.
+    """
+    sample = "shared-password"
+    digest = bcrypt.hashpw(sample.encode(), bcrypt.gensalt(rounds=gen_secrets.BCRYPT_ROUNDS))
+    entry = f"admin:{digest.decode()}"
+    shared = {"TRAEFIK_DASHBOARD_PASSWORD": sample}
+    gen_secrets.share_composed(shared, {"testing": {"TRAEFIK_DASHBOARD_AUTH": entry}})
+
+    assert shared["TRAEFIK_DASHBOARD_AUTH"] == entry
+
+
+@pytest.mark.unit
+def test_an_entry_already_shared_is_left_untouched() -> None:
+    """Leave a correct shared entry alone.
+
+    Confirms a value already held in the shared set and still matching its password is kept, so a
+    rerun neither rebuilds it nor reports the group as changed.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the shared entry is replaced.
+    """
+    sample = "shared-password"
+    salt = bcrypt.gensalt(rounds=gen_secrets.BCRYPT_ROUNDS)
+    entry = f"admin:{bcrypt.hashpw(sample.encode(), salt).decode()}"
+    shared = {"TRAEFIK_DASHBOARD_PASSWORD": sample, "TRAEFIK_DASHBOARD_AUTH": entry}
+    gen_secrets.share_composed(shared, {})
+
+    assert shared["TRAEFIK_DASHBOARD_AUTH"] == entry
+
+
+@pytest.mark.unit
+def test_a_digest_the_library_cannot_parse_is_treated_as_absent() -> None:
+    """Rebuild an entry the hashing library refuses to read.
+
+    Confirms a digest carrying the expected prefix but a malformed body is reported as not
+    matching, rather than raising out of the generator from inside the library.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the malformed digest is not handled.
+    """
+    entry = f"admin:$2b${gen_secrets.BCRYPT_ROUNDS:02d}$short"
+
+    assert (
+        gen_secrets.verify_dashboard_auth({"TRAEFIK_DASHBOARD_PASSWORD": "secret"}, entry) is False
+    )

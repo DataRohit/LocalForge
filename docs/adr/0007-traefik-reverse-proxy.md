@@ -29,4 +29,15 @@ release-cadence policy; the ~1–3 month interval is inferred from tag dates.
 ## Consequences
 
 Traefik reads the Docker socket to discover containers. That is a real privilege, so it is mounted read-only and
-Traefik is the only service besides the log collector permitted to see it.
+Traefik is the only service besides the log collector permitted to see it. A read-only bind stops the file being
+written; it does **not** make the API read-only, so the process stays root-equivalent over the daemon. Recorded for
+the security audit rather than pretended away.
+
+**Two defaults are kept deliberately, verified 2026-09-14.** Traefik warns at every start that it rejects some
+encoded characters in request paths and suggests relaxing that when a backend is not RFC 3986 compliant. Django is,
+so the strict defaults stay and the warning is expected noise rather than an action. `global.checkNewVersion`
+defaults to **true** and is turned off, along with anonymous usage reporting, because this platform runs offline.
+
+Access logging sets `addInternals: true`. Without it Traefik logs nothing for requests served by internal
+services, and the dashboard router forwards to `api@internal` — so every login success and failure on the admin
+surface would go unrecorded, which is the opposite of what the request log exists for.

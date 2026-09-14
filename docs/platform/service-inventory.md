@@ -14,7 +14,7 @@ would otherwise have surfaced as a mysterious failure at build time.
 
 | Container name | Role | Host ports | Internal | Networks |
 |---|---|---|---|---|
-| `traefik-tk2jp` | reverse proxy, Docker label discovery | `8080` web, `8081` dashboard | 80, 8080 | `edge-net-ne2vk`, `access-net-ha4mz` |
+| `traefik-tk2jp` | reverse proxy, Docker label discovery | `8080` web, `8081` dashboard | 80, 8080 | `edge-net-ne2vk` |
 | `django-uv5n2` | Django ASGI app under Uvicorn | `8000` | 8000 | `edge-net-ne2vk`, `app-net-na6hy`, `data-net-nd9pc`, `obsv-net-nb4xt`, `access-net-ha4mz` |
 | `postgres-pg3ka` | PostgreSQL 18.6 primary | `5432` | 5432 | `data-net-nd9pc`, `access-net-ha4mz` |
 | `postgres-replica-pg6vy` | PostgreSQL 18.6 hot standby | `5433` | 5432 | `data-net-nd9pc`, `access-net-ha4mz` |

@@ -13,6 +13,11 @@ adversarial or degraded conditions, with every finding either fixed or recorded 
       response. The secret-scanning hook passes over the full history of this work.
 - [ ] No vendor default account survives in any service: the broker lists only the configured user and no `guest`,
       and every dashboard rejects an unauthenticated request before serving any page.
+- [ ] Socket exposure is accounted for: a read-only bind of the Docker socket does not make the API read-only, so
+      `traefik-tk2jp` and `alloy-al6wz` are either accepted as root-equivalent in writing, or put behind a
+      filtering socket proxy added to the registry first.
+- [ ] The proxy's own surface is reviewed: it runs as root, and `/ping` answers unauthenticated on the published
+      dashboard port. Each is either closed or accepted in writing.
 - [ ] Debug mode is off outside development, and an error response never returns a traceback or settings detail.
 - [ ] Security headers are set: content type options, frame options, referrer policy, and a content security
       policy. Transport security settings are correct for the deployed shape and documented as inert on a local

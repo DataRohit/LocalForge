@@ -243,6 +243,7 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `GRAFANA_ADMIN_PASSWORD` | `grafana-gf7qv` | dashboard password | `<GENERATED>` | **yes** | yes |
 | `PROMETHEUS_RETENTION_TIME` | `prometheus-pm5db` | TSDB retention | `7d` | no | no |
 | `LOKI_RETENTION_PERIOD` | `loki-lk3ny` | log retention | `168h` | no | no |
+| `TRAEFIK_DASHBOARD_PASSWORD` | `traefik-tk2jp` | dashboard password, what a developer types | `<GENERATED>` | **yes** | yes |
 | `TRAEFIK_DASHBOARD_AUTH` | `traefik-tk2jp` | basic-auth hash | `<GENERATED>` | **yes** | yes |
 | `COMPOSE_PROJECT_NAME` | Compose | project namespace | `localforge-dev` | no | yes |
 
@@ -287,7 +288,7 @@ image with no Python. The development machine is Windows, so a `.sh` entrypoint 
 |---|---|
 | Responsibility | Create or top up `.env.development`, `.env.testing`, `.env.testing.host` |
 | Inputs | `--environment {development,testing,all}`, `--force`; `.env.example` is the variable manifest |
-| Generation | `secrets.token_urlsafe(64)` for `DJANGO_SECRET_KEY`; `token_urlsafe(32)` for passwords; `token_hex(20)` for S3 keys; bcrypt at cost 12 for `TRAEFIK_DASHBOARD_AUTH`. `FLOWER_BASIC_AUTH` is a **plaintext** `user:password` pair, because Flower compares its configured value literally — hashing it would make the digest itself the password |
+| Generation | `secrets.token_urlsafe(64)` for `DJANGO_SECRET_KEY`; `token_urlsafe(32)` for passwords; `token_hex(20)` for S3 keys; bcrypt at cost 12 for `TRAEFIK_DASHBOARD_AUTH`, which is **composed from** `TRAEFIK_DASHBOARD_PASSWORD` rather than from a password thrown away at generation, because a dashboard credential nobody holds cannot be used to log in. `FLOWER_BASIC_AUTH` is a **plaintext** `user:password` pair, because Flower compares its configured value literally — hashing it would make the digest itself the password |
 | Quoting | A value containing `$` is written single-quoted. Compose expands unquoted values in **both** `env_file:` and `--env-file`, so a bare bcrypt hash loses everything from its third `$` onward and yields a credential that cannot authenticate. Verified against Compose v5.5.1 on 2026-09-13 |
 | Idempotency | Default run **never overwrites an existing value**, and never discards one it does not recognise; it appends only absent variables, so adding an inventory row fills the gap without invalidating a running stack. A composed value is derived when absent and **refused when present but disagreeing** with the variables it is built from, because the generator cannot prove whether such a value is stale or a deliberate edit. `--force` regenerates everything and warns that credential-derived volumes must be recreated |
 | Transactionality | Every selected file is resolved and rendered before any is written, and writes are staged then replaced, with rollback. A refused run leaves every file byte-identical |

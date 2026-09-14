@@ -34,6 +34,8 @@ SECRET_KEY_BYTES = 64
 PASSWORD_BYTES = 32
 ACCESS_KEY_BYTES = 20
 BCRYPT_ROUNDS = 12
+BASIC_AUTH_USER = "admin"
+BCRYPT_MAXIMUM_BYTES = 72
 MINIMUM_QUOTED_LENGTH = 2
 
 DEVELOPMENT = "development"
@@ -171,21 +173,6 @@ def generate_access_key() -> str:
     return secrets.token_hex(ACCESS_KEY_BYTES)
 
 
-def generate_basic_auth() -> str:
-    """Generate a hashed basic-authentication credential.
-
-    Produces a user and bcrypt hash in the htpasswd form the edge proxy expects, so the proxy
-    dashboard credential is never stored in a recoverable form.
-
-    Returns:
-        A single htpasswd entry pairing a fixed user with a bcrypt hash of a generated password.
-    """
-    password = secrets.token_urlsafe(PASSWORD_BYTES).encode()
-    digest = bcrypt.hashpw(password, bcrypt.gensalt(rounds=BCRYPT_ROUNDS)).decode()
-
-    return f"admin:{digest}"
-
-
 def generate_plain_auth() -> str:
     """Generate a plaintext basic-authentication credential.
 
@@ -195,14 +182,13 @@ def generate_plain_auth() -> str:
     Returns:
         A single user and password pair separated by a colon.
     """
-    return f"admin:{generate_password()}"
+    return f"{BASIC_AUTH_USER}:{generate_password()}"
 
 
 SECRET_RECIPES: Mapping[str, Callable[[], str]] = {
     "DJANGO_SECRET_KEY": generate_secret_key,
     "S3_ACCESS_KEY_ID": generate_access_key,
     "S3_SECRET_ACCESS_KEY": generate_access_key,
-    "TRAEFIK_DASHBOARD_AUTH": generate_basic_auth,
     "FLOWER_BASIC_AUTH": generate_plain_auth,
 }
 
@@ -248,9 +234,76 @@ def compose_result_backend(values: Mapping[str, str]) -> str:
     return f"redis://:{password}@{host}:{port}/{database}"
 
 
+def compose_dashboard_auth(values: Mapping[str, str]) -> str:
+    """Compose the edge proxy's basic-authentication entry.
+
+    Hashes the generated dashboard password into the htpasswd form the proxy expects, so the proxy
+    stores only a digest while the password itself stays readable to the developer who must log in.
+
+    Arguments:
+        values: Variables resolved so far for this environment.
+
+    Returns:
+        A single htpasswd entry pairing the fixed user with a bcrypt hash of the password.
+
+    Raises:
+        RefusalError: If the password is longer than the hash can carry.
+    """
+    password = values["TRAEFIK_DASHBOARD_PASSWORD"].encode()
+    if len(password) > BCRYPT_MAXIMUM_BYTES:
+        message = (
+            f"TRAEFIK_DASHBOARD_PASSWORD is longer than {BCRYPT_MAXIMUM_BYTES} bytes, "
+            "which bcrypt cannot hash; shorten it or remove it to have one generated"
+        )
+        raise RefusalError(message)
+
+    digest = bcrypt.hashpw(password, bcrypt.gensalt(rounds=BCRYPT_ROUNDS)).decode()
+
+    return f"{BASIC_AUTH_USER}:{digest}"
+
+
+def verify_dashboard_auth(values: Mapping[str, str], current: str) -> bool:
+    """Check an existing basic-authentication entry against its password.
+
+    Verifies rather than recomputes, because the hash carries a random salt and a fresh one never
+    equals the stored entry, which would make every run report the value as out of date. Also
+    rejects an entry naming another user or hashed at another cost, so a weakened or hand-edited
+    credential is rebuilt instead of preserved.
+
+    Arguments:
+        values: Variables resolved so far for this environment.
+        current: The entry already written to the file.
+
+    Returns:
+        True when the entry is this password hashed for the expected user at the expected cost.
+    """
+    password = values.get("TRAEFIK_DASHBOARD_PASSWORD", "")
+    user, separator, digest = current.partition(":")
+    if not separator or not password or user != BASIC_AUTH_USER:
+        return False
+
+    if not digest.startswith(f"$2b${BCRYPT_ROUNDS:02d}$"):
+        return False
+
+    try:
+        return bcrypt.checkpw(password.encode(), digest.encode())
+    except ValueError:
+        return False
+
+
+COMPOSED_VERIFIERS: Mapping[str, Callable[[Mapping[str, str], str], bool]] = {
+    "TRAEFIK_DASHBOARD_AUTH": verify_dashboard_auth,
+}
+
+COMPOSED_INPUTS: Mapping[str, tuple[str, ...]] = {
+    "TRAEFIK_DASHBOARD_AUTH": ("TRAEFIK_DASHBOARD_PASSWORD",),
+}
+
+
 COMPOSED_VALUES: Mapping[str, Callable[[Mapping[str, str]], str]] = {
     "CELERY_BROKER_URL": compose_broker_url,
     "CELERY_RESULT_BACKEND": compose_result_backend,
+    "TRAEFIK_DASHBOARD_AUTH": compose_dashboard_auth,
 }
 
 
@@ -563,11 +616,16 @@ def apply_composed(resolved: dict[str, str], *, force: bool) -> None:
         if name not in resolved:
             continue
 
-        derived = composer(resolved)
-        if derived == resolved[name]:
+        current = resolved[name]
+        verifier = COMPOSED_VERIFIERS.get(name)
+        if verifier is not None and is_usable(current) and verifier(resolved, current):
             continue
 
-        if is_usable(resolved[name]) and not force:
+        derived = composer(resolved)
+        if derived == current:
+            continue
+
+        if is_usable(current) and not force:
             message = (
                 f"{name} does not match the variables it is built from; "
                 "remove it to have it rebuilt, or regenerate with --force"
@@ -747,6 +805,50 @@ class Prepared:
     outcome: Outcome
 
 
+def share_composed(shared: dict[str, str], existing: Mapping[str, Mapping[str, str]]) -> None:
+    """Compose the group's non-deterministic values once.
+
+    Derives values whose composition carries randomness before the group's files are resolved, so
+    siblings that must hold identical credentials do not each generate a different one, and adopts
+    a surviving sibling's value rather than replacing one that is still correct.
+
+    Arguments:
+        shared: Secrets shared across the group, updated in place.
+        existing: Values already held by each environment in the group.
+
+    Returns:
+        None.
+
+    Raises:
+        RefusalError: If two members of the group hold different values for one composed credential.
+    """
+    for name, verifier in COMPOSED_VERIFIERS.items():
+        held = {
+            values[name]
+            for values in existing.values()
+            if is_usable(values.get(name)) and verifier(shared, values[name])
+        }
+        if len(held) > 1:
+            message = (
+                f"{name} differs between files that must share it; "
+                "reconcile them by hand, or regenerate the pair with --force"
+            )
+            raise RefusalError(message)
+
+        current = shared.get(name, "")
+        if is_usable(current) and verifier(shared, current):
+            continue
+
+        if held:
+            shared[name] = held.pop()
+            continue
+
+        if any(required not in shared for required in COMPOSED_INPUTS[name]):
+            continue
+
+        shared[name] = COMPOSED_VALUES[name](shared)
+
+
 def prepare_group(
     environments: Sequence[str],
     manifest: Mapping[str, str],
@@ -779,6 +881,7 @@ def prepare_group(
         for environment in environments
     }
     shared = group_secrets(manifest, {} if force else existing_by_environment)
+    share_composed(shared, {} if force else existing_by_environment)
 
     prepared: list[Prepared] = []
     for environment in environments:

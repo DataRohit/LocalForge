@@ -9,6 +9,12 @@ Every service that must be reachable from the host joins a non-internal **access
 to its internal service zone. Services that need no host access stay on internal zones alone and
 remain provably unable to reach the internet.
 
+**`traefik-tk2jp` is the exception, and joins no access zone.** Its own zone, `edge-net-ne2vk`, is
+already non-internal, because the proxy's purpose is to carry traffic in from outside. Adding an
+access zone to it would attach a second non-internal network for no gain, and would break the
+requirement that the proxy sit on the edge network alone. Corrected 2026-09-14: this record was
+first applied to every publishing service uniformly, which put the proxy on two.
+
 This reverses a claim in [../platform/conventions.md](../platform/conventions.md) Section 2.4, which
 stated that on an internal network "the gateway IP remains reachable". For published ports it is
 not, and the failure is silent.

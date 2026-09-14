@@ -10,8 +10,11 @@ import re
 from pathlib import Path
 from typing import Any, NamedTuple
 
+import bcrypt
 import pytest
 import yaml
+
+from scripts import gen_secrets
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 CONVENTIONS_DOCUMENT = REPOSITORY_ROOT / "docs" / "platform" / "conventions.md"
@@ -2072,6 +2075,208 @@ def test_only_the_testing_mail_service_is_gated_behind_a_profile() -> None:
             assert "profiles" not in definition, environment
         else:
             assert definition["profiles"] == [profile], environment
+
+
+PROXY_SERVICE = "traefik-tk2jp"
+PROXY_CONFIG = REPOSITORY_ROOT / "docker" / "traefik" / "traefik.yaml"
+
+
+@pytest.mark.unit
+def test_the_proxy_matches_its_registered_image_ports_and_network() -> None:
+    """Pin the proxy to the row assigned to it.
+
+    Confirms the registered name, pinned image, and published ports match the registry, and that
+    the proxy sits on the edge zone alone, which is already non-internal and therefore needs no
+    access zone beside it.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any registered value is departed from.
+    """
+    definition = merged(DEVELOPMENT_FILE)["services"][PROXY_SERVICE]
+
+    assert definition["image"] == "docker.io/library/traefik:v3.7.13"
+    assert definition["container_name"] == PROXY_SERVICE
+    assert set(definition["ports"]) == {"8080:80", "8081:8080"}
+    assert definition["networks"] == ["edge-net-ne2vk"]
+
+
+@pytest.mark.unit
+def test_the_proxy_reads_the_docker_socket_read_only() -> None:
+    """Mount the socket without write access to the file.
+
+    Confirms the socket carries the read-only flag the ticket requires. This bounds the mount, not
+    the daemon: the API behind a read-only socket still accepts mutating calls, which is why the
+    decision record treats socket access as a real privilege and the security audit owns the rest.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the socket is absent or mounted writable.
+    """
+    volumes = merged(DEVELOPMENT_FILE)["services"][PROXY_SERVICE]["volumes"]
+    socket = [mount for mount in volumes if "docker.sock" in mount]
+
+    assert socket == ["/var/run/docker.sock:/var/run/docker.sock:ro"]
+
+
+@pytest.mark.unit
+def test_container_discovery_is_opt_in() -> None:
+    """Expose only the services that ask to be exposed.
+
+    Confirms the provider does not expose containers by default, because the setting defaults to
+    true and would otherwise publish every service in the stack through the proxy.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If discovery is left opted out rather than opted in.
+    """
+    static = yaml.safe_load(PROXY_CONFIG.read_text(encoding="utf-8"))
+    provider = static["providers"]["docker"]
+
+    assert provider["exposedByDefault"] is False
+    assert provider["watch"] is True
+    assert provider["network"] == "edge-net-ne2vk"
+
+
+@pytest.mark.unit
+def test_the_dashboard_is_served_securely_on_its_own_entry_point() -> None:
+    """Keep the dashboard off the traffic port and behind a password.
+
+    Confirms the dashboard has an entry point of its own and that the insecure mode is refused,
+    because that mode serves an unauthenticated dashboard on an entry point it creates itself,
+    colliding with the one carrying traffic.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the entry points collide, or the insecure mode is enabled.
+    """
+    static = yaml.safe_load(PROXY_CONFIG.read_text(encoding="utf-8"))
+    entry_points = static["entryPoints"]
+    labels = " ".join(merged(DEVELOPMENT_FILE)["services"][PROXY_SERVICE]["labels"])
+
+    assert static["api"]["dashboard"] is True
+    assert static["api"]["insecure"] is False
+    assert entry_points["web"]["address"] == ":80"
+    assert entry_points["dashboard"]["address"] == ":8080"
+    assert static["ping"]["entryPoint"] == "dashboard"
+    assert "routers.dashboard.entrypoints=dashboard" in labels
+
+
+@pytest.mark.unit
+def test_the_dashboard_router_matches_the_api_the_page_calls() -> None:
+    """Keep the dashboard from rendering blank.
+
+    Confirms the router matches the API path as well as the dashboard path, because the dashboard
+    is a single-page application that fetches from the API and shows nothing without it.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If either path is unmatched, or the router is unauthenticated.
+    """
+    labels = merged(DEVELOPMENT_FILE)["services"][PROXY_SERVICE]["labels"]
+    joined = " ".join(labels)
+
+    assert "PathPrefix(`/dashboard`)" in joined
+    assert "PathPrefix(`/api`)" in joined
+    assert "routers.dashboard.middlewares=dashboard-auth" in joined
+    assert "middlewares.dashboard-auth.basicauth.users=${TRAEFIK_DASHBOARD_AUTH}" in joined
+
+
+@pytest.mark.unit
+def test_the_dashboard_password_is_recoverable_by_the_developer() -> None:
+    """Keep the credential usable by the person who must log in.
+
+    Confirms the manifest registers a password and that the entry the proxy reads is that password
+    hashed, because a hash whose password was discarded at generation locks everyone out of the
+    dashboard the service exists to provide.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the password is unregistered, or the hash is not built from it.
+    """
+    manifest = (REPOSITORY_ROOT / ".env.example").read_text(encoding="utf-8")
+    entry = gen_secrets.compose_dashboard_auth({"TRAEFIK_DASHBOARD_PASSWORD": "a-known-password"})
+    user, _, digest = entry.partition(":")
+
+    assert "TRAEFIK_DASHBOARD_PASSWORD=" in manifest
+    assert user == gen_secrets.BASIC_AUTH_USER
+    assert bcrypt.checkpw(b"a-known-password", digest.encode())
+
+
+@pytest.mark.unit
+def test_the_proxy_calls_nobody_and_logs_every_request() -> None:
+    """Stop the proxy reporting out, and make it say what it served.
+
+    Confirms the version check and usage reporting are disabled and an access log is configured,
+    because the update check is on by default and the request log is what the log collector ships.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If either outbound behaviour is left on, or requests go unlogged.
+    """
+    static = yaml.safe_load(PROXY_CONFIG.read_text(encoding="utf-8"))
+
+    assert static["global"]["checkNewVersion"] is False
+    assert static["global"]["sendAnonymousUsage"] is False
+    assert static["accessLog"]["format"] == "json"
+    assert static["accessLog"]["addInternals"] is True
+    assert "filePath" not in static["accessLog"]
+
+
+@pytest.mark.unit
+def test_the_testing_environment_runs_no_proxy() -> None:
+    """Keep a proxy out of the path between a test and the code it tests.
+
+    Confirms testing declares no proxy, because the suite calls the application directly and a
+    proxy in between adds a failure mode while proving nothing.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If testing declares a proxy.
+    """
+    services = merged(TESTING_FILE)["services"]
+
+    assert not [name for name in services if name.startswith("traefik-")]
 
 
 @pytest.mark.unit

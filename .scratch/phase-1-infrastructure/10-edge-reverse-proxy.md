@@ -5,16 +5,18 @@ with a dashboard a developer can log into to see the live routing table.
 
 **Blocked by:** 03.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The proxy runs with the registry name and discovers backends from container labels, so adding a service needs
+- [x] The proxy runs with the registry name and discovers backends from container labels, so adding a service needs
       no proxy config change and no restart.
-- [ ] Container discovery is opt-in: services are not exposed unless they ask to be.
-- [ ] The Docker socket is mounted read-only.
-- [ ] The dashboard listens on its own entrypoint, separate from the traffic entrypoint.
-- [ ] The dashboard router matches both the dashboard path and the API path, because the dashboard is a
+- [x] Container discovery is opt-in: services are not exposed unless they ask to be.
+- [x] The Docker socket is mounted read-only.
+- [x] The dashboard listens on its own entrypoint, separate from the traffic entrypoint.
+- [x] The dashboard router matches both the dashboard path and the API path, because the dashboard is a
       single-page app that calls the API and renders blank without it.
-- [ ] The dashboard requires basic authentication from a generated credential; the insecure no-auth mode is not
+- [x] The dashboard requires basic authentication from a generated credential; the insecure no-auth mode is not
       used.
-- [ ] The proxy sits on the edge network only, and that is the sole non-internal network.
-- [ ] Request logs reach the log aggregation stack.
+- [x] The proxy sits on the edge network only. That network is already non-internal, which is why the proxy joins
+      no access zone; it is not the platform's only non-internal network, because
+      [ADR-0021](../../docs/adr/0021-access-zone-for-published-ports.md) added one access zone per environment.
+- [x] Request logs reach the log aggregation stack.

@@ -1,0 +1,35 @@
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      aliasHeadersStrategy: delete
+  dashboard:
+    address: ":8080"
+    http:
+      aliasHeadersStrategy: delete
+
+api:
+  dashboard: true
+  insecure: false
+
+ping:
+  entryPoint: dashboard
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: edge-net-ne2vk
+    watch: true
+
+accessLog:
+  format: json
+  addInternals: true
+
+log:
+  level: INFO
+  format: json
+
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
