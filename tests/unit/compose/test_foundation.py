@@ -2314,6 +2314,7 @@ def reference(name: str) -> str:
     return "${" + name + "}"
 
 
+POSTGRES_PORT = 5432
 PROMETHEUS_CONFIG = REPOSITORY_ROOT / "docker" / "prometheus" / "prometheus.yml"
 ALLOY_CONFIG = REPOSITORY_ROOT / "docker" / "alloy" / "config.alloy"
 
@@ -2624,3 +2625,165 @@ def test_every_service_without_a_probe_is_only_ever_waited_on_as_started() -> No
         for dependency, rule in (body.get("depends_on") or {}).items():
             if dependency in probeless:
                 assert rule["condition"] != "service_healthy", f"{name} -> {dependency}"
+
+
+@pytest.mark.unit
+def test_the_database_dashboard_matches_its_registered_row() -> None:
+    """Pin the dashboard to the row assigned to it.
+
+    Confirms the registered name, pinned image, published port, and data volume match the registry,
+    and that it reaches the databases over the data zone.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any registered value is departed from.
+    """
+    definition = merged(DEVELOPMENT_FILE)["services"]["pgadmin-pa7fe"]
+
+    assert definition["image"] == "docker.io/dpage/pgadmin4:9.17"
+    assert definition["container_name"] == "pgadmin-pa7fe"
+    assert set(definition["ports"]) == {"5050:80"}
+    assert set(definition["networks"]) == {"data-net-nd9pc", "access-net-ha4mz"}
+    assert "pgadmin-pa7fe-data:/var/lib/pgadmin" in definition["volumes"]
+
+
+@pytest.mark.unit
+def test_both_database_nodes_are_registered_declaratively() -> None:
+    """Register both nodes on every launch, not only the first.
+
+    Confirms the definition file is mounted read-only and carries both nodes, and that the setting
+    which reapplies it on each start is registered, because the definitions otherwise load once and
+    a later edit never reaches the dashboard.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a node is unregistered, or the reapplication setting is absent.
+    """
+    definition = merged(DEVELOPMENT_FILE)["services"]["pgadmin-pa7fe"]
+    servers = json.loads(
+        (REPOSITORY_ROOT / "docker" / "pgadmin" / "servers.json").read_text(encoding="utf-8"),
+    )
+    manifest = (REPOSITORY_ROOT / ".env.example").read_text(encoding="utf-8")
+    hosts = {entry["Host"] for entry in servers["Servers"].values()}
+
+    assert "./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro" in definition["volumes"]
+    assert hosts == {"postgres-pg3ka", "postgres-replica-pg6vy"}
+    assert "PGADMIN_REPLACE_SERVERS_ON_STARTUP=True" in manifest
+    assert "PGADMIN_SERVER_JSON_FILE=" in manifest
+
+
+@pytest.mark.unit
+def test_the_definition_file_names_the_nodes_and_carries_no_credential() -> None:
+    """Describe both nodes without committing a secret.
+
+    Confirms each definition addresses its node completely and holds no password, because the file
+    is committed and a password in it would be a secret in version control, and no explanatory
+    field, because this repository keeps explanation out of data files.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a definition is incomplete, or carries a credential or a comment.
+    """
+    servers = json.loads(
+        (REPOSITORY_ROOT / "docker" / "pgadmin" / "servers.json").read_text(encoding="utf-8"),
+    )
+
+    for entry in servers["Servers"].values():
+        assert "Password" not in entry
+        assert "PassFile" not in entry
+        assert "Comment" not in entry
+        assert entry["SSLMode"] == "disable"
+        assert entry["Port"] == POSTGRES_PORT
+        assert entry["Username"] == "localforge_app"
+        assert entry["MaintenanceDB"] == "localforge"
+
+
+@pytest.mark.unit
+def test_the_database_dashboard_is_configured_for_this_platform() -> None:
+    """Set the three values the image needs beyond its credentials.
+
+    Confirms the bind address, the disabled mail server, and the permitted login domain are all
+    registered, because the default bind fails on an IPv4-only host and the image refuses the
+    reserved domain the registry assigns it.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any of the three is unregistered.
+    """
+    manifest = (REPOSITORY_ROOT / ".env.example").read_text(encoding="utf-8")
+
+    assert "PGADMIN_LISTEN_ADDRESS=0.0.0.0" in manifest
+    assert "PGADMIN_DISABLE_POSTFIX=True" in manifest
+    assert 'PGADMIN_CONFIG_ALLOW_SPECIAL_EMAIL_DOMAINS=["invalid"]' in manifest
+    assert "PGADMIN_CONFIG_UPGRADE_CHECK_ENABLED=False" in manifest
+
+
+@pytest.mark.unit
+def test_the_testing_environment_runs_no_database_dashboard() -> None:
+    """Keep dashboards out of the headless environment.
+
+    Confirms testing declares no dashboard, because nothing there listens for a human and the
+    suite must not wait on a service it never uses.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If testing declares a dashboard.
+    """
+    services = merged(TESTING_FILE)["services"]
+
+    assert "pgadmin-pa7fe" not in services
+    assert not [name for name in services if name.startswith("pgadmin-")]
+
+
+@pytest.mark.unit
+def test_the_dashboard_health_check_reads_the_configuration_database() -> None:
+    """Prove the registrations imported, not that a port answered.
+
+    Confirms the probe inspects the configuration database for the administrator and both
+    registered hosts, because the ping route answers unconditionally and the image's entrypoint
+    does not stop when the server import fails, so the dashboard can serve with neither node
+    registered.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the probe checks only that the port answers.
+    """
+    check = merged(DEVELOPMENT_FILE)["services"]["pgadmin-pa7fe"]["healthcheck"]["test"]
+    probe = " ".join(check)
+
+    assert "pgadmin4.db" in probe
+    assert "from user" in probe
+    assert "from server" in probe
+    assert "postgres-pg3ka" in probe
+    assert "postgres-replica-pg6vy" in probe
+    assert "mode=ro" in probe

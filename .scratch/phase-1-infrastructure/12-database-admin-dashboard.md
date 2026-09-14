@@ -5,13 +5,16 @@ both servers already registered on first launch.
 
 **Blocked by:** 04.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The dashboard runs with the registry name, its own named volume, and is reachable from the host.
-- [ ] It binds an address that works in an IPv4-only setup rather than relying on the default.
-- [ ] The bundled mail server is disabled, since mail capture is handled elsewhere.
-- [ ] Both the primary and the standby are pre-registered from a mounted server definition file.
-- [ ] Server definitions are applied on every launch, so the registration is declarative rather than a one-time
+- [x] The dashboard runs with the registry name, its own named volume, and is reachable from the host.
+- [x] It binds an address that works in an IPv4-only setup rather than relying on the default.
+- [x] The bundled mail server is disabled, since mail capture is handled elsewhere.
+- [x] Both the primary and the standby are pre-registered from a mounted server definition file.
+- [x] Server definitions are applied on every launch, so the registration is declarative rather than a one-time
       side effect of first boot.
-- [ ] Login requires the generated credential.
-- [ ] The dashboard sits on the data network only and is excluded from the testing environment.
+- [x] Login requires the generated credential.
+- [x] The dashboard sits on the data service zone plus the access zone that publishing a host port requires, and
+      on no other service zone, and is excluded from the testing environment. The literal wording predates
+      [ADR-0021](../../docs/adr/0021-access-zone-for-published-ports.md), which measured that a network marked
+      internal silently drops a published port.

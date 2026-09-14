@@ -480,6 +480,42 @@ services:
       retries: 20
       start_period: 45s
 
+  pgadmin-pa7fe:
+    image: docker.io/dpage/pgadmin4:9.17
+    container_name: pgadmin-pa7fe
+    restart: unless-stopped
+    env_file:
+      - .env.development
+    ports:
+      - "5050:80"
+    networks:
+      - data-net-nd9pc
+      - access-net-ha4mz
+    depends_on:
+      postgres-pg3ka:
+        condition: service_healthy
+      postgres-replica-pg6vy:
+        condition: service_healthy
+    volumes:
+      - pgadmin-pa7fe-data:/var/lib/pgadmin
+      - ./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import sqlite3,urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:80/misc/ping').read();
+          c=sqlite3.connect('file:/var/lib/pgadmin/pgadmin4.db?mode=ro',uri=True);
+          assert c.execute('select count(*) from user').fetchone()[0];
+          assert {r[0] for r in c.execute('select host from server')} ==
+          {'postgres-pg3ka','postgres-replica-pg6vy'}
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
 networks:
   edge-net-ne2vk:
     name: edge-net-ne2vk

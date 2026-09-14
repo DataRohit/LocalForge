@@ -1,0 +1,22 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "LocalForge primary",
+      "Group": "LocalForge",
+      "Host": "postgres-pg3ka",
+      "Port": 5432,
+      "MaintenanceDB": "localforge",
+      "Username": "localforge_app",
+      "SSLMode": "disable"
+    },
+    "2": {
+      "Name": "LocalForge standby",
+      "Group": "LocalForge",
+      "Host": "postgres-replica-pg6vy",
+      "Port": 5432,
+      "MaintenanceDB": "localforge",
+      "Username": "localforge_app",
+      "SSLMode": "disable"
+    }
+  }
+}

@@ -189,17 +189,33 @@ false` — it defaults to `true`, which would publish every container in the sta
 serves an unauthenticated dashboard on an auto-created `traefik` entrypoint at `:8080`, colliding with the web
 entrypoint.
 
-**pgAdmin needs three settings beyond the credentials.** `PGADMIN_LISTEN_ADDRESS=0.0.0.0` — the default `[::]` fails
+**pgAdmin needs five settings beyond the credentials.** `PGADMIN_LISTEN_ADDRESS=0.0.0.0` — the default `[::]` fails
 in IPv4-only setups. `PGADMIN_DISABLE_POSTFIX=True` avoids starting an unused mail server.
 `PGADMIN_SERVER_JSON_FILE` points at a mounted `servers.json` so both PostgreSQL nodes are pre-registered; those
 definitions load **only on first launch** unless `PGADMIN_REPLACE_SERVERS_ON_STARTUP=True`, which is what makes the
 registration declarative.
 
+Two more were measured on 2026-09-14, when the dashboard was built.
+`PGADMIN_CONFIG_ALLOW_SPECIAL_EMAIL_DOMAINS=["invalid"]`, because 9.17 validates the login address and
+**rejects** the registry's
+`dev@localforge.invalid`: `.invalid` is a reserved name, the container crash-loops on
+"does not appear to be a valid email address", and the address is deliberately unroutable, so the domain is
+permitted rather than the identity weakened. `PGADMIN_CONFIG_UPGRADE_CHECK_ENABLED=False`, because the dashboard
+otherwise fetches `https://www.pgadmin.org/versions.json` from a container that ADR-0021 leaves with real egress.
+Both land in the image's generated `config_distro.py`, which is where to confirm them.
+
+Its health check reads the configuration database rather than the `/misc/ping` route, which answers unconditionally:
+the upstream entrypoint does not stop on a failed server import, so the dashboard can serve happily with neither
+node registered. The probe asserts the administrator exists and that both registered hosts are present.
+
 **Flower's option is `basic_auth`.** The CLI flag `--basic-auth` and the env var `FLOWER_BASIC_AUTH` are the same
 option — every Flower option accepts a `FLOWER_`-prefixed env var. Multiple users are comma-separated. It is not the
 `auth` option, which is an OAuth email-allowlist regex.
 
-**A generated password reaches `redis_exporter` through its argument list.** That image carries no shell, so the render pattern used elsewhere is unavailable, and the two instances need different values from one environment file. The password is therefore visible in `docker inspect` and `docker compose config`. Accepted knowingly, on the same footing as Valkey's own `--requirepass`; the security audit owns whether that stands.
+**A generated password reaches `redis_exporter` through its argument list.** That image carries no shell, so the
+render pattern used elsewhere is unavailable, and the two instances need different values from one environment
+file. The password is therefore visible in `docker inspect` and `docker compose config`. Accepted knowingly, on
+the same footing as Valkey's own `--requirepass`; the security audit owns whether that stands.
 
 **postgres_exporter takes credentials split out.** `DATA_SOURCE_URI` accepts the host only; username and password go
 in `DATA_SOURCE_USER` and `DATA_SOURCE_PASS`, or `DATA_SOURCE_PASS_FILE` to keep the password out of the
@@ -353,7 +369,9 @@ docker inspect postgres-pg3ka --format "{{range .Mounts}}{{.Type}} {{.Name}} -> 
 ```
 
 Pass: every `volume` row carries a name from the registry; every `bind` row points inside the repository and is
-read-only. Three services see the Docker socket, all read-only: `traefik-tk2jp` and `alloy-al6wz` mount it directly, and `cadvisor-cv8mh` receives it inside its `/var/run` mount, which it needs to resolve container names. A read-only bind does not make the API read-only, so all three are root-equivalent over the daemon; the security audit owns that. Read-only by
+read-only. Two services mount the Docker socket, both read-only: `traefik-tk2jp` and `alloy-al6wz`. A read-only
+bind does not make the API read-only, so both are root-equivalent over the daemon; the security audit owns that.
+Read-only by
 requirement.
 
 ### 6.5 Offline enforcement

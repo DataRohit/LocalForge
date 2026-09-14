@@ -211,6 +211,9 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `PGADMIN_LISTEN_ADDRESS` | `pgadmin-pa7fe` | bind address | `0.0.0.0` | no | yes |
 | `PGADMIN_DISABLE_POSTFIX` | `pgadmin-pa7fe` | skip the bundled mail server | `True` | no | yes |
 | `PGADMIN_REPLACE_SERVERS_ON_STARTUP` | `pgadmin-pa7fe` | declarative server list | `True` | no | yes |
+| `PGADMIN_SERVER_JSON_FILE` | `pgadmin-pa7fe` | mounted server definitions | `/pgadmin4/servers.json` | no | no |
+| `PGADMIN_CONFIG_ALLOW_SPECIAL_EMAIL_DOMAINS` | `pgadmin-pa7fe` | permit the reserved login domain | `["invalid"]` | no | yes |
+| `PGADMIN_CONFIG_UPGRADE_CHECK_ENABLED` | `pgadmin-pa7fe` | stop the upgrade check reaching the vendor | `False` | no | no |
 | `VALKEY_CACHE_HOST` | `django-uv5n2` | cache host | `valkey-cache-vc5tn` | no | yes |
 | `VALKEY_CACHE_PORT` | `django-uv5n2` | cache port | `6379` | no | yes |
 | `VALKEY_CACHE_PASSWORD` | `valkey-cache-vc5tn` | `requirepass` | `<GENERATED>` | **yes** | yes |
