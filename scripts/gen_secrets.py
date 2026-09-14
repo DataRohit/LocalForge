@@ -91,6 +91,7 @@ TESTING_HOST_OVERRIDES: Mapping[str, str] = {
     "S3_ENDPOINT_URL": "http://127.0.0.1:28333",
     "EMAIL_HOST": "127.0.0.1",
     "EMAIL_PORT": "21025",
+    "MAILPIT_WEB_PORT": "28025",
 }
 
 ENVIRONMENT_FILES: Mapping[str, str] = {

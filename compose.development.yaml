@@ -516,6 +516,54 @@ services:
       retries: 20
       start_period: 60s
 
+  django-uv5n2:
+    image: localforge/django:0.1.0
+    build:
+      context: .
+      dockerfile: docker/django/Dockerfile
+      target: runtime
+    container_name: django-uv5n2
+    restart: unless-stopped
+    env_file:
+      - .env.development
+    ports:
+      - "8000:8000"
+    networks:
+      - edge-net-ne2vk
+      - app-net-na6hy
+      - data-net-nd9pc
+      - obsv-net-nb4xt
+      - access-net-ha4mz
+    volumes:
+      - django-uv5n2-static:/app/staticfiles
+    depends_on:
+      postgres-pg3ka:
+        condition: service_healthy
+      postgres-replica-pg6vy:
+        condition: service_healthy
+      valkey-cache-vc5tn:
+        condition: service_healthy
+      valkey-channels-vh8dm:
+        condition: service_healthy
+      rabbitmq-rq4sx:
+        condition: service_healthy
+      seaweedfs-sw9cr:
+        condition: service_healthy
+      mailpit-mp6gb:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:8000/health/').read()
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+
 networks:
   edge-net-ne2vk:
     name: edge-net-ne2vk

@@ -114,6 +114,12 @@ the environment and the `default` alias is PostgreSQL.
 Neither was needed before 4a, when the `default` alias was SQLite and no value was required. Run the generation
 step from phase 5 first, and start `postgres-tp8vn` from phase 7's stack; nothing else from either phase is needed.
 
+**Starting the application container applies Django's own migrations, including `auth`.** Swapping
+`AUTH_USER_MODEL` afterwards is refused by Django — `admin.0001_initial` would be applied before the accounts
+migration it then depends on. Either introduce the custom user model before the application container first runs,
+or recreate `postgres-pg3ka-data` and run the suite with `--create-db` once it exists. Measured 2026-09-14, when
+ticket 17 ran before ticket 18.
+
 **4a.** Convert `src/config/settings.py` into a package: `base.py` holding today's content with values read through
 `django-environ`, plus `development.py` and `testing.py`. The `default` database alias moves to PostgreSQL here
 rather than staying on SQLite, because the application container's entrypoint migrates before it binds its port and

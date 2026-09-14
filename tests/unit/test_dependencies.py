@@ -291,3 +291,29 @@ def test_a_missing_distribution_reports_itself() -> None:
     """
     with pytest.raises(PackageNotFoundError):
         version("localforge-not-a-real-distribution")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("compose_file", ["compose.development.yaml", "compose.testing.yaml"])
+def test_the_built_image_tags_match_the_project_version(compose_file: str) -> None:
+    """Tag the built images with the version the project declares.
+
+    Confirms every image this repository builds carries the manifest's version, because three
+    copies of a version string with nothing holding them together drift at the first bump.
+
+    Arguments:
+        compose_file: Compose file to inspect.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a built image carries another version.
+    """
+    version = tomllib.loads(MANIFEST_PATH.read_text(encoding="utf-8"))["project"]["version"]
+    source = (REPOSITORY_ROOT / compose_file).read_text(encoding="utf-8")
+
+    for line in source.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("image: localforge/django"):
+            assert stripped.endswith(f":{version}"), stripped

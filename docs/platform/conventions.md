@@ -187,6 +187,8 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | `django-uv5n2` | CSRF origins behind Traefik | `http://localhost:8080` | no | yes |
 | `DJANGO_LOG_LEVEL` | `django-uv5n2` | root log level | `INFO` | no | no |
 | `DJANGO_TIME_ZONE` | `django-uv5n2` | application timezone, stored datetimes stay UTC-aware | `UTC` | no | no |
+| `LOCALFORGE_WAIT_SERVICES` | `django-uv5n2` | services the entrypoint waits for before migrating, space-separated. Deliberately outside a vendor prefix, like the backup schedules | `postgres valkey-cache` | no | no |
+| `LOCALFORGE_WAIT_TIMEOUT` | `django-uv5n2` | seconds the entrypoint waits before giving up on a dependency | `120` | no | no |
 | `UVICORN_WORKERS` | `django-uv5n2` | ASGI worker count | `2` | no | no |
 | `POSTGRES_DB` | `postgres-pg3ka` | database name | `localforge` | no | yes |
 | `POSTGRES_USER` | `postgres-pg3ka` | superuser role | `localforge_app` | no | yes |
@@ -237,6 +239,7 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `EMAIL_BACKEND` | `django-uv5n2` | Django email backend | `django.core.mail.backends.smtp.EmailBackend` | no | yes |
 | `EMAIL_HOST` | `django-uv5n2` | SMTP host | `mailpit-mp6gb` | no | yes |
 | `EMAIL_PORT` | `django-uv5n2` | SMTP port | `1025` | no | yes |
+| `MAILPIT_WEB_PORT` | `mailpit-mp6gb` | web and readiness port the dependency gate probes | `8025` | no | no |
 | `DEFAULT_FROM_EMAIL` | `django-uv5n2` | envelope sender | `no-reply@localforge.invalid` | no | yes |
 | `S3_ENDPOINT_URL` | `django-uv5n2` | SeaweedFS S3 gateway | `http://seaweedfs-sw9cr:8333` | no | yes |
 | `S3_ACCESS_KEY_ID` | `seaweedfs-sw9cr` | S3 access key | `<GENERATED>` | **yes** | yes |
@@ -276,7 +279,9 @@ Every `*_HOST` override follows from the testing registry in Section 2.3: the te
 containers, so a host left naming a development container would resolve to nothing on the testing networks.
 
 `.env.testing.host` is the same file with every `*_HOST` set to `127.0.0.1` and every port set to the published host
-port from [service-inventory.md](./service-inventory.md) Section 4.
+port from [service-inventory.md](./service-inventory.md) Section 4. That includes `MAILPIT_WEB_PORT`, which the
+dependency gate probes: left at the development value it would reach the **development** Mailpit on `8025` and
+report the testing one ready while it was dead.
 
 ## 4. Planned scripts
 

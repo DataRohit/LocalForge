@@ -168,6 +168,34 @@ services:
       retries: 10
       start_period: 20s
 
+  django-test-dt5qx:
+    image: localforge/django-test:0.1.0
+    build:
+      context: .
+      dockerfile: docker/django/Dockerfile
+      target: test
+    container_name: django-test-dt5qx
+    restart: "no"
+    env_file:
+      - .env.testing
+    networks:
+      - app-net-nt5rk
+      - data-net-nt8fq
+    volumes:
+      - ./.env.development:/app/.env.development:ro
+      - ./.env.testing:/app/.env.testing:ro
+    depends_on:
+      postgres-tp8vn:
+        condition: service_healthy
+      valkey-cache-tv4kq:
+        condition: service_healthy
+      valkey-channels-tv9zw:
+        condition: service_healthy
+      rabbitmq-tr6mc:
+        condition: service_healthy
+      seaweedfs-ts3jd:
+        condition: service_healthy
+
 networks:
   access-net-ht6pn:
     name: access-net-ht6pn

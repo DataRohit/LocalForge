@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${DJANGO_SETTINGS_MODULE:?settings module is required}"
+
+WAIT_SERVICES="${LOCALFORGE_WAIT_SERVICES:-postgres}"
+WAIT_TIMEOUT="${LOCALFORGE_WAIT_TIMEOUT:-120}"
+WORKERS="${UVICORN_WORKERS:-2}"
+child=""
+
+log() {
+  printf '%s django_entrypoint: %s\n' "$(date --iso-8601=seconds)" "$1" >&2
+}
+
+forward_signal() {
+  log "stopping"
+  if [ -n "${child}" ]; then
+    kill -TERM "${child}" 2>/dev/null || true
+    wait "${child}" 2>/dev/null || true
+  fi
+  exit 0
+}
+
+trap forward_signal TERM INT
+
+supervise() {
+  "$@" &
+  child=$!
+  wait "${child}"
+  child=""
+}
+
+log "waiting for dependencies: ${WAIT_SERVICES}"
+read -r -a wait_targets <<<"${WAIT_SERVICES}"
+supervise python /app/scripts/wait_for_services.py "${wait_targets[@]}" --timeout "${WAIT_TIMEOUT}"
+
+if [ "$#" -gt 0 ]; then
+  log "handing over to: $*"
+  exec "$@"
+fi
+
+log "applying migrations"
+supervise python /app/src/manage.py migrate --noinput
+
+log "collecting static files"
+supervise python /app/src/manage.py collectstatic --noinput --clear
+
+log "serving on port 8000 with ${WORKERS} worker(s)"
+exec uvicorn config.asgi:application \
+  --host 0.0.0.0 \
+  --port 8000 \
+  --workers "${WORKERS}" \
+  --ws websockets-sansio

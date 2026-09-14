@@ -44,6 +44,7 @@ coverage.xml
 htmlcov/
 pytestdebug.log
 test-results/
+staticfiles/
 .cache/
 .venv/
 venv/

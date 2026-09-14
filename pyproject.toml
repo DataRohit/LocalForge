@@ -114,6 +114,7 @@ convention = "google"
 "scripts/sops_env.py" = ["S603"]
 "tests/**/*.py" = ["S101"]
 "tests/unit/test_harness.py" = ["S101", "S603"]
+"tests/unit/scripts/test_django_entrypoint.py" = ["S101", "S603"]
 ".github/scripts/validate_commit_message.py" = ["C901", "INP001", "PLR0912"]
 
 [tool.ruff.format]
@@ -139,7 +140,7 @@ django_settings_module = "config.settings.testing"
 strict_settings = true
 
 [[tool.mypy.overrides]]
-module = ["environ.*"]
+module = ["environ.*", "amqp.*", "health_check.*"]
 ignore_missing_imports = true
 
 [tool.ty.environment]

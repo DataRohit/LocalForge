@@ -118,7 +118,12 @@ run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data /
 | 8 | `grafana-gf7qv` | `prometheus-pm5db` healthy, `loki-lk3ny` started — that image carries no probe, so it can never report healthy |
 
 `django-uv5n2` runs migrations in its entrypoint **before** binding its port, so tier 4 waiting on it healthy also
-waits on the schema being current. Celery workers never run migrations.
+waits on the schema being current. Celery workers never run migrations: they reuse the same image and pass their own
+command to the entrypoint, which waits for dependencies and then hands over.
+
+**Tier 3's wait covers the tier-1 services that have a probe.** `loki-lk3ny` has none — Section 2.1 records why — so
+nothing can depend on it with `service_healthy`, and the application does not depend on it at all: a log store that
+is down must not stop the application serving.
 
 ### 2.1 Health checks
 
@@ -255,6 +260,12 @@ every testing service publishes a host port and Docker drops a publication made 
 Host ports are the development port plus 20000. That is what lets both stacks run at once and what makes host mode
 possible.
 
+`django-test-dt5qx` bind-mounts `.env.development` and `.env.testing` read-only. The suite asserts that each
+environment file carries the credentials its services were started with — a distinct password per Valkey instance,
+a broker user that matches the compose definition — and without the files those assertions skip, which would make
+container mode report a different result from host mode for an environmental reason. The files stay on the
+machine, out of the image, and out of version control.
+
 ### 4.1 Exclusions, and why
 
 | Excluded | Reason |
@@ -310,8 +321,19 @@ Built locally rather than pulled:
 
 | Image | Dockerfile | Base |
 |---|---|---|
-| `localforge/django` | `docker/django/Dockerfile` | `python:3.14-slim`, multi-stage with a `test` stage |
+| `localforge/django` | `docker/django/Dockerfile`, target `runtime`, tagged `0.1.0` | `python:3.14.6-slim`. Serves `django-uv5n2`, and later `celery-worker-cw8rt`, `celery-beat-cb4hq` and `flower-fl9zd`, which pass their own command to the entrypoint and therefore wait for dependencies without migrating |
+| `localforge/django-test` | `docker/django/Dockerfile`, target `test`, tagged `0.1.0` | the runtime stage plus the development dependencies, the suite, and the repository artifacts the suite reads |
 | `localforge/pgbackrest` | `docker/pgbackrest/Dockerfile` | `postgres:18.6` plus PGDG `pgbackrest`, tagged `18.6`. Run by **both** `pgbackrest-pb2wj` and `postgres-pg3ka`, because `archive_command` executes on the primary and therefore needs the binary there. See [../adr/0011-pgbackrest-backups.md](../adr/0011-pgbackrest-backups.md) |
+
+The application image installs from the lockfile with a pinned `uv` binary copied from `ghcr.io/astral-sh/uv:0.12.1`,
+rather than fetching one at build time. Measured 2026-09-14: a build container cannot reach `files.pythonhosted.org`
+on this network — TLS interception breaks the handshake — while the configured package index answers normally, so
+bootstrapping the installer through `pip` fails and copying the binary is the only reliable route.
+
+A rebuild with unchanged inputs is fully cached and therefore performs no downloads. Note that
+`docker build --network none` still fails: BuildKit includes the network mode in a `RUN` layer's cache key, so
+changing it invalidates the dependency layer and re-runs the install. Cache reuse, not the flag, is what makes the
+repeat build offline.
 
 Two registry facts that look like typos and are not:
 

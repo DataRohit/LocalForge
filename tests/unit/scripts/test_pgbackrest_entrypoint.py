@@ -142,7 +142,9 @@ def tools(tmp_path: Path) -> Path:
     write_tool(tmp_path, "pg_isready", "exit 0")
     write_tool(tmp_path, "pgbackrest", 'echo "$@" >>"$0.calls"\nexit 0')
     write_tool(
-        tmp_path, "sleep", f'touch "{tmp_path.as_posix()}/reached-loop"\nexec /bin/sleep "$@"'
+        tmp_path,
+        "sleep",
+        f'[ "$1" = "20" ] && touch "{tmp_path.as_posix()}/reached-loop"\nexec /bin/sleep "$@"',
     )
 
     return tmp_path
