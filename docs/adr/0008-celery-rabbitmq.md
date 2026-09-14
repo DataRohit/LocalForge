@@ -22,6 +22,13 @@ Commercial support runs to 2028-04-30 and is irrelevant here. The executing agen
 community-supported series before pinning, and if none exists, pins `4.3.5-management` and records a review date of
 2026-11-30. This is a scheduled maintenance obligation, not an unknown.
 
+**Checked 2026-09-14, on building the broker.** The upstream site's own release table data
+(`docusaurus.config.js`, `customFields.releaseBranches.rabbitmq`) lists 4.3 as the newest series, with no
+`current` releases published behind it, `end_of_community_support: "2026-11-30"`, and 4.3.5 (2026-08-17) as its
+latest patch. No newer community-supported series exists, so `4.3.5-management` is pinned as this decision
+prescribed. **Review on 2026-11-30**, at which point the series leaves community support and a newer one must be
+adopted.
+
 ## Result backend
 
 Task results go to the Valkey cache instance. `django-celery-results` 2.6.0 is **rejected**: zero releases in twelve

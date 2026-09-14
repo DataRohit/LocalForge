@@ -75,6 +75,31 @@ services:
       retries: 10
       start_period: 20s
 
+  rabbitmq-tr6mc:
+    image: docker.io/library/rabbitmq:4.3.5
+    container_name: rabbitmq-tr6mc
+    hostname: rabbitmq-tr6mc
+    restart: unless-stopped
+    env_file:
+      - .env.testing
+    ports:
+      - "25672:5672"
+    networks:
+      - app-net-nt5rk
+      - access-net-ht6pn
+    volumes:
+      - rabbitmq-tr6mc-data:/var/lib/rabbitmq
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          rabbitmq-diagnostics -q check_running
+          && rabbitmq-diagnostics -q check_local_alarms
+      interval: 30s
+      timeout: 15s
+      retries: 10
+      start_period: 120s
+
 networks:
   access-net-ht6pn:
     name: access-net-ht6pn

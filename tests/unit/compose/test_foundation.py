@@ -1443,6 +1443,232 @@ def test_the_cache_and_result_databases_are_documented_as_distinct() -> None:
     assert sentences
 
 
+BROKER_INSTANCES = {
+    "development": ("rabbitmq-rq4sx", 5672, "docker.io/library/rabbitmq:4.3.5-management"),
+    "testing": ("rabbitmq-tr6mc", 25672, "docker.io/library/rabbitmq:4.3.5"),
+}
+
+BROKER_NETWORKS = {
+    "development": {"app-net-na6hy", "access-net-ha4mz"},
+    "testing": {"app-net-nt5rk", "access-net-ht6pn"},
+}
+
+BROKER_PORTS = {
+    "development": {"5672:5672", "15672:15672"},
+    "testing": {"25672:5672"},
+}
+
+BROKER_HEALTH_COMMAND = (
+    "rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_local_alarms"
+)
+
+BROKER_SUPPORT_REVIEW = "2026-11-30"
+BROKER_SUPPORT_CHECKED = "Checked 2026-09-14"
+MANIFEST_PLACEHOLDER = "<GENERATED>"
+BROKER_MINIMUM_INTERVAL_SECONDS = 30
+BROKER_MINIMUM_START_PERIOD_SECONDS = 60
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("environment", sorted(BROKER_INSTANCES))
+def test_each_broker_matches_its_registered_image_port_and_volume(environment: str) -> None:
+    """Pin the broker to the row that was assigned to it.
+
+    Confirms the registered name, pinned image, published port, and data volume all match the
+    registry, so the development broker keeps its management plugin and the testing broker stays
+    without one.
+
+    Arguments:
+        environment: Environment whose overlay is inspected.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any registered value is departed from.
+    """
+    service, port, image = BROKER_INSTANCES[environment]
+    definition = merged(ENVIRONMENT_FILES[environment])["services"][service]
+
+    assert definition["image"] == image
+    assert definition["container_name"] == service
+    assert definition["hostname"] == service
+    assert f"{port}:5672" in definition["ports"]
+    assert set(definition["ports"]) == BROKER_PORTS[environment]
+    assert set(definition["networks"]) == BROKER_NETWORKS[environment]
+    assert definition["volumes"] == [f"{service}-data:/var/lib/rabbitmq"]
+
+
+@pytest.mark.unit
+def test_only_the_development_broker_publishes_a_management_interface() -> None:
+    """Keep the dashboard out of the environment that has no developer.
+
+    Confirms the management port is published in development and nowhere in testing, which is what
+    the inventory records and what keeps the two environments able to run at once.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If testing publishes a management port, or development does not.
+    """
+    development = merged(DEVELOPMENT_FILE)["services"]["rabbitmq-rq4sx"]
+    testing = merged(TESTING_FILE)["services"]["rabbitmq-tr6mc"]
+
+    assert "15672:15672" in development["ports"]
+    assert all("15672" not in mapping for mapping in testing["ports"])
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("environment", sorted(BROKER_INSTANCES))
+def test_each_broker_pins_its_node_name_to_the_registered_hostname(environment: str) -> None:
+    """Keep a recreated container from starting an empty broker.
+
+    Confirms the hostname is pinned to the registered container name, because the node derives its
+    name and its storage directory from the hostname, which Compose otherwise leaves as the
+    container identifier, so a recreate silently discards every durable queue.
+
+    Arguments:
+        environment: Environment whose overlay is inspected.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the hostname is unset or does not match the registered name.
+    """
+    service, _, _ = BROKER_INSTANCES[environment]
+    definition = merged(ENVIRONMENT_FILES[environment])["services"][service]
+    document = (REPOSITORY_ROOT / "docs" / "platform" / "service-inventory.md").read_text(
+        encoding="utf-8",
+    )
+
+    assert definition["hostname"] == service
+    assert "RabbitMQ must pin its hostname" in document
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("environment", sorted(BROKER_INSTANCES))
+def test_every_broker_health_check_is_the_documented_staged_check(environment: str) -> None:
+    """Confirm the runtime is up and raising no alarm.
+
+    Confirms the check runs the vendor's stage three pair rather than opening a socket, because a
+    broker with a raised resource alarm accepts connections while refusing to accept publishes.
+
+    Arguments:
+        environment: Environment whose overlay is inspected.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If either stage is missing.
+    """
+    service, _, _ = BROKER_INSTANCES[environment]
+    check = merged(ENVIRONMENT_FILES[environment])["services"][service]["healthcheck"]
+
+    assert check["test"][0] == "CMD-SHELL"
+    assert " ".join(check["test"][1].split()) == BROKER_HEALTH_COMMAND
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("environment", sorted(BROKER_INSTANCES))
+def test_every_broker_health_check_probes_infrequently(environment: str) -> None:
+    """Keep an expensive probe from running like a cheap one.
+
+    Confirms the interval is at least thirty seconds, because each invocation joins and leaves the
+    distribution cluster, which upstream documents as costly enough to avoid on a short cycle.
+
+    Arguments:
+        environment: Environment whose overlay is inspected.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the probe runs more often than every thirty seconds.
+    """
+    service, _, _ = BROKER_INSTANCES[environment]
+    check = merged(ENVIRONMENT_FILES[environment])["services"][service]["healthcheck"]
+
+    assert int(str(check["interval"]).removesuffix("s")) >= BROKER_MINIMUM_INTERVAL_SECONDS
+    assert int(str(check["start_period"]).removesuffix("s")) >= BROKER_MINIMUM_START_PERIOD_SECONDS
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("environment", sorted(BROKER_INSTANCES))
+def test_each_broker_takes_its_credentials_and_virtual_host_from_the_environment(
+    environment: str,
+) -> None:
+    """Keep the broker identity out of the manifest.
+
+    Confirms the broker reads its user, password, and virtual host from the environment file rather
+    than carrying any of them inline, because an inline literal silently overrides the generated
+    value.
+
+    Arguments:
+        environment: Environment whose overlay is inspected.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the manifest declares broker credentials inline.
+    """
+    service, _, _ = BROKER_INSTANCES[environment]
+    definition = merged(ENVIRONMENT_FILES[environment])["services"][service]
+    variables = ("RABBITMQ_DEFAULT_USER", "RABBITMQ_DEFAULT_PASS", "RABBITMQ_DEFAULT_VHOST")
+
+    assert definition["env_file"] == [f".env.{environment}"]
+    assert "environment" not in definition
+
+    source = REPOSITORY_ROOT / f".env.{environment}"
+    if not source.exists():
+        pytest.skip("this checkout has generated no environment file")
+
+    values = {
+        line.partition("=")[0]: line.partition("=")[2]
+        for line in source.read_text(encoding="utf-8").splitlines()
+        if "=" in line
+    }
+    for variable in variables:
+        assert values.get(variable), variable
+
+    assert values["RABBITMQ_DEFAULT_USER"] != "guest"
+    assert values["RABBITMQ_DEFAULT_VHOST"] != "/"
+    assert values["RABBITMQ_DEFAULT_PASS"] != MANIFEST_PLACEHOLDER
+
+
+@pytest.mark.unit
+def test_the_broker_support_review_date_is_recorded() -> None:
+    """Keep a dated obligation from becoming an unknown.
+
+    Confirms the decision record still carries the review date on which the pinned series leaves
+    community support, so the next agent inherits a date rather than rediscovering it.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the review date is absent from the decision record.
+    """
+    decision = (REPOSITORY_ROOT / "docs" / "adr" / "0008-celery-rabbitmq.md").read_text(
+        encoding="utf-8",
+    )
+
+    assert BROKER_SUPPORT_REVIEW in decision
+    assert "4.3.5-management" in decision
+    assert BROKER_SUPPORT_CHECKED in decision
+    assert "end_of_community_support" in decision
+    assert "No newer community-supported series exists" in decision
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize("environment", ["development", "testing"])
 def test_the_documented_project_names_are_distinct(environment: str) -> None:

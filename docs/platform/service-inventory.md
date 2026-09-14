@@ -130,6 +130,13 @@ Kubernetes Operator uses a plain **TCP check on the AMQP port** as the readiness
 probe, calling that the best practice; stage 3 is a defensible richer check for a dev stack, provided it does not
 run every five seconds.
 
+**RabbitMQ must pin its hostname.** The node derives its name, and therefore its Mnesia directory, from the
+container hostname, which Compose leaves as the container ID unless `hostname:` is set. Without it the broker
+stores state under `rabbit@<container-id>`: a `docker restart` preserves the ID and appears to work, but any
+recreate — `down` then `up`, a manifest edit, a re-pinned image — starts an empty node, silently discards every
+durable queue, and orphans the previous directory in the volume forever. Measured 2026-09-14. Both brokers
+therefore set `hostname:` to their registered container name.
+
 ## 3. Dashboards
 
 Every service either exposes a native UI or is given a companion.
@@ -239,7 +246,8 @@ Exact versions everywhere. `latest` is forbidden, including Dockerfile base imag
 |---|---|
 | `docker.io/library/postgres` | `18.6` |
 | `docker.io/valkey/valkey` | `9.1.2` |
-| `docker.io/library/rabbitmq` | `4.3.5-management` (dev), `4.3.5` (testing) |
+| `docker.io/library/rabbitmq` | `4.3.5-management` (development) |
+| `docker.io/library/rabbitmq` | `4.3.5` (testing) |
 | `docker.io/library/traefik` | `v3.7.13` |
 | `docker.io/axllent/mailpit` | `v1.31.1` |
 | `docker.io/chrislusf/seaweedfs` | `4.46` |

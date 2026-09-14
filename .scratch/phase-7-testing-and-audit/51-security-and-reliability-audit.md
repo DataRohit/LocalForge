@@ -11,6 +11,8 @@ adversarial or degraded conditions, with every finding either fixed or recorded 
       check is justified in writing.
 - [ ] No credential, token, or key appears in the repository, in an image layer, in a log line, or in an error
       response. The secret-scanning hook passes over the full history of this work.
+- [ ] No vendor default account survives in any service: the broker lists only the configured user and no `guest`,
+      and every dashboard rejects an unauthenticated request before serving any page.
 - [ ] Debug mode is off outside development, and an error response never returns a traceback or settings detail.
 - [ ] Security headers are set: content type options, frame options, referrer policy, and a content security
       policy. Transport security settings are correct for the deployed shape and documented as inert on a local

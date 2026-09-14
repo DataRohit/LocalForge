@@ -143,6 +143,32 @@ services:
       retries: 10
       start_period: 20s
 
+  rabbitmq-rq4sx:
+    image: docker.io/library/rabbitmq:4.3.5-management
+    container_name: rabbitmq-rq4sx
+    hostname: rabbitmq-rq4sx
+    restart: unless-stopped
+    env_file:
+      - .env.development
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - app-net-na6hy
+      - access-net-ha4mz
+    volumes:
+      - rabbitmq-rq4sx-data:/var/lib/rabbitmq
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          rabbitmq-diagnostics -q check_running
+          && rabbitmq-diagnostics -q check_local_alarms
+      interval: 30s
+      timeout: 15s
+      retries: 10
+      start_period: 120s
+
 networks:
   edge-net-ne2vk:
     name: edge-net-ne2vk
