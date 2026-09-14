@@ -2405,3 +2405,38 @@ def test_a_digest_the_library_cannot_parse_is_treated_as_absent() -> None:
     assert (
         gen_secrets.verify_dashboard_auth({"TRAEFIK_DASHBOARD_PASSWORD": "secret"}, entry) is False
     )
+
+
+@pytest.mark.unit
+def test_forcing_warns_that_a_running_stack_keeps_its_old_credentials(
+    repository: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Say what forcing does to a stack that is already up.
+
+    Confirms the forced run warns that running services keep the credential they started with and
+    that nothing reports the mismatch, because every health check authenticates with the value the
+    service itself holds and therefore still passes.
+
+    Arguments:
+        repository: Temporary repository holding the manifest.
+        capsys: Fixture capturing the printed summary.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the warning does not describe the running-stack hazard.
+    """
+    gen_secrets.main([], root=repository, version_control=FakeVersionControl())
+    capsys.readouterr()
+    gen_secrets.main(
+        ["--environment", "development", "--force"],
+        root=repository,
+        version_control=FakeVersionControl(),
+    )
+    printed = capsys.readouterr().out
+
+    assert "already running keeps the one it started with" in printed
+    assert "Nothing reports this" in printed
+    assert "postgres-pg3ka-data" in printed

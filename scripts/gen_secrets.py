@@ -1058,8 +1058,11 @@ def report(
         lines.extend(
             (
                 "",
-                "Forced regeneration invalidates every volume whose contents derive from a",
-                "credential. Recreate these before starting the stack:",
+                "Forced regeneration rotates every credential in the files, but a service that is",
+                "already running keeps the one it started with, and a stateful service keeps it",
+                "inside its data directory where recreating the container does not reach it.",
+                "Nothing reports this: every health check still passes and only an authenticated",
+                "connection fails. Stop the stack, recreate these volumes, then start it again:",
             ),
         )
         lines.extend(f"  {volume}" for volume in volumes)

@@ -268,7 +268,7 @@ Exact versions everywhere. `latest` is forbidden, including Dockerfile base imag
 | `docker.io/chrislusf/seaweedfs` | `4.46` |
 | `docker.io/dpage/pgadmin4` | `9.17` |
 | `docker.io/prom/prometheus` | `v3.14.0` |
-| `docker.io/grafana/grafana-oss` | `13.2.1` |
+| `docker.io/grafana/grafana-oss` | `13.0.2` |
 | `docker.io/grafana/loki` | `3.7.7` |
 | `docker.io/grafana/alloy` | `v1.19.2` |
 | `ghcr.io/google/cadvisor` | `v0.60.5` |
@@ -287,6 +287,13 @@ Two registry facts that look like typos and are not:
 - **Valkey has no Docker Official Image.** `docker.io/library/valkey` returns 404; the reference is
   `docker.io/valkey/valkey`.
 - **cAdvisor moved to GHCR.** `gcr.io/cadvisor/cadvisor` carries only versions below v0.53.0.
+
+One pin was wrong and has been corrected:
+
+- **Grafana 13.2.1 was never published.** The pull fails with `not found`. Checked 2026-09-14 against the Docker
+  Hub tag list: the newest published `grafana/grafana-oss` is **13.0.2** (pushed 2026-06-02), and the 13 line runs
+  13.0.1 to 13.0.2. Pinned to `13.0.2`, which pulls. A tag that does not exist fails at the first `up`, so this cost
+  nothing but a minute — unlike the silent failures recorded above.
 
 ## 6. Audit commands
 
