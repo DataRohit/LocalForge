@@ -62,6 +62,30 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 AUTH_USER_MODEL = "accounts.User"
 
+DATABASE_WEB_CONNECTION_BUDGET = 32
+DATABASE_POOL_MINIMUM_SIZE = 2
+DATABASE_CONNECTION_MAX_LIFETIME_SECONDS = 600
+DATABASE_POOL_CHECKOUT_TIMEOUT_SECONDS = 3
+DATABASE_CONNECT_TIMEOUT_SECONDS = 5
+
+_uvicorn_workers = env.int("UVICORN_WORKERS", default=2)
+_database_aliases = 2
+
+_database_pool = {
+    "min_size": 1,
+    "max_size": max(
+        DATABASE_POOL_MINIMUM_SIZE,
+        DATABASE_WEB_CONNECTION_BUDGET // (_uvicorn_workers * _database_aliases),
+    ),
+    "max_lifetime": DATABASE_CONNECTION_MAX_LIFETIME_SECONDS,
+    "timeout": DATABASE_POOL_CHECKOUT_TIMEOUT_SECONDS,
+}
+
+_database_options = {
+    "pool": _database_pool,
+    "connect_timeout": DATABASE_CONNECT_TIMEOUT_SECONDS,
+}
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
@@ -70,8 +94,25 @@ DATABASES = {
         "PASSWORD": env.str("POSTGRES_PASSWORD"),
         "HOST": env.str("POSTGRES_HOST"),
         "PORT": env.int("POSTGRES_PORT"),
+        "CONN_MAX_AGE": 0,
+        "CONN_HEALTH_CHECKS": True,
+        "OPTIONS": _database_options,
+    },
+    "replica": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": env.str("POSTGRES_DB"),
+        "USER": env.str("POSTGRES_USER"),
+        "PASSWORD": env.str("POSTGRES_PASSWORD"),
+        "HOST": env.str("POSTGRES_REPLICA_HOST"),
+        "PORT": env.int("POSTGRES_REPLICA_PORT"),
+        "CONN_MAX_AGE": 0,
+        "CONN_HEALTH_CHECKS": True,
+        "OPTIONS": _database_options,
+        "TEST": {"MIRROR": "default"},
     },
 }
+
+DATABASE_ROUTERS = ["config.db_router.PrimaryReplicaRouter"]
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

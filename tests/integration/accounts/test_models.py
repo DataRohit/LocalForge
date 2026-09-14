@@ -1,7 +1,8 @@
 """Integration tests for the user model and its manager.
 
-Covers creation, email normalisation, and the inactive-by-default decision against the database,
-because the identifier rules are enforced by constraints rather than by Python.
+Covers creation, email normalisation, and the inactive-by-default decision against the database. A
+test that reads back through the ORM commits its writes, because reads are routed to the replica
+connection, which cannot see another connection's open transaction.
 """
 
 import secrets
@@ -24,7 +25,7 @@ PASSWORD = secrets.token_urlsafe(16)
 
 @pytest.mark.integration
 @pytest.mark.services("postgres")
-@pytest.mark.django_db
+@pytest.mark.django_db(databases=["default", "replica"])
 def test_an_account_is_created_inactive_with_a_usable_password() -> None:
     """Create an account that cannot yet sign in.
 
@@ -51,7 +52,7 @@ def test_an_account_is_created_inactive_with_a_usable_password() -> None:
 
 @pytest.mark.integration
 @pytest.mark.services("postgres")
-@pytest.mark.django_db
+@pytest.mark.django_db(databases=["default", "replica"])
 def test_an_account_carries_a_non_sequential_key_and_timestamps() -> None:
     """Identify accounts without revealing how many exist.
 
@@ -79,7 +80,7 @@ def test_an_account_carries_a_non_sequential_key_and_timestamps() -> None:
 
 @pytest.mark.integration
 @pytest.mark.services("postgres")
-@pytest.mark.django_db
+@pytest.mark.django_db(databases=["default", "replica"])
 def test_saving_an_account_again_moves_only_the_modified_timestamp() -> None:
     """Record when an account was last changed.
 
@@ -107,7 +108,7 @@ def test_saving_an_account_again_moves_only_the_modified_timestamp() -> None:
 
 @pytest.mark.integration
 @pytest.mark.services("postgres")
-@pytest.mark.django_db
+@pytest.mark.django_db(databases=["default", "replica"])
 def test_a_superuser_is_active_and_fully_permitted() -> None:
     """Create a superuser that can sign in immediately.
 
@@ -132,7 +133,7 @@ def test_a_superuser_is_active_and_fully_permitted() -> None:
 
 @pytest.mark.integration
 @pytest.mark.services("postgres")
-@pytest.mark.django_db
+@pytest.mark.django_db(databases=["default", "replica"])
 def test_two_accounts_cannot_differ_only_by_username_case() -> None:
     """Keep usernames unique whatever their case.
 
@@ -156,7 +157,7 @@ def test_two_accounts_cannot_differ_only_by_username_case() -> None:
 
 @pytest.mark.integration
 @pytest.mark.services("postgres")
-@pytest.mark.django_db
+@pytest.mark.django_db(databases=["default", "replica"])
 def test_two_accounts_cannot_differ_only_by_email_case() -> None:
     """Keep addresses unique whatever their case.
 
@@ -180,7 +181,7 @@ def test_two_accounts_cannot_differ_only_by_email_case() -> None:
 
 @pytest.mark.integration
 @pytest.mark.services("postgres")
-@pytest.mark.django_db
+@pytest.mark.django_db(databases=["default", "replica"])
 def test_an_address_is_normalised_on_save() -> None:
     """Store one canonical form of an address.
 
@@ -203,7 +204,7 @@ def test_an_address_is_normalised_on_save() -> None:
 
 @pytest.mark.integration
 @pytest.mark.services("postgres")
-@pytest.mark.django_db
+@pytest.mark.django_db(databases=["default", "replica"])
 def test_an_unparsable_address_is_refused_on_save() -> None:
     """Refuse an address that is not one.
 
@@ -225,7 +226,7 @@ def test_an_unparsable_address_is_refused_on_save() -> None:
 
 @pytest.mark.integration
 @pytest.mark.services("postgres")
-@pytest.mark.django_db
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_an_inactive_account_cannot_authenticate() -> None:
     """Refuse sign-in until the account is activated.
 
@@ -248,7 +249,7 @@ def test_an_inactive_account_cannot_authenticate() -> None:
 
 @pytest.mark.integration
 @pytest.mark.services("postgres")
-@pytest.mark.django_db
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_an_activated_account_authenticates() -> None:
     """Allow sign-in once the account is activated.
 
@@ -273,7 +274,7 @@ def test_an_activated_account_authenticates() -> None:
 
 @pytest.mark.integration
 @pytest.mark.services("postgres")
-@pytest.mark.django_db
+@pytest.mark.django_db(databases=["default", "replica"])
 def test_an_account_created_without_a_password_cannot_sign_in() -> None:
     """Leave an account without a usable password.
 
@@ -296,7 +297,7 @@ def test_an_account_created_without_a_password_cannot_sign_in() -> None:
 
 @pytest.mark.integration
 @pytest.mark.services("postgres")
-@pytest.mark.django_db
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_the_administration_hides_the_sensitive_fields(admin_client: Client) -> None:
     """Keep the password hash out of an editable field.
 
@@ -322,7 +323,7 @@ def test_the_administration_hides_the_sensitive_fields(admin_client: Client) -> 
 
 @pytest.mark.integration
 @pytest.mark.services("postgres")
-@pytest.mark.django_db
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_an_account_is_found_whatever_case_the_name_is_typed_in() -> None:
     """Find an account however its name was typed.
 
@@ -347,7 +348,7 @@ def test_an_account_is_found_whatever_case_the_name_is_typed_in() -> None:
 
 @pytest.mark.integration
 @pytest.mark.services("postgres")
-@pytest.mark.django_db
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_an_account_authenticates_whatever_case_the_name_is_typed_in() -> None:
     """Sign in however the name was typed.
 
@@ -372,7 +373,7 @@ def test_an_account_authenticates_whatever_case_the_name_is_typed_in() -> None:
 
 @pytest.mark.integration
 @pytest.mark.services("postgres")
-@pytest.mark.django_db
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_an_address_is_found_by_an_exact_lookup() -> None:
     """Find an account by the address it was given.
 
@@ -395,7 +396,7 @@ def test_an_address_is_found_by_an_exact_lookup() -> None:
 
 @pytest.mark.integration
 @pytest.mark.services("postgres")
-@pytest.mark.django_db
+@pytest.mark.django_db(databases=["default", "replica"])
 def test_full_validation_canonicalises_the_address() -> None:
     """Canonicalise the address wherever validation runs.
 

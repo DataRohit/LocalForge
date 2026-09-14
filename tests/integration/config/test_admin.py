@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 @pytest.mark.integration
 @pytest.mark.services("postgres")
-@pytest.mark.django_db
+@pytest.mark.django_db(databases=["default", "replica"])
 def test_admin_login_page_renders(client: Client) -> None:
     """Serve the administration login page.
 

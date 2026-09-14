@@ -10,9 +10,11 @@ from pathlib import Path
 
 import pytest
 
-from config.logs import StructuredFormatter
+from config.logs import QueryRedactionFilter, StructuredFormatter
 
 PROBE_LINE_NUMBER = 42
+PROBE_DURATION = 0.004
+PROBE_HASH = "argon2$argon2id$v=19$m=102400,t=2,p=8$c2FsdA$aGFzaA"
 
 
 def _record(**overrides: object) -> logging.LogRecord:
@@ -212,3 +214,60 @@ def test_an_unserialisable_field_falls_back_to_its_text() -> None:
     payload = json.loads(StructuredFormatter().format(_record(probe=object())))
 
     assert payload["probe"].startswith("<object object at")
+
+
+@pytest.mark.unit
+def test_query_values_are_kept_out_of_the_log_stream() -> None:
+    """Keep a credential out of a query record.
+
+    Confirms the statement is reduced to its operation and table and the parameters are dropped,
+    because an insert of an account carries its password hash in both the statement and the
+    parameters, and the stream is shipped and retained.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any part of the credential survives.
+    """
+    statement = " ".join(["INSERT INTO accounts_user (password) VALUES", f"('{PROBE_HASH}')"])
+    record = _record(
+        sql=statement,
+        params=[PROBE_HASH],
+        alias="default",
+        duration=PROBE_DURATION,
+    )
+
+    assert QueryRedactionFilter().filter(record) is True
+
+    payload = json.loads(StructuredFormatter().format(record))
+
+    assert PROBE_HASH not in json.dumps(payload)
+    assert payload["message"] == "INSERT INTO accounts_user (password)"
+    assert payload["alias"] == "default"
+    assert payload["duration"] == PROBE_DURATION
+
+
+@pytest.mark.unit
+def test_a_record_carrying_no_statement_is_left_alone() -> None:
+    """Leave an ordinary record untouched.
+
+    Confirms a record without a statement passes through unchanged, so attaching the filter to a
+    handler cannot quietly rewrite messages that were never database queries.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the message is rewritten.
+    """
+    record = _record()
+
+    assert QueryRedactionFilter().filter(record) is True
+    assert json.loads(StructuredFormatter().format(record))["message"] == "serving a request"

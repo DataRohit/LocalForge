@@ -15,6 +15,52 @@ RESERVED_ATTRIBUTES = frozenset(logging.makeLogRecord({}).__dict__) | {
     "taskName",
 }
 
+QUERY_ATTRIBUTES = ("sql", "params")
+QUERY_SUMMARY_WORDS = 4
+
+
+class QueryRedactionFilter(logging.Filter):
+    """Keep query values out of the log stream.
+
+    Inherits from ``logging.Filter`` and rewrites database records so a reader still sees which
+    connection served which kind of statement, without the parameter values: an insert of an
+    account carries its password hash twice, and the log stream is shipped and retained.
+
+    Attributes:
+        None beyond those the base filter defines.
+
+    Members:
+        filter: Reduce one database record to its statement summary.
+    """
+
+    @override
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Reduce one database record to its statement summary.
+
+        Replaces the interpolated statement with its leading words — the operation and the table —
+        and drops the parameters, leaving the alias and the duration the record was logged for.
+
+        Arguments:
+            record: The log record to rewrite.
+
+        Returns:
+            True, always: the record is kept, only reduced.
+
+        Raises:
+            None.
+        """
+        statement = getattr(record, "sql", None)
+
+        if isinstance(statement, str):
+            record.msg = " ".join(statement.split()[:QUERY_SUMMARY_WORDS])
+            record.args = ()
+
+        for name in QUERY_ATTRIBUTES:
+            if hasattr(record, name):
+                delattr(record, name)
+
+        return True
+
 
 def _representable(value: object) -> object:
     """Reduce one value to something JSON can carry.

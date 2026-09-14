@@ -5,6 +5,21 @@ two environments is visible in one short module rather than spread through condi
 """
 
 from config.settings.base import *
-from config.settings.base import env
+from config.settings.base import LOGGING, env
 
 DEBUG = env.bool("DJANGO_DEBUG")
+
+LOGGING["filters"] = {"redact_query_values": {"()": "config.logs.QueryRedactionFilter"}}
+
+LOGGING["handlers"]["queries"] = {
+    "class": "logging.StreamHandler",
+    "stream": "ext://sys.stdout",
+    "formatter": "structured",
+    "filters": ["redact_query_values"],
+}
+
+LOGGING["loggers"]["django.db.backends"] = {
+    "handlers": ["queries"],
+    "level": "DEBUG",
+    "propagate": False,
+}

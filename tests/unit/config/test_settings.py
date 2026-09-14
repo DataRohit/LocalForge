@@ -35,6 +35,8 @@ REQUIRED_ENVIRONMENT = {
     "POSTGRES_PASSWORD": secrets.token_urlsafe(16),
     "POSTGRES_HOST": "postgres-pg3ka",
     "POSTGRES_PORT": "5432",
+    "POSTGRES_REPLICA_HOST": "postgres-replica-pg6vy",
+    "POSTGRES_REPLICA_PORT": "5432",
 }
 
 SECRET_LIKE_MARKERS = ("secret", "password", "token")
@@ -184,10 +186,10 @@ def test_password_hashing_prefers_a_memory_hard_algorithm() -> None:
 
 @pytest.mark.unit
 def test_the_database_is_configured_from_the_environment() -> None:
-    """Reach the database named by the environment.
+    """Reach the databases named by the environment.
 
-    Confirms the default alias runs on the PostgreSQL backend and takes its name, role, host, and
-    port from the environment rather than from a literal in a settings module.
+    Confirms both aliases run on the PostgreSQL backend and take their name, role, host, and port
+    from the environment rather than from a literal in a settings module.
 
     Arguments:
         None.
@@ -198,15 +200,21 @@ def test_the_database_is_configured_from_the_environment() -> None:
     Raises:
         AssertionError: If the backend or any connection value does not match the environment.
     """
-    default = _execute_module_in_isolation("base", REQUIRED_ENVIRONMENT).DATABASES["default"]
+    aliases = _execute_module_in_isolation("base", REQUIRED_ENVIRONMENT).DATABASES
 
-    assert default["ENGINE"] == "django.db.backends.postgresql"
-    assert default["NAME"] == REQUIRED_ENVIRONMENT["POSTGRES_DB"]
-    assert default["USER"] == REQUIRED_ENVIRONMENT["POSTGRES_USER"]
-    assert default["PASSWORD"] == REQUIRED_ENVIRONMENT["POSTGRES_PASSWORD"]
-    assert default["HOST"] == REQUIRED_ENVIRONMENT["POSTGRES_HOST"]
-    assert default["PORT"] == int(REQUIRED_ENVIRONMENT["POSTGRES_PORT"])
-    assert configured_settings.DATABASES["default"]["ENGINE"] == default["ENGINE"]
+    assert set(aliases) == {"default", "replica"}
+
+    for alias in ("default", "replica"):
+        assert aliases[alias]["ENGINE"] == "django.db.backends.postgresql"
+        assert aliases[alias]["NAME"] == REQUIRED_ENVIRONMENT["POSTGRES_DB"]
+        assert aliases[alias]["USER"] == REQUIRED_ENVIRONMENT["POSTGRES_USER"]
+        assert aliases[alias]["PASSWORD"] == REQUIRED_ENVIRONMENT["POSTGRES_PASSWORD"]
+
+    assert aliases["default"]["HOST"] == REQUIRED_ENVIRONMENT["POSTGRES_HOST"]
+    assert aliases["default"]["PORT"] == int(REQUIRED_ENVIRONMENT["POSTGRES_PORT"])
+    assert aliases["replica"]["HOST"] == REQUIRED_ENVIRONMENT["POSTGRES_REPLICA_HOST"]
+    assert aliases["replica"]["PORT"] == int(REQUIRED_ENVIRONMENT["POSTGRES_REPLICA_PORT"])
+    assert configured_settings.DATABASES["default"]["ENGINE"] == aliases["default"]["ENGINE"]
 
 
 @pytest.mark.unit
