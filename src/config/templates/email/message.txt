@@ -1,0 +1,9 @@
+{% autoescape off %}
+{{ site_name }}
+
+{{ message }}
+{% if action_url %}
+
+Continue at {{ action_url }}
+{% endif %}
+{% endautoescape %}

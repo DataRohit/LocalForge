@@ -74,6 +74,7 @@ TESTING_OVERRIDES: Mapping[str, str] = {
     "S3_ENDPOINT_URL": "http://seaweedfs-ts3jd:8333",
     "EMAIL_HOST": "mailpit-tm7bh",
     "EMAIL_BACKEND": "django.core.mail.backends.locmem.EmailBackend",
+    "DJANGO_SITE_URL": "http://localhost:8000",
     "CELERY_TASK_ALWAYS_EAGER": "true",
 }
 

@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en">
+  <body>
+    <h1>{{ site_name }}</h1>
+    <p>{{ message }}</p>
+    {% if action_url %}
+      <p><a href="{{ action_url }}">Continue at {{ site_name }}</a></p>
+    {% endif %}
+  </body>
+</html>

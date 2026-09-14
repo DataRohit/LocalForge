@@ -64,6 +64,8 @@ Listed so scope creep is recognisable. None exists.
 | `src/config/channels.py` | Channel layer whose subscribe waits for the instance to register it |
 | `src/config/celery.py` | Celery application object |
 | `src/config/db_router.py` | Primary/replica router |
+| `src/config/email.py` | Multipart application email rendering and failure-safe delivery |
+| `src/config/templates/email/` | Plain-text and HTML application email templates |
 | `src/config/api.py` | Schema, Swagger UI, ReDoc views only |
 | `src/accounts/` | The project's own user model, its manager, its admin registration, and its initial migration |
 | `tests/integration/<package>/test_*.py` | One test per service integration, mirroring the package it covers |

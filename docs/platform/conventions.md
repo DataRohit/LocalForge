@@ -241,6 +241,8 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `EMAIL_PORT` | `django-uv5n2` | SMTP port | `1025` | no | yes |
 | `MAILPIT_WEB_PORT` | `mailpit-mp6gb` | web and readiness port the dependency gate probes | `8025` | no | no |
 | `DEFAULT_FROM_EMAIL` | `django-uv5n2` | envelope sender | `no-reply@localforge.invalid` | no | yes |
+| `DJANGO_SITE_NAME` | `django-uv5n2` | application name rendered in email | `LocalForge` | no | yes |
+| `DJANGO_SITE_URL` | `django-uv5n2` | absolute base URL for email links | `http://localhost:8000` | no | yes |
 | `S3_ENDPOINT_URL` | `django-uv5n2` | SeaweedFS S3 gateway | `http://seaweedfs-sw9cr:8333` | no | yes |
 | `S3_ACCESS_KEY_ID` | `seaweedfs-sw9cr` | S3 access key | `<GENERATED>` | **yes** | yes |
 | `S3_SECRET_ACCESS_KEY` | `seaweedfs-sw9cr` | S3 secret key | `<GENERATED>` | **yes** | yes |
@@ -273,6 +275,7 @@ Testing overrides, present only in `.env.testing`:
 | `S3_ENDPOINT_URL` | `http://seaweedfs-ts3jd:8333` | the testing storage container |
 | `EMAIL_HOST` | `mailpit-tm7bh` | the testing mail container, profile `smtp` |
 | `EMAIL_BACKEND` | `django.core.mail.backends.locmem.EmailBackend` | default; SMTP only under the `smtp` profile |
+| `DJANGO_SITE_URL` | `http://localhost:8000` | host-mode links stay inside the testing process |
 | `CELERY_TASK_ALWAYS_EAGER` | `true` | default; the broker integration test overrides it |
 
 Every `*_HOST` override follows from the testing registry in Section 2.3: the testing stack runs its own

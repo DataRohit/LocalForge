@@ -49,6 +49,13 @@ REQUIRED_ENVIRONMENT = {
     "CELERY_BROKER_URL": "amqp://broker:secret@rabbitmq-rq4sx:5672/localforge",
     "CELERY_RESULT_BACKEND": "redis://:secret@valkey-cache-vc5tn:6379/1",
     "CELERY_TASK_ALWAYS_EAGER": "false",
+    "EMAIL_BACKEND": "django.core.mail.backends.smtp.EmailBackend",
+    "EMAIL_HOST": "mailpit-mp6gb",
+    "EMAIL_PORT": "1025",
+    "MAILPIT_WEB_PORT": "8025",
+    "DEFAULT_FROM_EMAIL": "no-reply@localforge.invalid",
+    "DJANGO_SITE_NAME": "LocalForge",
+    "DJANGO_SITE_URL": "http://localhost:8000",
     "S3_ENDPOINT_URL": "http://seaweedfs-sw9cr:8333",
     "S3_ACCESS_KEY_ID": secrets.token_hex(20),
     "S3_SECRET_ACCESS_KEY": secrets.token_hex(20),
@@ -228,6 +235,34 @@ def test_uploaded_media_uses_private_object_storage() -> None:
     storage = storage_class(**options)
     effective_retries = storage.connection.meta.client.meta.config.retries
     assert effective_retries == {"total_max_attempts": 1, "mode": "standard"}
+
+
+@pytest.mark.unit
+def test_email_delivery_uses_environment_configuration() -> None:
+    """Point application email at the configured local capture service.
+
+    Confirms the backend, SMTP address, sender, and site identity all come from the environment,
+    while application templates are discoverable outside an installed Django application.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any mail or site setting ignores its environment variable.
+    """
+    module = _execute_module_in_isolation("base", REQUIRED_ENVIRONMENT)
+
+    assert REQUIRED_ENVIRONMENT["EMAIL_BACKEND"] == module.EMAIL_BACKEND
+    assert REQUIRED_ENVIRONMENT["EMAIL_HOST"] == module.EMAIL_HOST
+    assert int(REQUIRED_ENVIRONMENT["EMAIL_PORT"]) == module.EMAIL_PORT
+    assert int(REQUIRED_ENVIRONMENT["MAILPIT_WEB_PORT"]) == module.MAILPIT_WEB_PORT
+    assert REQUIRED_ENVIRONMENT["DEFAULT_FROM_EMAIL"] == module.DEFAULT_FROM_EMAIL
+    assert REQUIRED_ENVIRONMENT["DJANGO_SITE_NAME"] == module.SITE_NAME
+    assert REQUIRED_ENVIRONMENT["DJANGO_SITE_URL"] == module.SITE_URL
+    assert module.TEMPLATES[0]["DIRS"] == [module.BASE_DIR / "config" / "templates"]
 
 
 @pytest.mark.unit

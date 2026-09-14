@@ -49,7 +49,7 @@ ROOT_URLCONF = "config.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "config" / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -200,6 +200,15 @@ USE_TZ = True
 STATIC_URL = "static/"
 
 STATIC_ROOT = BASE_DIR.parent / "staticfiles"
+
+EMAIL_BACKEND = env.str("EMAIL_BACKEND")
+EMAIL_HOST = env.str("EMAIL_HOST")
+EMAIL_PORT = env.int("EMAIL_PORT")
+EMAIL_TIMEOUT = 10
+DEFAULT_FROM_EMAIL = env.str("DEFAULT_FROM_EMAIL")
+MAILPIT_WEB_PORT = env.int("MAILPIT_WEB_PORT")
+SITE_NAME = env.str("DJANGO_SITE_NAME")
+SITE_URL = env.str("DJANGO_SITE_URL")
 
 S3_CONNECT_TIMEOUT_SECONDS = 5
 S3_READ_TIMEOUT_SECONDS = 15
