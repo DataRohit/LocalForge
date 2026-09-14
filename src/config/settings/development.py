@@ -9,7 +9,7 @@ from config.settings.base import LOGGING, env
 
 DEBUG = env.bool("DJANGO_DEBUG")
 
-LOGGING["filters"] = {"redact_query_values": {"()": "config.logs.QueryRedactionFilter"}}
+LOGGING["filters"]["redact_query_values"] = {"()": "config.logs.QueryRedactionFilter"}
 
 LOGGING["handlers"]["queries"] = {
     "class": "logging.StreamHandler",

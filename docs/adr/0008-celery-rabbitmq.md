@@ -35,6 +35,79 @@ Task results go to the Valkey cache instance. `django-celery-results` 2.6.0 is *
 months and Django classifiers stopping at 5.2. Routing results to Valkey removes a stale dependency and keeps a
 write path out of PostgreSQL.
 
+Results use **logical database 1**, not the cache's 0. A `FLUSHDB` ignores the key prefix and erases the whole
+logical database, so sharing an index would mean a routine cache flush destroying every pending task result.
+
+## A worker needs exclusive queues on this broker
+
+Measured 2026-09-14, on integrating the queue. RabbitMQ 4.3.5 has deprecated `transient_nonexcl_queues` and
+**refuses them by default** — `rabbitmqctl list_deprecated_features` reports it `denied_by_default`. A Celery worker
+and its clients declare that shape in three places, governed by two settings, and are refused at whichever they
+reach first:
+
+| Declared by | Queue | Setting that fixes it |
+|---|---|---|
+| Control | the per-worker pidbox mailbox | `control_queue_exclusive` |
+| Mingle, and every control client | one reply queue per client, keyed by its object id | `control_queue_exclusive` |
+| Gossip | the worker event queue | `event_queue_exclusive` |
+
+Neither failure is clean. The broker closes the connection with `INTERNAL_ERROR (541)`, Celery reads that as
+connection loss and reconnects, and the worker spins without ever reaching `ready` — measured with `--pool=solo`,
+36 refusals in 45 seconds, each traceback naming `transient_nonexcl_queues`. The count is pool-dependent, so it is
+the shape that matters, not the number: the cause is visible in the log, but what is not visible is that fixing the
+first declaration only moves the failure to the next.
+
+Both are set to `True`. An exclusive queue is bound to the connection that declared it and dies with it, which is
+what a per-worker mailbox and a per-worker event queue both want anyway, and it is not the deprecated shape.
+Measured after the change: a real `celery -A config worker` reaches `ready` with **zero** refusals, and
+`app.control.ping()` from a separate process returns `pong`. Removing `event_queue_exclusive` alone puts it back to
+never reaching `ready`.
+
+Two alternatives were rejected. Permitting the deprecated feature in the broker's configuration buys the same
+outage later, since it is scheduled for removal outright. `control_queue_durable` is worse than useless here: Celery
+refuses it together with `control_queue_exclusive`, and on its own it leaves a durable mailbox behind for every
+worker that has ever run.
+
+Turning remote control off instead is **not** available: [../build/plan.md](../build/plan.md) gate 6d proves the
+worker with `celery -A config inspect ping`, which travels over the mailbox, and Flower reads the event queue.
+
+**The in-process test worker cannot prove this.** `celery.contrib.testing.worker.start_worker` hardcodes
+`without_gossip=True` and `without_mingle=True`, so while it does exercise the control mailbox, it never declares
+Mingle's reply queue or Gossip's event queue. The suite therefore declares each of the three against the real
+broker directly and asserts it is exclusive, rather than inferring health from a worker that skips two of them.
+
+## The queue does not own the log stream
+
+`worker_hijack_root_logger` defaults to **true**, which replaces the root logger's handlers when a worker starts.
+This platform configures one structured handler for every process, so a hijacking worker would emit prose where the
+collector in [0010](./0010-loki-alloy-logging.md) expects JSON. It is set to false.
+
+Task arguments are a second log hazard, and they need two seams because they escape by two routes. The worker logs
+a received and a failed task from the message's `argsrepr` and `kwargsrepr` fields, independently of anything the
+task class does, so the redaction is attached to `before_task_publish` rather than to the task class: `send_task`
+never goes through `Task.apply_async`, so a publisher that does not hold the task object — `django-health-check`, or
+any third-party caller — would otherwise escape it. Positional arguments are reduced to their type names, since a
+positional argument has no name to judge it by, and keyword arguments keep their names with credential-shaped
+values replaced, recursively, because a credential is as often nested inside a payload as passed at the top level.
+The names cleansed are exactly Django's own `SafeExceptionReporterFilter.hidden_settings`, asserted against it so
+the two cannot drift.
+
+Publishing is not the only route, though: a task run in the caller publishes nothing, so `config.logs`
+`TaskArgumentRedactionFilter` blanks the argument fields on every record the queue writes, whatever produced them.
+Publish-time redaction still earns its place — it is what protects the **event stream** Flower reads in ticket 29,
+which no logging filter can reach — so the suite reads a published message straight off the broker rather than
+relying on the log stream, where the filter would hide the seam's absence. The project's own failure record
+supplies the safe shape the ticket asks for: task name, identifier, argument types, and cleansed keyword names.
+
+Three consequences are worth stating so ticket 29 does not undo this. `task_send_sent_event` must stay **false**:
+Celery embeds the argument representations into the `task-sent` event by value when it builds the message, before
+`before_task_publish` runs, so turning it on to give Flower pending tasks would put raw arguments on the event bus
+past both seams. `send_task` skips the client-side signature check `apply_async` performs, so a wrong-signature
+call published that way retries rather than failing at the caller. And `dont_autoretry_for` governs
+`SoftTimeLimitExceeded`, which is raised inside the task; the hard `TimeLimitExceeded` is raised in the parent and
+never passes the retry wrapper, so listing it is defensive rather than load-bearing.
+
+
 ## Considered options
 
 **django-q2 1.11.1** (2026-08-26) — the strongest alternative: active, Python 3.14 classifier, and a scheduler

@@ -17,6 +17,49 @@ RESERVED_ATTRIBUTES = frozenset(logging.makeLogRecord({}).__dict__) | {
 
 QUERY_ATTRIBUTES = ("sql", "params")
 QUERY_SUMMARY_WORDS = 4
+TASK_ARGUMENT_FIELDS = ("args", "kwargs")
+REDACTED_ARGUMENTS = "********"
+
+
+class TaskArgumentRedactionFilter(logging.Filter):
+    """Keep task arguments out of the queue's own log records.
+
+    Inherits from ``logging.Filter`` and blanks the argument fields the task queue attaches to the
+    records it writes itself, because those are rendered from the call rather than from the
+    project's own failure record and would otherwise carry whatever a caller passed.
+
+    Attributes:
+        None beyond those the base filter defines.
+
+    Members:
+        filter: Blank the argument fields on one queue record.
+    """
+
+    @override
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Blank the argument fields on one queue record.
+
+        Leaves the task's name and identifier in place, which is what makes a record traceable,
+        and replaces only the rendered arguments, which the project's own failure record reports
+        in a form that is safe by construction.
+
+        Arguments:
+            record: The log record to rewrite.
+
+        Returns:
+            True, always: the record is kept, only reduced.
+
+        Raises:
+            None.
+        """
+        data = getattr(record, "data", None)
+
+        if isinstance(data, dict):
+            for field in TASK_ARGUMENT_FIELDS:
+                if field in data:
+                    data[field] = REDACTED_ARGUMENTS
+
+        return True
 
 
 class QueryRedactionFilter(logging.Filter):

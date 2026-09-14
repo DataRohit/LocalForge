@@ -10,7 +10,12 @@ from pathlib import Path
 
 import pytest
 
-from config.logs import QueryRedactionFilter, StructuredFormatter
+from config.logs import (
+    REDACTED_ARGUMENTS,
+    QueryRedactionFilter,
+    StructuredFormatter,
+    TaskArgumentRedactionFilter,
+)
 
 PROBE_LINE_NUMBER = 42
 PROBE_DURATION = 0.004
@@ -271,3 +276,65 @@ def test_a_record_carrying_no_statement_is_left_alone() -> None:
 
     assert QueryRedactionFilter().filter(record) is True
     assert json.loads(StructuredFormatter().format(record))["message"] == "serving a request"
+
+
+@pytest.mark.unit
+def test_task_arguments_are_blanked_on_a_queue_record() -> None:
+    """Keep the arguments the queue renders out of its own records.
+
+    Confirms the task's name and identifier survive while the rendered arguments are replaced,
+    because those are built from the call rather than from the project's own failure record.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If an argument survives or the identifying context is lost.
+    """
+    record = _record(
+        data={
+            "id": "task-1234",
+            "name": "tests.probe",
+            "args": "('a-real-secret',)",
+            "kwargs": "{'api_key': 'another-secret'}",
+        }
+    )
+
+    assert TaskArgumentRedactionFilter().filter(record) is True
+    attached = record.__dict__["data"]
+
+    assert attached["id"] == "task-1234"
+    assert attached["name"] == "tests.probe"
+    assert attached["args"] == REDACTED_ARGUMENTS
+    assert attached["kwargs"] == REDACTED_ARGUMENTS
+
+
+@pytest.mark.unit
+def test_a_record_carrying_no_queue_data_is_left_alone() -> None:
+    """Pass over a record the queue did not write.
+
+    Confirms a record without the queue's own data attachment is untouched, so the filter cannot
+    blank a field that happens to share a name elsewhere in the platform.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the filter rewrites a record it should not.
+    """
+    record = _record(data="not a mapping")
+
+    assert TaskArgumentRedactionFilter().filter(record) is True
+    assert record.__dict__["data"] == "not a mapping"
+    assert TaskArgumentRedactionFilter().filter(_record()) is True
+
+    without_arguments = _record(data={"id": "task-1234"})
+
+    assert TaskArgumentRedactionFilter().filter(without_arguments) is True
+    assert without_arguments.__dict__["data"] == {"id": "task-1234"}

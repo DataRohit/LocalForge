@@ -45,6 +45,9 @@ REQUIRED_ENVIRONMENT = {
     "VALKEY_CHANNELS_HOST": "valkey-channels-vh8dm",
     "VALKEY_CHANNELS_PORT": "6379",
     "VALKEY_CHANNELS_PASSWORD": secrets.token_urlsafe(16),
+    "CELERY_BROKER_URL": "amqp://broker:secret@rabbitmq-rq4sx:5672/localforge",
+    "CELERY_RESULT_BACKEND": "redis://:secret@valkey-cache-vc5tn:6379/1",
+    "CELERY_TASK_ALWAYS_EAGER": "false",
 }
 
 SECRET_LIKE_MARKERS = ("secret", "password", "token")

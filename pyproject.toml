@@ -140,7 +140,15 @@ django_settings_module = "config.settings.testing"
 strict_settings = true
 
 [[tool.mypy.overrides]]
-module = ["environ.*", "amqp.*", "health_check.*", "channels.*", "channels_redis.*"]
+module = [
+    "environ.*",
+    "amqp.*",
+    "health_check.*",
+    "channels.*",
+    "channels_redis.*",
+    "celery.*",
+    "kombu.*",
+]
 ignore_missing_imports = true
 
 [tool.ty.environment]

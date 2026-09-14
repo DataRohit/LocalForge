@@ -201,8 +201,51 @@ STATIC_ROOT = BASE_DIR.parent / "staticfiles"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-LOG_LEVEL = env.str("DJANGO_LOG_LEVEL", default="INFO")
+CELERY_TASK_TIME_LIMIT_SECONDS = 300
+CELERY_TASK_SOFT_TIME_LIMIT_SECONDS = 270
+CELERY_RESULT_EXPIRES_SECONDS = 86400
 
+CELERY_BROKER_URL = env.str("CELERY_BROKER_URL")
+
+CELERY_RESULT_BACKEND = env.str("CELERY_RESULT_BACKEND")
+
+CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER")
+
+CELERY_TASK_EAGER_PROPAGATES = True
+
+CELERY_ACCEPT_CONTENT = ["json"]
+
+CELERY_TASK_SERIALIZER = "json"
+
+CELERY_RESULT_SERIALIZER = "json"
+
+CELERY_TASK_ACKS_LATE = True
+
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+
+CELERY_TASK_TIME_LIMIT = CELERY_TASK_TIME_LIMIT_SECONDS
+
+CELERY_TASK_SOFT_TIME_LIMIT = CELERY_TASK_SOFT_TIME_LIMIT_SECONDS
+
+CELERY_RESULT_EXPIRES = CELERY_RESULT_EXPIRES_SECONDS
+
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+
+CELERY_CONTROL_QUEUE_EXCLUSIVE = True
+
+CELERY_EVENT_QUEUE_EXCLUSIVE = True
+
+CELERY_WORKER_HIJACK_ROOT_LOGGER = False
+
+CELERY_TASK_PROTOCOL = 2
+
+CELERY_TASK_SEND_SENT_EVENT = False
+
+CELERY_TIMEZONE = TIME_ZONE
+
+LOG_LEVEL = env.str("DJANGO_LOG_LEVEL", default="INFO")
 LOGGING: dict[str, Any] = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -211,11 +254,22 @@ LOGGING: dict[str, Any] = {
             "()": "config.logs.StructuredFormatter",
         },
     },
+    "filters": {
+        "task_arguments": {
+            "()": "config.logs.TaskArgumentRedactionFilter",
+        },
+    },
     "handlers": {
         "stdout": {
             "class": "logging.StreamHandler",
             "stream": "ext://sys.stdout",
             "formatter": "structured",
+        },
+        "queue": {
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stdout",
+            "formatter": "structured",
+            "filters": ["task_arguments"],
         },
     },
     "root": {
@@ -225,6 +279,11 @@ LOGGING: dict[str, Any] = {
     "loggers": {
         "django": {
             "handlers": ["stdout"],
+            "level": LOG_LEVEL,
+            "propagate": False,
+        },
+        "celery": {
+            "handlers": ["queue"],
             "level": LOG_LEVEL,
             "propagate": False,
         },

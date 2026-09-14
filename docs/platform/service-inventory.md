@@ -277,7 +277,7 @@ machine, out of the image, and out of version control.
 | `cadvisor-cv8mh`, all three exporters | They exist only to feed Prometheus, which is excluded |
 | `postgres-replica-pg6vy` | The `replica` alias points at `postgres-tp8vn`. Router paths are exercised; replication lag is not. See [../adr/0012-streaming-replication.md](../adr/0012-streaming-replication.md) |
 | `pgbackrest-pb2wj` | Time-based operational behaviour, verified in development by the phase 6 gate |
-| `celery-worker-cw8rt`, `celery-beat-cb4hq` | `CELERY_TASK_ALWAYS_EAGER=true` runs tasks in-process. The one test needing a real broker starts a worker with `docker compose run --rm` |
+| `celery-worker-cw8rt`, `celery-beat-cb4hq` | `CELERY_TASK_ALWAYS_EAGER=true` runs tasks in-process. The tests needing a real broker override the namespaced setting and run a worker in-process against it; the queues a worker declares are checked against the broker directly, because that worker skips the bootsteps that declare them |
 | `mailpit-tm7bh` | Default `EMAIL_BACKEND` is `locmem`. The SMTP round-trip runs under `--profile smtp`. The web port is published so a host-mode run can assert through the REST API, not only send |
 
 ### 4.2 The two required modes
