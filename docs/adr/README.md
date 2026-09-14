@@ -11,7 +11,7 @@ Format follows `.agents/skills/domain-modeling/ADR-FORMAT.md`: sequential number
 | ADR | Area | Decision | Version | Status |
 |---|---|---|---|---|
 | [0001](./0001-uvicorn-asgi-server.md) | ASGI app server | Uvicorn | 0.52.4 | accepted |
-| [0002](./0002-drf-spectacular-openapi.md) | REST layer, OpenAPI, Swagger UI, ReDoc | DRF + drf-spectacular + sidecar | 3.18.1 / 0.30.0 / 2026.9.1 | accepted |
+| [0002](./0002-drf-spectacular-openapi.md) | REST layer, OpenAPI, Swagger UI, ReDoc | DRF + drf-spectacular + sidecar | 3.18.0 / 0.30.0 / 2026.9.1 | accepted |
 | [0003](./0003-channels-dedicated-valkey.md) | WebSockets + message layer | Channels + channels-redis on a dedicated Valkey | 4.3.2 / 4.3.0 | accepted |
 | [0004](./0004-postgresql.md) | Relational database | PostgreSQL | 18.6 | accepted |
 | [0005](./0005-valkey-cache.md) | Caching layer | Valkey + Django's built-in `RedisCache` | 9.1.2 | accepted |
@@ -34,7 +34,11 @@ Format follows `.agents/skills/domain-modeling/ADR-FORMAT.md`: sequential number
 
 ## Evidence standard
 
-Every claim in these files was checked against a primary source on **2026-09-13**, and each carries that date.
+Every claim in these files was checked against a primary source on **2026-09-13**, and each carries that date. A
+claim re-checked later carries the later date at the point it is made — the dependency baseline re-ran the
+release-lag and index checks on **2026-09-14**, and those results are dated in
+[0001](./0001-uvicorn-asgi-server.md), [0002](./0002-drf-spectacular-openapi.md) and
+[0016](./0016-accept-release-lag.md) rather than restated here.
 
 The bar rose during verification. Trove classifiers on PyPI turned out to be a *lagging* indicator — they are
 edited by hand and drift from reality in both directions. Where a question was "does this run on Python 3.14" or

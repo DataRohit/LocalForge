@@ -63,6 +63,7 @@ Listed so scope creep is recognisable. None exists.
 | `src/config/db_router.py` | Primary/replica router |
 | `src/config/api.py` | Schema, Swagger UI, ReDoc views only |
 | `tests/integration/test_*.py` | One test per service integration |
+| `tests/unit/test_dependencies.py` | Asserts the dependency baseline is declared, installed, and importable |
 | `tests/unit/scripts/test_*.py` | Unit tests for the scripts above, required by their tickets and by the 100% coverage gate |
 
 ## 3. Phases

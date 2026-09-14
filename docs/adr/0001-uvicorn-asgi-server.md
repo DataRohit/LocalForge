@@ -38,3 +38,15 @@ changelog does add Python 3.13/3.14 support, but the activity signal alone disqu
 
 The image must install the `websockets` extra; without it Uvicorn accepts no WebSocket upgrade and Channels fails at
 runtime rather than at startup.
+
+**Daphne is nevertheless a development dependency.** Measured 2026-09-14 on Channels 4.3.2:
+`channels/testing/__init__.py` imports `ChannelsLiveServerTestCase`, which imports `daphne.testing`, so
+`from channels.testing import WebsocketCommunicator` raises `ModuleNotFoundError: No module named 'daphne'` with
+Channels alone. Every consumer test in this platform goes through that import, so `daphne` 4.2.3 — above both CVEs
+above — sits in the **development group only**. It is never installed into the runtime image and never serves a
+request; Uvicorn remains the server. This does not reopen the decision above.
+
+Importing it on Windows emits two `DeprecationWarning`s from `daphne/__init__.py`, which calls
+`asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())`; both are slated for removal in Python
+3.16. They are host-only, upstream's to fix, and harmless before 3.16 — recorded here so they are recognised rather
+than investigated twice.

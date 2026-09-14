@@ -19,7 +19,7 @@ Djoser 2.3.4 was released 2026-08-01 and **empirically works** — a probe on Py
 | Signal | Finding |
 |---|---|
 | CI matrix on `master` | Three jobs — Django 3, 4, 5. **No Django 6.0 row. No Python 3.14 row.** |
-| DRF in CI | Every row pins **DRF 3.14**. Our DRF 3.18.1 is entirely untested upstream |
+| DRF in CI | Every row pins **DRF 3.14**. Our DRF 3.18.0 is entirely untested upstream |
 | Release cadence | ~1–2 per year, with a 13-month gap then a 12-month gap |
 | Open issues | 156, with a 3.0 rewrite in flight |
 | Dependency surface | Drags in `social-auth-core` and caps `social-auth-app-django<6.0.0`, pinning a 5.x line whose Django 6 support is also not CI-proven |
@@ -44,7 +44,7 @@ and cannot change. At that point we are writing the schema by hand while inherit
 error shapes, and dependency tree. Writing the views too is less work and yields full control of the error envelope
 required by [0018](./0018-api-error-contract.md) and of the enumeration-resistance the security audit checks.
 
-Note also that drf-spectacular's own CI tops out at **DRF 3.17**, so DRF 3.18.1 is untested there as well. That risk
+Note also that drf-spectacular's own CI tops out at **DRF 3.17**, so DRF 3.18.0 is untested there as well. That risk
 is unavoidable — it applies whichever schema generator path we take.
 
 ## What we use instead
@@ -52,7 +52,7 @@ is unavoidable — it applies whichever schema generator path we take.
 | Concern | Choice | Evidence, 2026-09-13 |
 |---|---|---|
 | JWT create / refresh / verify | `djangorestframework-simplejwt` 5.5.1 | **Release lag.** `master` is green on Django 6.0 × Python 3.14 (PR #959, merged 2026-02-09); release 5.5.1 predates it by ~7 months. Works in the probe. Handled under [0016](./0016-accept-release-lag.md) |
-| Token login / logout | `rest_framework.authtoken`, bundled with DRF 3.18.1 | Ships in DRF. See the caveats below |
+| Token login / logout | `rest_framework.authtoken`, bundled with DRF 3.18.0 | Ships in DRF. See the caveats below |
 | Account endpoints | First-party views, serializers, and URLs | This decision |
 
 SimpleJWT carries one unreleased **breaking** change on `master` — a 404 becomes a 401. If the VCS escape from

@@ -49,6 +49,39 @@ celery = { git = "https://github.com/celery/celery", rev = "<the commit CI went 
 `uv` supports Git dependencies natively, so this is a one-line change with a lockfile entry, not a fork. Record the
 commit and the CI run URL in this file when it happens.
 
+## Execution-time check, 2026-09-14
+
+Run while adding the dependency baseline, as the consequences below require. Resolution was against the configured
+package index, which is the only index this project uses.
+
+| Dependency | Newest on the index | Pinned floor | Lag still present |
+|---|---|---|---|
+| `celery` | 5.6.3 | `>=5.6.3` | yes — no 5.7 and no release candidate, exactly as recorded above |
+| `channels-redis` | 4.3.0 | `>=4.3.0` | yes — no release since 2025-07-22 |
+
+Both remain pinned to their released artifact; no escape hatch has been taken, and the end-to-end gates in phase 6
+of [../build/plan.md](../build/plan.md) stay the criterion.
+
+### Dependencies deliberately not installed yet
+
+`django-storages` is the third case above and is **not** installed by the dependency baseline. Neither are two
+other lagging packages this platform has already chosen. Each is pinned by the ticket that first uses it, because
+each of those tickets carries its own instruction to re-check the lag before pinning — re-checking on the day of
+use is worth more than a floor recorded weeks earlier.
+
+| Dependency | Released artifact | Lag | Pinned by |
+|---|---|---|---|
+| `django-storages` | 1.14.6, 2025-04-02 | ~16 months; evidence in the table above | ticket 23, which also owns the first-party fallback if its gate fails |
+| `djangorestframework-simplejwt` | 5.5.1 | `master` green on Django 6.0 × Python 3.14 (PR #959, 2026-02-09); the release predates it by ~7 months, and carries one unreleased breaking change — see [0017](./0017-first-party-account-endpoints.md) | ticket 30 |
+| `flower` | 2.1.0 | to be measured when pinned | ticket 44, which adds it to the shared application image |
+
+This list exists so the cross-reference in [0017](./0017-first-party-account-endpoints.md) resolves, and so a later
+ticket finding one of them absent reads a deliberate deferral rather than an omission.
+
+One dependency outside this ADR resolved lower than its decision record stated: `djangorestframework` 3.18.0 rather
+than 3.18.1, because the index mirrors nothing newer. That is an index lag rather than a release lag — the artifact
+exists upstream — and it is recorded in [0002](./0002-drf-spectacular-openapi.md) rather than here.
+
 ## Considered options
 
 **Switch tools** — django-q2 for Celery, a hand-written boto3 storage backend for django-storages. Rejected: it

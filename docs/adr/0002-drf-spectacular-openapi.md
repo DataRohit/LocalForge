@@ -6,7 +6,7 @@ date: 2026-09-13
 # DRF with drf-spectacular for OpenAPI, Swagger UI, and ReDoc
 
 The platform needs a REST layer that emits an OpenAPI schema and renders it through both Swagger UI and ReDoc.
-Django REST Framework 3.18.1 (2026-09-07) with drf-spectacular 0.30.0 (2026-07-06) is the pairing: DRF declares
+Django REST Framework 3.18.0 (2026-08-19) with drf-spectacular 0.30.0 (2026-07-06) is the pairing: DRF declares
 Django 5.2, 6.0, and 6.1 plus Python 3.14, and drf-spectacular is the only schema generator that declares Django
 6.0 while emitting OpenAPI 3.1 with both viewers.
 
@@ -33,6 +33,19 @@ SPECTACULAR_SETTINGS = {
 
 Verified against the drf-spectacular documentation on 2026-09-13. Omitting the sidecar is the single most likely way
 to end this phase with two dashboards that load but display nothing.
+
+## The pinned DRF version is 3.18.0, not 3.18.1
+
+The first draft of this decision named 3.18.1 (2026-09-07). Measured 2026-09-14 while resolving the dependency
+baseline: the configured package index — `https://packagefeedproxy.microsoft.io/pypi/simple/`, the only index this
+project resolves against — mirrors `djangorestframework` up to **3.18.0** (`requires-python >=3.10`). Requesting
+3.18.1 fails with `there is no version of djangorestframework==3.18.1`, while
+`https://pypi.org/pypi/djangorestframework/json` reports 3.18.1 as the current release. The gap is the mirror's, not
+upstream's, so this is index lag rather than the release lag of [0016](./0016-accept-release-lag.md).
+
+The floor is therefore `>=3.18.0`. Nothing in this decision depends on the patch: the Django 6.0 and Python 3.14
+declarations that chose DRF are present in 3.18.0, and the lockfile records the exact resolution. When the mirror
+catches up, `uv lock --upgrade-package djangorestframework` moves it with no code change.
 
 ## Considered options
 
