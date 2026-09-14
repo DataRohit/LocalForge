@@ -42,6 +42,18 @@ Two behaviours verified in the Django 6.0 source on 2026-09-13 shape the configu
    `cache.clear()` in a test or a shell silently destroys every pending task result. Cache takes DB `0`, Celery
    results take DB `1`.
 
+   Two additions, measured 2026-09-14 when the cache was integrated. DB `0` now also holds **every logged-in
+   session**, so `cache.clear()` from a shell is a mass logout; `KEY_PREFIX` offers no protection, because a flush
+   ignores key names. And a test must never clear the shared cache — under the parallel runner it erases the other
+   workers' entries and their sessions. The flush behaviour is proven on a scratch logical database instead.
+
+3. **Sessions do not use the resilient cache.** The application reads through a first-party subclass that turns a
+   connection failure into a miss, so a page that only reads through the cache degrades rather than returning a
+   server error. Sessions are pointed at a second alias on the **unmodified** backend, because the framework's
+   session creation treats a refused write as a key collision and retries it ten thousand times — against an
+   unreachable instance that is a `RuntimeError` after seconds, and against a hung one it pins the worker for
+   hours. A lost session is a lost identity; a lost page cache entry is a slower page.
+
 Valkey ships no web UI, and the obvious companion is unusable: **RedisInsight is SSPL-licensed and has no Valkey
 support** — the string "Valkey" appears nowhere in its README or its fifteen most recent release notes. The
 dashboard is therefore `redis_exporter` scraped into Prometheus and rendered in Grafana, plus `valkey-cli` for

@@ -114,6 +114,40 @@ DATABASES = {
 
 DATABASE_ROUTERS = ["config.db_router.PrimaryReplicaRouter"]
 
+CACHE_KEY_PREFIX = "localforge"
+CACHE_DEFAULT_TIMEOUT_SECONDS = 300
+CACHE_SOCKET_TIMEOUT_SECONDS = 3
+
+_cache_location = (
+    f"redis://{env.str('VALKEY_CACHE_HOST')}:{env.int('VALKEY_CACHE_PORT')}"
+    f"/{env.int('VALKEY_CACHE_DB')}"
+)
+
+_cache_options = {
+    "password": env.str("VALKEY_CACHE_PASSWORD"),
+    "socket_connect_timeout": CACHE_SOCKET_TIMEOUT_SECONDS,
+    "socket_timeout": CACHE_SOCKET_TIMEOUT_SECONDS,
+}
+
+CACHES = {
+    "default": {
+        "BACKEND": "config.cache.ResilientRedisCache",
+        "LOCATION": _cache_location,
+        "KEY_PREFIX": CACHE_KEY_PREFIX,
+        "TIMEOUT": CACHE_DEFAULT_TIMEOUT_SECONDS,
+        "OPTIONS": _cache_options,
+    },
+    "sessions": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": _cache_location,
+        "KEY_PREFIX": f"{CACHE_KEY_PREFIX}-session",
+        "OPTIONS": _cache_options,
+    },
+}
+
+SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+SESSION_CACHE_ALIAS = "sessions"
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},

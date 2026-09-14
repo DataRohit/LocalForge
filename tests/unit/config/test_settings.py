@@ -37,6 +37,11 @@ REQUIRED_ENVIRONMENT = {
     "POSTGRES_PORT": "5432",
     "POSTGRES_REPLICA_HOST": "postgres-replica-pg6vy",
     "POSTGRES_REPLICA_PORT": "5432",
+    "VALKEY_CACHE_HOST": "valkey-cache-vc5tn",
+    "VALKEY_CACHE_PORT": "6379",
+    "VALKEY_CACHE_PASSWORD": secrets.token_urlsafe(16),
+    "VALKEY_CACHE_DB": "0",
+    "VALKEY_RESULTS_DB": "1",
 }
 
 SECRET_LIKE_MARKERS = ("secret", "password", "token")
