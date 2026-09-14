@@ -140,7 +140,7 @@ django_settings_module = "config.settings.testing"
 strict_settings = true
 
 [[tool.mypy.overrides]]
-module = ["environ.*", "amqp.*", "health_check.*"]
+module = ["environ.*", "amqp.*", "health_check.*", "channels.*", "channels_redis.*"]
 ignore_missing_imports = true
 
 [tool.ty.environment]
@@ -204,8 +204,14 @@ directory = "htmlcov"
 output = "coverage.xml"
 
 [tool.poe.tasks.dev]
-help = "Start the Django development server (needs the development stack reachable)"
-cmd = "python src/manage.py runserver"
+help = "Start the ASGI development server (needs the development stack reachable)"
+cmd = """uvicorn config.asgi:application
+  --app-dir src
+  --host 127.0.0.1
+  --port 8000
+  --reload
+  --reload-dir src
+  --ws websockets-sansio"""
 
 [tool.poe.tasks.migrate]
 help = "Apply database migrations (development database; run from inside django-uv5n2)"

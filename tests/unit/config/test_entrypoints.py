@@ -9,18 +9,19 @@ import os
 from unittest.mock import patch
 
 import pytest
+from channels.routing import ProtocolTypeRouter
 from django.core.handlers.asgi import ASGIHandler
 from django.core.handlers.wsgi import WSGIHandler
 
-from config import asgi, wsgi
+from config import asgi, routing, wsgi
 
 
 @pytest.mark.unit
 def test_asgi_module_exposes_an_asgi_handler() -> None:
     """Build an ASGI application object.
 
-    Confirms the ASGI entry point exposes a handler of the type an ASGI server expects, which is
-    the object the platform serves WebSocket and HTTP traffic through.
+    Confirms the HTTP branch of the entry point is a handler of the type an ASGI server expects,
+    which is the object the platform serves ordinary requests through.
 
     Arguments:
         None.
@@ -31,7 +32,7 @@ def test_asgi_module_exposes_an_asgi_handler() -> None:
     Raises:
         AssertionError: If the exposed application is not an ASGI handler.
     """
-    assert isinstance(asgi.application, ASGIHandler)
+    assert isinstance(asgi.django_application, ASGIHandler)
 
 
 @pytest.mark.unit
@@ -78,3 +79,44 @@ def test_each_entry_point_defaults_to_the_development_settings(module_name: str)
         importlib.reload(importlib.import_module(module_name))
 
         assert os.environ["DJANGO_SETTINGS_MODULE"] == "config.settings.development"
+
+
+@pytest.mark.unit
+def test_the_asgi_application_dispatches_both_protocols() -> None:
+    """Serve HTTP and WebSocket from one application.
+
+    Confirms the entry point is a protocol router carrying both branches, because a plain HTTP
+    handler would accept no upgrade and the WebSocket surface would fail at connection time rather
+    than at startup.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If either protocol is unrouted.
+    """
+    assert isinstance(asgi.application, ProtocolTypeRouter)
+    assert set(asgi.application.application_mapping) == {"http", "websocket"}
+    assert isinstance(asgi.django_application, ASGIHandler)
+
+
+@pytest.mark.unit
+def test_the_websocket_routing_table_has_one_home() -> None:
+    """Keep the socket routes in one place.
+
+    Confirms the WebSocket patterns come from the routing module rather than being built inside the
+    entry point, so the table has a single home as routes are added.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the routing table is missing.
+    """
+    assert isinstance(routing.websocket_urlpatterns, list)

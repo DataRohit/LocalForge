@@ -61,6 +61,7 @@ Listed so scope creep is recognisable. None exists.
 | `src/config/settings/` | `__init__.py`, `base.py`, `development.py`, `testing.py` |
 | `src/config/logs.py` | Structured log formatter the logging configuration names |
 | `src/config/routing.py` | Channels routing, empty router |
+| `src/config/channels.py` | Channel layer whose subscribe waits for the instance to register it |
 | `src/config/celery.py` | Celery application object |
 | `src/config/db_router.py` | Primary/replica router |
 | `src/config/api.py` | Schema, Swagger UI, ReDoc views only |

@@ -42,6 +42,9 @@ REQUIRED_ENVIRONMENT = {
     "VALKEY_CACHE_PASSWORD": secrets.token_urlsafe(16),
     "VALKEY_CACHE_DB": "0",
     "VALKEY_RESULTS_DB": "1",
+    "VALKEY_CHANNELS_HOST": "valkey-channels-vh8dm",
+    "VALKEY_CHANNELS_PORT": "6379",
+    "VALKEY_CHANNELS_PASSWORD": secrets.token_urlsafe(16),
 }
 
 SECRET_LIKE_MARKERS = ("secret", "password", "token")
@@ -106,8 +109,9 @@ def _execute_module_in_isolation(name: str, environment: dict[str, str]) -> Modu
 def test_entry_point_settings_reference_the_project_modules() -> None:
     """Point the framework at the project's own modules.
 
-    Confirms the root URL configuration and the WSGI application path resolve to this project
-    rather than to a generated default left over from scaffolding.
+    Confirms the root URL configuration and both server application paths resolve to this project
+    rather than to a generated default left over from scaffolding, because a typo in the ASGI path
+    surfaces only when a server starts.
 
     Arguments:
         None.
@@ -116,10 +120,11 @@ def test_entry_point_settings_reference_the_project_modules() -> None:
         None.
 
     Raises:
-        AssertionError: If either setting does not name the project module.
+        AssertionError: If any setting does not name the project module.
     """
     assert configured_settings.ROOT_URLCONF == "config.urls"
     assert configured_settings.WSGI_APPLICATION == "config.wsgi.application"
+    assert configured_settings.ASGI_APPLICATION == "config.asgi.application"
 
 
 @pytest.mark.unit

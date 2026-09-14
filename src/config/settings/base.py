@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "health_check",
     "accounts",
+    "channels",
 ]
 
 MIDDLEWARE = [
@@ -147,6 +148,30 @@ CACHES = {
 
 SESSION_ENGINE = "django.contrib.sessions.backends.cache"
 SESSION_CACHE_ALIAS = "sessions"
+
+ASGI_APPLICATION = "config.asgi.application"
+
+CHANNEL_LAYER_PREFIX = "localforge"
+
+CHANNEL_LAYER_SOCKET_TIMEOUT_SECONDS = 5
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "config.channels.ConfirmedRedisPubSubChannelLayer",
+        "CONFIG": {
+            "hosts": [
+                {
+                    "host": env.str("VALKEY_CHANNELS_HOST"),
+                    "port": env.int("VALKEY_CHANNELS_PORT"),
+                    "password": env.str("VALKEY_CHANNELS_PASSWORD"),
+                    "socket_connect_timeout": CHANNEL_LAYER_SOCKET_TIMEOUT_SECONDS,
+                    "socket_timeout": CHANNEL_LAYER_SOCKET_TIMEOUT_SECONDS,
+                },
+            ],
+            "prefix": CHANNEL_LAYER_PREFIX,
+        },
+    },
+}
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
