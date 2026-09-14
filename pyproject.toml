@@ -29,6 +29,7 @@ classifiers = [
     "Topic :: Internet :: WWW/HTTP",
 ]
 dependencies = [
+    "argon2-cffi>=25.1.0",
     "asgiref>=3.9.1",
     "boto3>=1.40.0",
     "celery>=5.6.3",
@@ -100,7 +101,7 @@ select = ["ALL"]
 ignore = ["COM812", "CPY001", "D"]
 
 [tool.ruff.lint.per-file-ignores]
-"src/config/settings.py" = ["S105"]
+"src/config/settings/*.py" = ["F403"]
 "src/manage.py" = ["PLC0415"]
 "scripts/*.py" = ["T201", "TC003"]
 "scripts/gen_secrets.py" = ["S603"]
@@ -128,8 +129,12 @@ show_column_numbers = true
 pretty = true
 
 [tool.django-stubs]
-django_settings_module = "config.settings"
+django_settings_module = "config.settings.testing"
 strict_settings = true
+
+[[tool.mypy.overrides]]
+module = ["environ.*"]
+ignore_missing_imports = true
 
 [tool.ty.environment]
 python = ".venv"
@@ -145,7 +150,7 @@ all = "error"
 
 [tool.pytest.ini_options]
 minversion = "9.1"
-DJANGO_SETTINGS_MODULE = "config.settings"
+DJANGO_SETTINGS_MODULE = "config.settings.testing"
 pythonpath = ["src", "."]
 testpaths = ["tests"]
 addopts = [
@@ -187,11 +192,11 @@ directory = "htmlcov"
 output = "coverage.xml"
 
 [tool.poe.tasks.dev]
-help = "Start the Django development server"
+help = "Start the Django development server (needs the development stack reachable)"
 cmd = "python src/manage.py runserver"
 
 [tool.poe.tasks.migrate]
-help = "Apply database migrations"
+help = "Apply database migrations (development database; run from inside django-uv5n2)"
 cmd = "python src/manage.py migrate"
 
 [tool.poe.tasks.migrations]
@@ -199,18 +204,19 @@ help = "Create database migrations"
 cmd = "python src/manage.py makemigrations"
 
 [tool.poe.tasks.superuser]
-help = "Create a Django superuser"
+help = "Create a Django superuser (development database; run from inside django-uv5n2)"
 cmd = "python src/manage.py createsuperuser"
 
 [tool.poe.tasks.shell]
-help = "Open the Django shell"
+help = "Open the Django shell (development database; run from inside django-uv5n2)"
 cmd = "python src/manage.py shell"
 
 [tool.poe.tasks.django-check]
 help = "Run Django system and migration checks"
 sequence = [
-    { cmd = "python src/manage.py check" },
-    { cmd = "python src/manage.py makemigrations --check --dry-run" },
+    { cmd = "python src/manage.py check", env = { DJANGO_SETTINGS_MODULE = "config.settings.development" } },
+    { cmd = "python src/manage.py check", env = { DJANGO_SETTINGS_MODULE = "config.settings.testing" } },
+    { cmd = "python src/manage.py makemigrations --check --dry-run", env = { DJANGO_SETTINGS_MODULE = "config.settings.testing" } },
 ]
 
 [tool.poe.tasks.lint]

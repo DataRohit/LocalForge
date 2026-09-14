@@ -58,6 +58,7 @@ Listed so scope creep is recognisable. None exists.
 | `.env.development.sops`, `.env.testing.sops` | Committed encrypted env files |
 | `.sops.yaml` | age recipient configuration |
 | `src/config/settings/` | `__init__.py`, `base.py`, `development.py`, `testing.py` |
+| `src/config/logs.py` | Structured log formatter the logging configuration names |
 | `src/config/routing.py` | Channels routing, empty router |
 | `src/config/celery.py` | Celery application object |
 | `src/config/db_router.py` | Primary/replica router |
@@ -96,10 +97,23 @@ they are needed only before committing an encrypted env file.
 
 ### Phase 4 — Django scaffolding, wired to nothing
 
-No container runs here.
+No application container is built or run in this phase. It is **not** free of infrastructure: once 4a lands, the
+phase gate depends on two things the earlier phases produce, because the settings package reads every value from
+the environment and the `default` alias is PostgreSQL.
+
+| Prerequisite | Why |
+|---|---|
+| `uv run python scripts/gen_secrets.py --environment all` has been run | `manage.py` under `config.settings.development` reads `.env.development`, and the suite and the type stub plugin read `.env.testing.host`. Without them the gate fails on the first required variable |
+| The testing database node is up | `uv run pytest` builds a test database on `postgres-tp8vn`, and the migration check connects to it |
+
+Neither was needed before 4a, when the `default` alias was SQLite and no value was required. Run the generation
+step from phase 5 first, and start `postgres-tp8vn` from phase 7's stack; nothing else from either phase is needed.
 
 **4a.** Convert `src/config/settings.py` into a package: `base.py` holding today's content with values read through
-`django-environ`, plus `development.py` and `testing.py`.
+`django-environ`, plus `development.py` and `testing.py`. The `default` database alias moves to PostgreSQL here
+rather than staying on SQLite, because the application container's entrypoint migrates before it binds its port and
+its application directory is not writable; the `replica` alias, the router, pooling, and connection health checks
+still belong to ticket 19.
 
 Three configuration references point at the old path and **must** move in the same change, or the repository fails
 its own gate:
@@ -107,8 +121,17 @@ its own gate:
 | File | Key | From | To |
 |---|---|---|---|
 | `pyproject.toml` | `[tool.pytest.ini_options] DJANGO_SETTINGS_MODULE` | `config.settings` | `config.settings.testing` |
-| `pyproject.toml` | `[tool.django-stubs] django_settings_module` | `config.settings` | `config.settings.base` |
+| `pyproject.toml` | `[tool.django-stubs] django_settings_module` | `config.settings` | `config.settings.testing` |
 | `pyproject.toml` | `[tool.ruff.lint.per-file-ignores]` | `"src/config/settings.py"` | `"src/config/settings/*.py"` |
+
+Two corrections to that table, made 2026-09-14 when the split was performed:
+
+- The type stub plugin **imports** the module it is given, so it needs one that resolves its environment. `base.py`
+  reads required variables and has no environment file of its own, while `testing.py` names `.env.testing.host` —
+  the file host-mode runs already require. It therefore points at `config.settings.testing`.
+- The per-file ignore no longer carries `S105`. That ignore existed because the old module held a literal signing
+  key; none remains, and ticket 14 requires the hardcoded-password rules **apply** to the package. The entry now
+  ignores only the star import each environment module makes from the base.
 
 **4b.** Add dependencies with `uv add` into the right groups. Do not hand-edit dependency lists; do not create a
 `requirements.txt`. Pin `asgiref>=3.9.1` — Django 6.0 raised its floor from 3.8.1, and Channels 4.3.2 only requires

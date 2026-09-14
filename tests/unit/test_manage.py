@@ -4,6 +4,7 @@ Covers argument dispatch through the Django management framework and the script 
 when the module is executed directly rather than imported.
 """
 
+import os
 import runpy
 import sys
 from pathlib import Path
@@ -39,6 +40,36 @@ def test_main_dispatches_arguments_to_django() -> None:
         manage.main()
 
     execute.assert_called_once_with(arguments)
+
+
+@pytest.mark.unit
+def test_the_default_settings_module_is_the_development_environment() -> None:
+    """Select the development settings when none is named.
+
+    Confirms an invocation with no settings module selected falls back to the development module by
+    name, since a typo in that string would otherwise surface only outside the suite, where the
+    variable is always already set.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the fallback does not name the development settings module.
+    """
+    environment = dict(os.environ)
+    environment.pop("DJANGO_SETTINGS_MODULE", None)
+
+    with (
+        patch.dict(os.environ, environment, clear=True),
+        patch.object(sys, "argv", ["src/manage.py", "check"]),
+        patch("django.core.management.execute_from_command_line"),
+    ):
+        manage.main()
+
+        assert os.environ["DJANGO_SETTINGS_MODULE"] == "config.settings.development"
 
 
 @pytest.mark.unit
