@@ -64,8 +64,12 @@ Listed so scope creep is recognisable. None exists.
 | `src/config/celery.py` | Celery application object |
 | `src/config/db_router.py` | Primary/replica router |
 | `src/config/api.py` | Schema, Swagger UI, ReDoc views only |
-| `tests/integration/test_*.py` | One test per service integration |
+| `tests/integration/<package>/test_*.py` | One test per service integration, mirroring the package it covers |
+| `tests/conftest.py` | Per-worker namespace every externally allocated name is built from |
+| `tests/unit/conftest.py` | Guard refusing network access from the unit layer |
+| `tests/integration/conftest.py` | Guard requiring each integration test to declare its services |
 | `tests/unit/test_dependencies.py` | Asserts the dependency baseline is declared, installed, and importable |
+| `tests/unit/test_harness.py` | Asserts the suite's own guards and namespacing behave |
 | `tests/unit/scripts/test_*.py` | Unit tests for the scripts above, required by their tickets and by the 100% coverage gate |
 
 ## 3. Phases
@@ -244,7 +248,7 @@ Gate: all twelve pass and `uv run poe check` is still green.
 docker compose --env-file .env.testing -f compose.yaml -f compose.testing.yaml up -d
 uv run python scripts/seed_storage.py --environment testing
 docker compose --env-file .env.testing -f compose.yaml -f compose.testing.yaml run --rm django-test-dt5qx
-uv run pytest
+uv run poe test
 ```
 
 Gate:

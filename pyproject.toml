@@ -82,6 +82,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "pytest-django>=4.14.0",
     "pytest-mock>=3.15.1",
+    "pytest-timeout>=2.5.0",
     "pytest-xdist>=3.8.0",
     "pyyaml>=6.0.3",
     "ruff>=0.16.6",
@@ -112,6 +113,7 @@ convention = "google"
 "scripts/preflight.py" = ["S603"]
 "scripts/sops_env.py" = ["S603"]
 "tests/**/*.py" = ["S101"]
+"tests/unit/test_harness.py" = ["S101", "S603"]
 ".github/scripts/validate_commit_message.py" = ["C901", "INP001", "PLR0912"]
 
 [tool.ruff.format]
@@ -159,6 +161,9 @@ pythonpath = ["src", "."]
 testpaths = ["tests"]
 addopts = [
     "-ra",
+    "--timeout=60",
+    "--timeout-method=thread",
+    "--reuse-db",
     "--ignore=.agents",
     "--strict-config",
     "--strict-markers",
@@ -175,6 +180,8 @@ addopts = [
 markers = [
     "unit: isolated unit tests",
     "integration: tests spanning Django components",
+    "services(*names): external services an integration test requires",
+    "serial: tests that must not share a worker pool, justified in the test docstring",
 ]
 xfail_strict = true
 
@@ -252,8 +259,16 @@ help = "Run all type checkers"
 sequence = ["types-mypy", "types-ty"]
 
 [tool.poe.tasks.test]
-help = "Run all tests with 100 percent coverage enforcement"
+help = "Run the whole suite in parallel with 100 percent coverage enforcement"
+cmd = "pytest -n auto --dist loadgroup"
+
+[tool.poe.tasks.test-serial]
+help = "Run the whole suite in one process; re-run this to read a timeout's stack"
 cmd = "pytest"
+
+[tool.poe.tasks.test-fresh]
+help = "Run the whole suite against a freshly created test database"
+cmd = "pytest -n auto --dist loadgroup --create-db"
 
 [tool.poe.tasks.test-unit]
 help = "Run focused unit tests without the whole-suite coverage gate"
@@ -264,8 +279,8 @@ help = "Run focused integration tests without the whole-suite coverage gate"
 cmd = "pytest -m integration --no-cov"
 
 [tool.poe.tasks.test-parallel]
-help = "Run all tests in parallel with coverage enforcement"
-cmd = "pytest -n auto"
+help = "Alias of the default test task, retained for scripts that name it"
+cmd = "pytest -n auto --dist loadgroup"
 
 [tool.poe.tasks.check]
 help = "Run the complete local quality gate"

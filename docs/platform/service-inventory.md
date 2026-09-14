@@ -274,7 +274,13 @@ possible.
 | Mode | Command | Env file | Hostnames |
 |---|---|---|---|
 | Container | `docker compose ... run --rm django-test-dt5qx` | `.env.testing` | container names on the testing networks |
-| Host | `uv run pytest` with the testing stack up | `.env.testing.host` | `127.0.0.1` and the published ports above |
+| Host | `uv run poe test` with the testing stack up | `.env.testing.host` | `127.0.0.1` and the published ports above |
+
+Both modes run the same task, which is what keeps the collected count and the wall clock comparable. The task is
+`pytest -n auto --dist loadgroup`; the parallel flags live there rather than in `addopts` so that running one file
+or one layer stays fast. A bare `uv run pytest` is the same suite in one process, and `uv run poe test-serial` is
+the documented way to read the stack of a test that timed out — a timeout kills its worker, so the parallel run
+reports which test hung but not where.
 
 Host mode is why every testing service publishes a host port even though container mode never uses them.
 
