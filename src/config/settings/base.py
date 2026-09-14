@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import environ
+from botocore.config import Config
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -30,6 +31,7 @@ INSTALLED_APPS = [
     "health_check",
     "accounts",
     "channels",
+    "storages",
 ]
 
 MIDDLEWARE = [
@@ -198,6 +200,36 @@ USE_TZ = True
 STATIC_URL = "static/"
 
 STATIC_ROOT = BASE_DIR.parent / "staticfiles"
+
+S3_CONNECT_TIMEOUT_SECONDS = 5
+S3_READ_TIMEOUT_SECONDS = 15
+
+STORAGES = {
+    "default": {
+        "BACKEND": "storages.backends.s3.S3Storage",
+        "OPTIONS": {
+            "access_key": env.str("S3_ACCESS_KEY_ID"),
+            "secret_key": env.str("S3_SECRET_ACCESS_KEY"),
+            "bucket_name": env.str("S3_BUCKET_NAME"),
+            "region_name": env.str("S3_REGION_NAME"),
+            "endpoint_url": env.str("S3_ENDPOINT_URL"),
+            "client_config": Config(
+                connect_timeout=S3_CONNECT_TIMEOUT_SECONDS,
+                read_timeout=S3_READ_TIMEOUT_SECONDS,
+                retries={"total_max_attempts": 1, "mode": "standard"},
+                signature_version="s3v4",
+                s3={"addressing_style": "path"},
+            ),
+            "default_acl": None,
+            "file_overwrite": True,
+            "location": "media",
+            "querystring_auth": True,
+        },
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

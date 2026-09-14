@@ -26,6 +26,7 @@ RUNTIME_DISTRIBUTIONS = (
     "django-environ",
     "django-health-check",
     "django-prometheus",
+    "django-storages",
     "djangorestframework",
     "drf-spectacular",
     "drf-spectacular-sidecar",
@@ -59,6 +60,7 @@ RUNTIME_MODULES = (
     "psycopg_pool",
     "redis",
     "rest_framework",
+    "storages",
     "uvicorn",
     "websockets",
 )

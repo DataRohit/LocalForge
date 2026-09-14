@@ -67,5 +67,6 @@ onto the components that become separate Kubernetes workloads later.
 ## Consequences
 
 Django reaches SeaweedFS only through `S3_ENDPOINT_URL`, so swapping the implementation — to `weed mini`, to Garage,
-or to a real S3 — is a variable change. The client-library question is separate and is settled in
-[0016](./0016-accept-release-lag.md).
+or to a real S3 — is a variable change. The client uses path-style addressing and Signature Version 4, with a
+five-second connection timeout, a fifteen-second read timeout, and one bounded standard-mode attempt. The
+client-library question is separate and is settled in [0016](./0016-accept-release-lag.md).

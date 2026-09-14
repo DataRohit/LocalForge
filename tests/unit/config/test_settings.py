@@ -11,12 +11,13 @@ import os
 import secrets
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from unittest import mock
 
 import pytest
 from django.conf import settings as configured_settings
 from django.core.exceptions import ImproperlyConfigured
+from django.views.debug import SafeExceptionReporterFilter
 
 from config import settings as settings_package
 
@@ -48,9 +49,14 @@ REQUIRED_ENVIRONMENT = {
     "CELERY_BROKER_URL": "amqp://broker:secret@rabbitmq-rq4sx:5672/localforge",
     "CELERY_RESULT_BACKEND": "redis://:secret@valkey-cache-vc5tn:6379/1",
     "CELERY_TASK_ALWAYS_EAGER": "false",
+    "S3_ENDPOINT_URL": "http://seaweedfs-sw9cr:8333",
+    "S3_ACCESS_KEY_ID": secrets.token_hex(20),
+    "S3_SECRET_ACCESS_KEY": secrets.token_hex(20),
+    "S3_BUCKET_NAME": "localforge-media",
+    "S3_REGION_NAME": "us-east-1",
 }
 
-SECRET_LIKE_MARKERS = ("secret", "password", "token")
+SECRET_LIKE_MARKERS = ("access_key", "secret", "password", "token")
 
 
 def _execute_file(name: str) -> ModuleType:
@@ -174,6 +180,82 @@ def test_timezone_support_is_enabled_and_the_zone_comes_from_the_environment() -
     """
     assert configured_settings.USE_TZ is True
     assert os.environ.get("DJANGO_TIME_ZONE", "UTC") == configured_settings.TIME_ZONE
+
+
+@pytest.mark.unit
+def test_uploaded_media_uses_private_object_storage() -> None:
+    """Keep uploaded files in the private media bucket.
+
+    Confirms the default backend takes every connection value from the environment, overwrites
+    colliding names deliberately, and signs URLs while static assets retain their own backend.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If media or static storage does not follow the documented separation.
+    """
+    module = _execute_module_in_isolation("base", REQUIRED_ENVIRONMENT)
+    media = module.STORAGES["default"]
+    options = media["OPTIONS"]
+
+    assert media["BACKEND"] == "storages.backends.s3.S3Storage"
+    assert options["endpoint_url"] == REQUIRED_ENVIRONMENT["S3_ENDPOINT_URL"]
+    assert options["access_key"] == REQUIRED_ENVIRONMENT["S3_ACCESS_KEY_ID"]
+    assert options["secret_key"] == REQUIRED_ENVIRONMENT["S3_SECRET_ACCESS_KEY"]
+    assert options["bucket_name"] == REQUIRED_ENVIRONMENT["S3_BUCKET_NAME"]
+    assert options["region_name"] == REQUIRED_ENVIRONMENT["S3_REGION_NAME"]
+    client_config = cast("dict[str, object]", vars(options["client_config"]))
+    assert client_config["connect_timeout"] == module.S3_CONNECT_TIMEOUT_SECONDS
+    assert client_config["read_timeout"] == module.S3_READ_TIMEOUT_SECONDS
+    assert client_config["retries"] == {"total_max_attempts": 1, "mode": "standard"}
+    assert client_config["signature_version"] == "s3v4"
+    assert client_config["s3"] == {"addressing_style": "path"}
+    assert options["default_acl"] is None
+    assert options["file_overwrite"] is True
+    assert options["location"] == "media"
+    assert options["querystring_auth"] is True
+    assert (
+        module.STORAGES["staticfiles"]["BACKEND"]
+        == "django.contrib.staticfiles.storage.StaticFilesStorage"
+    )
+    assert not hasattr(module, "MEDIA_ROOT")
+
+    storage_class = importlib.import_module("storages.backends.s3").S3Storage
+    storage = storage_class(**options)
+    effective_retries = storage.connection.meta.client.meta.config.retries
+    assert effective_retries == {"total_max_attempts": 1, "mode": "standard"}
+
+
+@pytest.mark.unit
+def test_storage_credentials_are_hidden_from_debug_settings() -> None:
+    """Keep object-storage credentials out of diagnostic output.
+
+    Runs Django's own settings cleanser over the configured storage mapping, so nested credentials
+    remain hidden if an exception page or error report includes the setting.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If either configured credential survives the cleanser.
+    """
+    module = _execute_module_in_isolation("base", REQUIRED_ENVIRONMENT)
+    reporter_filter = SafeExceptionReporterFilter()
+    safe_storage = cast(
+        "dict[str, dict[str, object]]",
+        reporter_filter.cleanse_setting("STORAGES", module.STORAGES),
+    )
+    options = cast("dict[str, object]", safe_storage["default"]["OPTIONS"])
+
+    assert options["access_key"] == reporter_filter.cleansed_substitute
+    assert options["secret_key"] == reporter_filter.cleansed_substitute
 
 
 @pytest.mark.unit

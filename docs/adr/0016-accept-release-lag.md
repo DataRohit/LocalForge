@@ -104,3 +104,6 @@ failure.
   Python ≥3.10, which matches `setup.py` on `main` — a 5.7 release resolves the lag outright.
 - `django-storages` carries the most lag and the least release momentum. If its gate fails, the hand-written boto3
   backend from the rejected option becomes the fallback after all — Django's `Storage` API is small and stable.
+- Ticket 23 re-checked PyPI on 2026-09-15, found 1.14.6 remained current, and pinned that release with its S3
+  extra. It installed on Python 3.14 and passed the SeaweedFS write, read, overwrite, private-access, and deletion
+  gate, so the first-party fallback was not needed.
