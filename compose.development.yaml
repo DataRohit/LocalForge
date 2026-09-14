@@ -169,6 +169,45 @@ services:
       retries: 10
       start_period: 120s
 
+  seaweedfs-sw9cr:
+    image: docker.io/chrislusf/seaweedfs:4.46
+    container_name: seaweedfs-sw9cr
+    restart: unless-stopped
+    env_file:
+      - .env.development
+    ports:
+      - "9333:9333"
+      - "8082:8080"
+      - "8888:8888"
+      - "8333:8333"
+    networks:
+      - app-net-na6hy
+      - access-net-ha4mz
+    volumes:
+      - seaweedfs-sw9cr-data:/data
+      - ./docker/seaweedfs/s3.json:/etc/seaweedfs/s3.json.template:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        : "$${S3_ACCESS_KEY_ID:?S3_ACCESS_KEY_ID is unset}"
+        && : "$${S3_SECRET_ACCESS_KEY:?S3_SECRET_ACCESS_KEY is unset}"
+        && sed -e "s|__S3_ACCESS_KEY_ID__|$$S3_ACCESS_KEY_ID|"
+        -e "s|__S3_SECRET_ACCESS_KEY__|$$S3_SECRET_ACCESS_KEY|"
+        /etc/seaweedfs/s3.json.template > /etc/seaweedfs/s3.json
+        && exec weed server -dir=/data -s3 -s3.config=/etc/seaweedfs/s3.json
+        -s3.port.iceberg=0 -s3.port.lance=0 -ip.bind=0.0.0.0
+        -master.telemetry=false
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          wget -q -O /dev/null http://127.0.0.1:9333/healthz
+          && wget -q -O /dev/null http://127.0.0.1:8333/healthz
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 45s
+
 networks:
   edge-net-ne2vk:
     name: edge-net-ne2vk

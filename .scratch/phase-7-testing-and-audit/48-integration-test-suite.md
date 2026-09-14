@@ -15,6 +15,9 @@ broker, real channel layer, real object storage — covering every documented ro
       password, reset password, change username, reset username.
 - [ ] Read-replica routing, cache behaviour, task execution, object upload and retrieval, and mail capture are each
       asserted against the real service.
+- [ ] Object storage is asserted live, which the phase-1 compose tests cannot reach because they parse the manifest
+      where no Docker client exists: the S3 API, master UI, and file browser each answer on their documented host
+      ports; an upload read back is byte-identical; and an unauthenticated request to the bucket is refused.
 - [ ] WebSocket tests cover connection, authentication success and every failure, group delivery, and cross-process
       delivery.
 - [ ] The health endpoint is tested healthy and degraded, with a dependency genuinely stopped.

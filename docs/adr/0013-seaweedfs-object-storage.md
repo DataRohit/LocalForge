@@ -35,6 +35,17 @@ Pass `-s3.port.iceberg=0 -s3.port.lance=0` to stop the last two binding. 9101 is
 `node_exporter` port and 8181 is a common default elsewhere, so leaving them on invites a collision for two services
 this platform does not use.
 
+Two further flags were measured as necessary on 2026-09-14, when the service was built:
+
+- `-ip.bind=0.0.0.0`. `-ip.bind` defaults to `-ip`, which defaults to the first container address detected. On a
+  container joined to both a service zone and an access zone that is whichever Docker enumerated first, so a
+  published port accepts the connection and immediately closes it while the container stays healthy.
+- `-master.telemetry=false`. `weed server` otherwise reports to `https://telemetry.seaweedfs.com/api/collect`, and
+  this service sits on a non-internal access zone. [0015](./0015-reject-restricted-licenses.md) rejects phone-home
+  tools on principle; SeaweedFS is kept because the behaviour is a default that can be turned off, not a condition
+  of use. Under `weed server` the flag is namespaced to the master, so the bare `-telemetry=false` the log line
+  suggests is not accepted by that subcommand.
+
 Health endpoints differ by component, and the naive guess is wrong:
 
 - **S3 gateway**: `/status`, `/healthz`, and `/readyz` all work and share one handler.

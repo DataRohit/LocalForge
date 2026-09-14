@@ -5,6 +5,7 @@ volume, or network can never be declared under a name the registry does not carr
 environments stay able to run at the same time.
 """
 
+import json
 import re
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -1667,6 +1668,203 @@ def test_the_broker_support_review_date_is_recorded() -> None:
     assert BROKER_SUPPORT_CHECKED in decision
     assert "end_of_community_support" in decision
     assert "No newer community-supported series exists" in decision
+
+
+STORAGE_INSTANCES = {
+    "development": ("seaweedfs-sw9cr", {"9333:9333", "8082:8080", "8888:8888", "8333:8333"}),
+    "testing": ("seaweedfs-ts3jd", {"28333:8333", "29333:9333"}),
+}
+
+STORAGE_REQUIRED_FLAGS = (
+    "-s3.port.iceberg=0",
+    "-s3.port.lance=0",
+    "-ip.bind=0.0.0.0",
+    "-master.telemetry=false",
+)
+
+STORAGE_NETWORKS = {
+    "development": {"app-net-na6hy", "access-net-ha4mz"},
+    "testing": {"app-net-nt5rk", "access-net-ht6pn"},
+}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("environment", sorted(STORAGE_INSTANCES))
+def test_each_storage_service_matches_its_registered_ports_and_volume(environment: str) -> None:
+    """Pin object storage to the rows assigned to it.
+
+    Confirms the registered name, published ports, and data volume match the registry, so the
+    volume port stays remapped clear of the port the proxy owns.
+
+    Arguments:
+        environment: Environment whose overlay is inspected.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a port or volume departs from the registered value.
+    """
+    service, ports = STORAGE_INSTANCES[environment]
+    definition = merged(ENVIRONMENT_FILES[environment])["services"][service]
+
+    assert definition["container_name"] == service
+    assert definition["image"] == "docker.io/chrislusf/seaweedfs:4.46"
+    assert set(definition["networks"]) == STORAGE_NETWORKS[environment]
+    assert set(definition["ports"]) == ports
+    assert f"{service}-data:/data" in definition["volumes"]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("environment", sorted(STORAGE_INSTANCES))
+def test_every_storage_service_disables_the_ports_it_does_not_use(environment: str) -> None:
+    """Stop two unused servers from claiming ports.
+
+    Confirms the catalog servers are disabled and the process binds every interface, because one
+    default port collides with a conventional exporter and a single-interface bind makes a
+    published port accept a connection and then close it.
+
+    Arguments:
+        environment: Environment whose overlay is inspected.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any required flag is absent.
+    """
+    service, _ = STORAGE_INSTANCES[environment]
+    command = " ".join(merged(ENVIRONMENT_FILES[environment])["services"][service]["command"])
+
+    for flag in STORAGE_REQUIRED_FLAGS:
+        assert flag in command, flag
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("environment", sorted(STORAGE_INSTANCES))
+def test_every_storage_service_takes_its_keys_from_the_environment(environment: str) -> None:
+    """Keep the access key out of the image and the repository.
+
+    Confirms the identities file is mounted read-only as a template and rendered from the
+    environment at start, so no committed file carries a real key.
+
+    Arguments:
+        environment: Environment whose overlay is inspected.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the template is absent, writable, or carries a key.
+    """
+    service, _ = STORAGE_INSTANCES[environment]
+    definition = merged(ENVIRONMENT_FILES[environment])["services"][service]
+    command = " ".join(definition["command"])
+    template = (REPOSITORY_ROOT / "docker" / "seaweedfs" / "s3.json").read_text(encoding="utf-8")
+
+    assert "./docker/seaweedfs/s3.json:/etc/seaweedfs/s3.json.template:ro" in definition["volumes"]
+    assert "$$S3_ACCESS_KEY_ID" in command
+    assert "$$S3_SECRET_ACCESS_KEY" in command
+    assert "__S3_ACCESS_KEY_ID__" in template
+    assert "__S3_SECRET_ACCESS_KEY__" in template
+
+
+@pytest.mark.unit
+def test_the_identities_file_grants_no_anonymous_access() -> None:
+    """Refuse every request that carries no key.
+
+    Confirms the identities file declares no anonymous identity, because SeaweedFS grants whatever
+    actions such an identity lists to unauthenticated callers.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If an anonymous identity is declared.
+    """
+    template = json.loads(
+        (REPOSITORY_ROOT / "docker" / "seaweedfs" / "s3.json").read_text(encoding="utf-8"),
+    )
+    names = {identity["name"] for identity in template["identities"]}
+
+    assert "anonymous" not in names
+    assert names == {"localforge"}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("environment", sorted(STORAGE_INSTANCES))
+def test_every_storage_health_check_probes_both_components(environment: str) -> None:
+    """Check the two components that answer separately.
+
+    Confirms the probe reaches both the master and the gateway on the endpoint that exists on each,
+    because the master serves no status route and a gateway-only probe would report a broken master
+    as healthy.
+
+    Arguments:
+        environment: Environment whose overlay is inspected.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If either component is unprobed, or the wrong path is used.
+    """
+    service, _ = STORAGE_INSTANCES[environment]
+    check = merged(ENVIRONMENT_FILES[environment])["services"][service]["healthcheck"]["test"]
+
+    assert check[0] == "CMD-SHELL"
+    assert "127.0.0.1:9333/healthz" in check[1]
+    assert "127.0.0.1:8333/healthz" in check[1]
+    assert "/status" not in check[1]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("environment", sorted(STORAGE_INSTANCES))
+def test_every_storage_service_refuses_to_start_without_its_keys(environment: str) -> None:
+    """Fail loudly rather than serve an unusable gateway.
+
+    Confirms the command aborts when either key is unset, because an empty credential renders an
+    identities file the gateway accepts, leaving a healthy container that refuses every request.
+
+    Arguments:
+        environment: Environment whose overlay is inspected.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If either key is allowed to be empty.
+    """
+    service, _ = STORAGE_INSTANCES[environment]
+    command = " ".join(merged(ENVIRONMENT_FILES[environment])["services"][service]["command"])
+
+    assert "S3_ACCESS_KEY_ID:?" in command
+    assert "S3_SECRET_ACCESS_KEY:?" in command
+
+
+@pytest.mark.unit
+def test_the_bring_up_creates_the_media_bucket() -> None:
+    """Keep a fresh volume from starting without a bucket.
+
+    Confirms the documented bring-up runs the seeding step for both environments, because object
+    storage starts empty and nothing else creates the bucket the application uploads into.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If either bring-up omits the seeding step.
+    """
+    plan = (REPOSITORY_ROOT / "docs" / "build" / "plan.md").read_text(encoding="utf-8")
+
+    for environment in STORAGE_INSTANCES:
+        assert f"scripts/seed_storage.py --environment {environment}" in plan
 
 
 @pytest.mark.unit

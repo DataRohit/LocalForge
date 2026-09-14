@@ -150,6 +150,17 @@ docker compose --env-file .env.development -f compose.yaml -f compose.developmen
 
 Pass: 22 rows, every `State` `running`, every health-checked service `healthy`, nothing `restarting`.
 
+**Gate 5a-i — the media bucket exists.** Object storage starts empty, so the bucket the application uploads into
+is created once the gateway is healthy. The step is idempotent, so it is safe on every bring-up. It runs from the
+host, so it is pointed at the published port rather than the container name the environment file carries.
+
+```console
+uv run python scripts/seed_storage.py --environment development --endpoint http://127.0.0.1:8333
+```
+
+Pass: exit `0`, reporting the bucket `created` on a fresh volume or `already present` afterwards. Exit `1` means
+the gateway is unreachable or nothing is configured; exit `2` means it refused the configured keys.
+
 **Gate 5b — every host port answers.**
 
 ```console
@@ -205,6 +216,7 @@ Gate: all twelve pass and `uv run poe check` is still green.
 
 ```console
 docker compose --env-file .env.testing -f compose.yaml -f compose.testing.yaml up -d
+uv run python scripts/seed_storage.py --environment testing
 docker compose --env-file .env.testing -f compose.yaml -f compose.testing.yaml run --rm django-test-dt5qx
 uv run pytest
 ```

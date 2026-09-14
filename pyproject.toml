@@ -51,6 +51,8 @@ default = true
 [dependency-groups]
 dev = [
     "bcrypt>=5.0.0",
+    "boto3>=1.40.0",
+    "boto3-stubs[s3]>=1.40.0",
     "coverage[toml]>=7.16.0",
     "django-stubs[compatible-mypy]>=6.1.0",
     "factory-boy>=3.3.3",

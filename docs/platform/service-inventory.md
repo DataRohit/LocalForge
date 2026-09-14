@@ -65,18 +65,33 @@ Each is a deliberate remap. Reverting one reintroduces a collision.
 | `valkey-channels-vh8dm` | 6379 | `6380` | both Valkey instances reachable at once |
 | `valkey-channels-exporter-vx4nq` | 9121 | `9122` | both exporters reachable at once |
 
-### 1.3 Two flags that are not optional
+### 1.3 Four flags that are not optional
 
 **SeaweedFS binds two extra ports by default in 4.46.** `weed server -s3` opens an Iceberg REST catalog on **8181**
 and a Lance namespace server on **9101** unless told otherwise, and 9101 is the conventional `node_exporter` port.
 This platform uses neither, so start it with both disabled:
 
 ```text
-weed server -dir=/data -s3 -s3.config=/etc/seaweedfs/s3.json -s3.port.iceberg=0 -s3.port.lance=0
+weed server -dir=/data -s3 -s3.config=/etc/seaweedfs/s3.json -s3.port.iceberg=0 -s3.port.lance=0 \
+  -ip.bind=0.0.0.0 -master.telemetry=false
 ```
 
 `-s3` implicitly enables the filer, so `-filer` is redundant. gRPC ports are derived as `10000 + port` — 19333,
 18080, 18888, 18333 — and stay container-internal.
+
+**SeaweedFS binds one detected interface, not every interface.** `-ip.bind` defaults to `-ip`, which defaults to
+the first container address SeaweedFS detects. On a container attached to both a service zone and an access zone
+that address is whichever Docker enumerated first, so a published port reaches the container and is then refused:
+the socket accepts and closes, the container stays healthy, and nothing reports a fault. Measured 2026-09-14 —
+development bound its access-zone address and worked by accident while testing bound its app-zone address and
+failed. Pass `-ip.bind=0.0.0.0` so both the published port and the service zone reach it.
+
+**SeaweedFS reports to its vendor unless told not to.** `weed server` logs
+`Reporting anonymous cluster statistics to https://telemetry.seaweedfs.com/api/collect every 24h0m0s` and schedules
+that POST once 10 GiB are stored. The service sits on an access zone, which ADR-0021 deliberately leaves
+non-internal, so the egress is real rather than theoretical. Measured 2026-09-14. Under `weed server` the flag is
+namespaced to the master — `-master.telemetry=false`, **not** the bare `-telemetry=false` the log line suggests,
+which that subcommand does not accept.
 
 **Alloy listens on loopback by default.** Its default `--server.http.listen-addr` is `127.0.0.1:12345`, so without
 an override the UI and its metrics are unreachable from outside the container and the health check fails while the

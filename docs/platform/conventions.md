@@ -337,8 +337,13 @@ when the stanza is missing, so the probe always reported it present and the stan
 
 ### 4.7 `scripts/seed_storage.py`
 
-Creates the S3 bucket and applies the access-key identity in SeaweedFS. Creating an existing bucket is success. Exit
-`0` bucket present; `1` gateway unreachable; `2` credentials rejected.
+`--environment {development,testing}`, with `--endpoint` to override the gateway URL the environment file carries,
+which the host needs because that file names the container. Creates the media bucket and reads it back. Creating an
+existing bucket is success. Exit `0` bucket present; `1` gateway unreachable or nothing configured; `2` credentials
+rejected.
+
+The access-key identity is applied by the identities file the container renders from the environment at start, not
+by this script: SeaweedFS reads `-s3.config` once at boot and exposes no API to install an identity afterwards.
 
 ### 4.8 `scripts/audit_naming.py`
 
