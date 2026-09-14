@@ -6,19 +6,19 @@ is safe and does not invalidate a running stack.
 
 **Blocked by:** 01.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A committed example file lists every variable in the inventory in `docs/platform/conventions.md` with
+- [x] A committed example file lists every variable in the inventory in `docs/platform/conventions.md` with
       placeholder values and no real secrets.
-- [ ] The generator produces the development file, the testing file, and the host-mode testing variant, each with
+- [x] The generator produces the development file, the testing file, and the host-mode testing variant, each with
       the correct per-environment overrides.
-- [ ] Every secret is generated with a cryptographically secure source, and no two services share a credential.
-- [ ] A default run never overwrites an existing value; it only fills in variables that are absent.
-- [ ] A forced run regenerates everything and warns which volumes hold credential-derived state and must be
+- [x] Every secret is generated with a cryptographically secure source, and no two services share a credential.
+- [x] A default run never overwrites an existing value; it only fills in variables that are absent.
+- [x] A forced run regenerates everything and warns which volumes hold credential-derived state and must be
       recreated.
-- [ ] The generator refuses to write over a Git-tracked file and exits with the documented code.
-- [ ] No secret is ever printed to stdout or written to a log.
-- [ ] Git ignores the generated files and does not ignore the example or the encrypted variants.
-- [ ] An encrypt/decrypt helper round-trips an environment file, and exits with a clear message when the encryption
+- [x] The generator refuses to write over a Git-tracked file and exits with the documented code.
+- [x] No secret is ever printed to stdout or written to a log.
+- [x] Git ignores the generated files and does not ignore the example or the encrypted variants.
+- [x] An encrypt/decrypt helper round-trips an environment file, and exits with a clear message when the encryption
       tooling is absent rather than failing obscurely.
-- [ ] Unit tests cover idempotency, the refusal cases, and every exit code.
+- [x] Unit tests cover idempotency, the refusal cases, and every exit code.

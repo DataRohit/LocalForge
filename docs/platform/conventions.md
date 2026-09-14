@@ -133,7 +133,7 @@ zones exist. Measured 2026-09-13; see
 
 | Volume | Owner | Contents | Environment |
 |---|---|---|---|
-| `postgres-pg3ka-data` | `postgres-pg3ka` | `PGDATA` | development |
+| `postgres-pg3ka-data` | `postgres-pg3ka` | `PGDATA`, mounted at `/var/lib/postgresql` | development |
 | `postgres-pg3ka-wal` | `postgres-pg3ka` | WAL archive staging for pgBackRest | development |
 | `postgres-replica-pg6vy-data` | `postgres-replica-pg6vy` | standby `PGDATA` | development |
 | `pgbackrest-pb2wj-repo` | `pgbackrest-pb2wj` | backup repository, full + incremental + WAL | development |
@@ -194,6 +194,8 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `POSTGRES_PORT` | `django-uv5n2` | primary port | `5432` | no | yes |
 | `POSTGRES_REPLICA_HOST` | `django-uv5n2` | replica host | `postgres-replica-pg6vy` | no | yes |
 | `POSTGRES_REPLICA_PORT` | `django-uv5n2` | replica port | `5432` | no | yes |
+| `POSTGRES_REPLICATION_ALIAS` | `postgres-replica-pg6vy` | primary alias resolving on the data zone alone | `postgres-primary-nd9pc` | no | yes |
+| `POSTGRES_REPLICATION_CIDR` | `postgres-pg3ka` | source range the replication rule accepts | `10.89.4.0/24` | no | yes |
 | `POSTGRES_REPLICATION_USER` | `postgres-pg3ka` | replication role | `localforge_repl` | no | yes |
 | `POSTGRES_REPLICATION_PASSWORD` | `postgres-pg3ka` | replication password | `<GENERATED>` | **yes** | yes |
 | `POSTGRES_REPLICATION_SLOT` | `postgres-pg3ka` | physical slot name | `localforge_standby` | no | yes |

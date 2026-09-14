@@ -1,3 +1,59 @@
+services:
+  postgres-pg3ka:
+    image: docker.io/library/postgres:18.6
+    container_name: postgres-pg3ka
+    restart: unless-stopped
+    env_file:
+      - .env.development
+    ports:
+      - "5432:5432"
+    networks:
+      data-net-nd9pc:
+        aliases:
+          - postgres-primary-nd9pc
+      access-net-ha4mz: {}
+    volumes:
+      - postgres-pg3ka-data:/var/lib/postgresql
+      - ./docker/postgres/primary/conf.d:/etc/postgresql/conf.d:ro
+      - ./docker/postgres/primary/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  postgres-replica-pg6vy:
+    image: docker.io/library/postgres:18.6
+    container_name: postgres-replica-pg6vy
+    restart: unless-stopped
+    env_file:
+      - .env.development
+    ports:
+      - "5433:5432"
+    networks:
+      - data-net-nd9pc
+      - access-net-ha4mz
+    volumes:
+      - postgres-replica-pg6vy-data:/var/lib/postgresql
+      - ./docker/postgres/standby/conf.d:/etc/postgresql/conf.d:ro
+      - ./scripts/pg_replica_bootstrap.sh:/usr/local/bin/pg_replica_bootstrap.sh:ro
+    entrypoint: ["/usr/local/bin/pg_replica_bootstrap.sh"]
+    command: ["postgres"]
+    depends_on:
+      postgres-pg3ka:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" &&
+          test "$$(psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -tAc 'SELECT pg_is_in_recovery()')" = t
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 300s
+
 networks:
   edge-net-ne2vk:
     name: edge-net-ne2vk
@@ -13,6 +69,9 @@ networks:
     name: data-net-nd9pc
     driver: bridge
     internal: true
+    ipam:
+      config:
+        - subnet: 10.89.4.0/24
   obsv-net-nb4xt:
     name: obsv-net-nb4xt
     driver: bridge

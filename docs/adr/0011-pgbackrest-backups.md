@@ -34,15 +34,21 @@ Verified against the official user guide, which is built against 2.59.1. Config 
 
 ```ini
 [localforge]
-pg1-path=/var/lib/postgresql/data
+pg1-path=/var/lib/postgresql/18/docker
 
 [global]
 repo1-path=/var/lib/pgbackrest
 repo1-retention-full=2
 ```
 
-`pg1-path` must equal `data_directory` **exactly** as PostgreSQL reports it; a mismatch produces backup errors. On
-the primary, `postgresql.conf` needs:
+`pg1-path` must equal `data_directory` **exactly** as PostgreSQL reports it; a mismatch produces backup errors.
+
+**The path is not `/var/lib/postgresql/data`.** Measured 2026-09-14 against `postgres:18.6`: the image sets
+`PGDATA=/var/lib/postgresql/18/docker` and declares its `VOLUME` at `/var/lib/postgresql`, a layout change made in
+the 18 series so `pg_upgrade --link` can work across a single mount point. Mounting a named volume at
+`/var/lib/postgresql/data` leaves that directory an unused mount and the server refuses to start, printing a long
+advisory rather than a short error. The platform therefore mounts each PostgreSQL volume at `/var/lib/postgresql`
+and leaves `PGDATA` at the image default. On the primary, `postgresql.conf` needs:
 
 ```ini
 archive_mode = on

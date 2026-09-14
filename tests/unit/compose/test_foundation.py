@@ -21,6 +21,7 @@ TESTING_FILE = REPOSITORY_ROOT / "compose.testing.yaml"
 NAME_PATTERN = re.compile(r"^[a-z][a-z-]*-[a-z2-9]{5}$")
 VOLUME_PATTERN = re.compile(r"^[a-z][a-z-]*-[a-z2-9]{5}-[a-z0-9-]+$")
 PROJECT_NAMES = {"development": "localforge-dev", "testing": "localforge-test"}
+POSTGRES_VOLUME_TARGET = "/var/lib/postgresql"
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -651,6 +652,329 @@ def test_no_service_mounts_an_anonymous_volume(project: dict[str, Any]) -> None:
 
             assert source, f"{name} mounts an anonymous volume"
             assert source.startswith((".", "/")) or source in declared, f"{name} mounts {source}"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("project", MERGED_PROJECTS)
+def test_every_published_service_joins_a_reachable_zone(project: dict[str, Any]) -> None:
+    """Keep a published port from being dropped silently.
+
+    Confirms any service publishing a host port also joins a non-internal zone, without which
+    Docker discards the publication with no warning and the container runs healthily while the port
+    is unreachable.
+
+    Arguments:
+        project: Merged project to inspect.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a publishing service is on internal zones alone.
+    """
+    for name, definition in (project.get("services") or {}).items():
+        if not definition.get("ports"):
+            continue
+
+        assert any(
+            zone.startswith(("access-net-", "edge-net-")) for zone in definition["networks"]
+        ), name
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("project", MERGED_PROJECTS)
+def test_a_service_is_only_awaited_when_it_reports_health(project: dict[str, Any]) -> None:
+    """Wait on readiness rather than on a process existing.
+
+    Confirms every dependency is awaited on health and that the awaited service defines a check,
+    because waiting on one that does not is a configuration error reported only at start time.
+
+    Arguments:
+        project: Merged project to inspect.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a dependency is awaited without a health check.
+    """
+    services = project.get("services") or {}
+    for name, definition in services.items():
+        for dependency, condition in (definition.get("depends_on") or {}).items():
+            assert condition.get("condition") == "service_healthy", f"{name} -> {dependency}"
+            assert services[dependency].get("healthcheck"), dependency
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("project", MERGED_PROJECTS)
+def test_every_bind_mount_is_read_only(project: dict[str, Any]) -> None:
+    """Keep a container from writing into the working tree.
+
+    Confirms every bind mount from the repository is mounted read-only, so a container cannot
+    modify the source it was configured from.
+
+    Arguments:
+        project: Merged project to inspect.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a bind mount is writable.
+    """
+    for name, definition in (project.get("services") or {}).items():
+        for mount in definition.get("volumes") or []:
+            if isinstance(mount, str) and mount.startswith("./"):
+                assert mount.endswith(":ro"), f"{name} mounts {mount} writable"
+
+
+@pytest.mark.unit
+def test_the_standby_boots_from_a_script_it_mounts() -> None:
+    """Give the standby the bootstrap script it is told to run.
+
+    Confirms the standby's entrypoint names a path the service also mounts, since an entrypoint
+    pointing at a file that is not there fails only once the container starts.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the entrypoint is not a mounted path.
+    """
+    standby = merged(DEVELOPMENT_FILE)["services"]["postgres-replica-pg6vy"]
+    targets = {mount.split(":")[1] for mount in standby["volumes"] if mount.startswith("./")}
+
+    assert standby["entrypoint"][0] in targets
+
+
+@pytest.mark.unit
+def test_the_standby_waits_for_the_primary_it_seeds_from() -> None:
+    """Order the standby behind the primary it copies.
+
+    Confirms the standby depends on the primary reporting healthy, because a base backup taken
+    before the primary accepts connections cannot succeed.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the standby does not wait on the primary.
+    """
+    standby = merged(DEVELOPMENT_FILE)["services"]["postgres-replica-pg6vy"]
+
+    assert standby["depends_on"]["postgres-pg3ka"]["condition"] == "service_healthy"
+
+
+@pytest.mark.unit
+def test_the_standby_health_check_tells_a_standby_from_a_primary() -> None:
+    """Report the standby healthy only while it is in recovery.
+
+    Confirms the standby's check asserts recovery state rather than mere liveness, because a
+    standby promoted to a primary would otherwise still report healthy.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the check does not assert recovery state.
+    """
+    standby = merged(DEVELOPMENT_FILE)["services"]["postgres-replica-pg6vy"]
+    check = " ".join(standby["healthcheck"]["test"])
+
+    assert standby["healthcheck"]["test"][0] == "CMD-SHELL"
+    assert "pg_isready" in check
+    assert "psql" in check
+    assert "pg_is_in_recovery()" in check
+    assert "= t" in check
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("project", MERGED_PROJECTS)
+def test_every_database_volume_is_mounted_where_the_image_expects(
+    project: dict[str, Any],
+) -> None:
+    """Mount the database volume at the path the image declares.
+
+    Confirms every PostgreSQL service mounts its data volume at the image's own volume path. The
+    18 series moved the data directory under a version subdirectory, so a volume mounted at the
+    older path is reported as an unused mount and the server refuses to start, printing a long
+    advisory rather than a short error.
+
+    Arguments:
+        project: Merged project to inspect.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a database volume is mounted anywhere else.
+    """
+    for name, definition in (project.get("services") or {}).items():
+        if not str(definition.get("image", "")).startswith("docker.io/library/postgres"):
+            continue
+
+        targets = {
+            mount.split(":")[1]
+            for mount in definition["volumes"]
+            if isinstance(mount, str) and mount.split(":")[0].endswith("-data")
+        }
+
+        assert targets == {POSTGRES_VOLUME_TARGET}, name
+
+
+@pytest.mark.unit
+def test_the_standby_reaches_the_primary_over_the_data_zone_alone() -> None:
+    """Keep replication off the zone that has internet egress.
+
+    Confirms the primary carries an alias scoped to the data zone and the standby is pointed at a
+    name rather than the primary's container name, because a container name resolves to every zone
+    it joins and Docker may hand back the access-zone address instead.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the data-zone alias is missing.
+    """
+    project = merged(DEVELOPMENT_FILE)
+    primary = project["services"]["postgres-pg3ka"]
+    aliases = primary["networks"]["data-net-nd9pc"]["aliases"]
+
+    assert aliases
+    assert "access-net-ha4mz" not in aliases
+
+
+@pytest.mark.unit
+def test_the_replication_rule_is_scoped_to_a_fixed_data_zone_range() -> None:
+    """Pin the zone replication may arrive from.
+
+    Confirms the data zone declares an explicit address range, without which the host-based
+    authentication rule cannot name a stable range and would have to accept every network the
+    primary happens to join.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the data zone has no declared range.
+    """
+    data_zone = load(DEVELOPMENT_FILE)["networks"]["data-net-nd9pc"]
+
+    assert data_zone["ipam"]["config"][0]["subnet"]
+
+
+@pytest.mark.unit
+def test_the_primary_and_standby_configurations_are_separate_files() -> None:
+    """Keep a primary-only setting from reaching the standby.
+
+    Confirms the two nodes mount different configuration directories, because the base backup
+    copies the primary's configuration file and a shared directory would silently apply archiving
+    settings to the standby as well.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If both nodes mount the same configuration directory.
+    """
+    services = merged(DEVELOPMENT_FILE)["services"]
+
+    def configuration_source(name: str) -> str:
+        """Report the configuration directory a service mounts.
+
+        Finds the bind mount targeting the server's configuration directory, which is the one that
+        must differ between the two nodes.
+
+        Arguments:
+            name: Service to inspect.
+
+        Returns:
+            The repository path mounted as the configuration directory.
+        """
+        mounts = [str(mount) for mount in services[name]["volumes"]]
+
+        return next(
+            mount.split(":")[0]
+            for mount in mounts
+            if mount.split(":")[1] == "/etc/postgresql/conf.d"
+        )
+
+    assert configuration_source("postgres-pg3ka") != configuration_source("postgres-replica-pg6vy")
+
+
+@pytest.mark.unit
+def test_a_service_overriding_its_entrypoint_states_its_command() -> None:
+    """Restore the command that overriding an entrypoint discards.
+
+    Confirms any service replacing the image entrypoint also states its command, because Compose
+    clears the image's own command when the entrypoint is overridden and the container would
+    otherwise start the entrypoint with no arguments.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a service overrides its entrypoint without stating a command.
+    """
+    for project in MERGED_PROJECTS:
+        for name, definition in (project.get("services") or {}).items():
+            if definition.get("entrypoint"):
+                assert definition.get("command"), name
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("project", MERGED_PROJECTS)
+def test_every_image_is_pinned_to_a_tag_the_inventory_records(
+    project: dict[str, Any],
+) -> None:
+    """Pin every image to a version the inventory carries.
+
+    Confirms each image reference appears in the pinned-image table, so a tag cannot drift from the
+    one the platform recorded and no floating tag slips in.
+
+    Arguments:
+        project: Merged project to inspect.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If an image is absent from the pinned table.
+    """
+    document = (REPOSITORY_ROOT / "docs" / "platform" / "service-inventory.md").read_text(
+        encoding="utf-8",
+    )
+
+    for name, definition in (project.get("services") or {}).items():
+        image = definition.get("image")
+        if image is None:
+            assert definition.get("build"), name
+            continue
+
+        repository, _, tag = image.rpartition(":")
+
+        assert f"| `{repository}` | `{tag}`" in document, image
 
 
 @pytest.mark.unit
