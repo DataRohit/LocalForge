@@ -74,6 +74,25 @@ Consequences we accept and must implement: rotate the token on logout by deletin
 outside the login response, and treat JWT as the primary scheme for anything long-lived. If token expiry becomes a
 requirement, `django-rest-knox` is the documented upgrade path and this ADR is superseded.
 
+## What the user model does and does not give these endpoints
+
+Measured 2026-09-14, when the model was built. The identifiers are unique **case-insensitively**, enforced by two
+functional constraints, and the manager's natural-key lookup matches case-insensitively to suit. Three consequences
+land on the endpoints rather than on the model:
+
+- **Serializer uniqueness must be written case-insensitively.** A `ModelSerializer` generates a `UniqueValidator`
+  from the plain `unique=True` on each column, and that validator is case-sensitive. A username differing only in
+  case therefore passes validation and fails at the database, turning ordinary input into a 500. Tickets 31 and 34
+  must validate against the lowercased value themselves.
+- **The default duplicate message breaks enumeration resistance.** It states that an account with that identifier
+  already exists. Registration and username change must return their documented indistinguishable response instead,
+  per [0018](./0018-api-error-contract.md). The constraints carry neutral messages so a violation that does escape
+  says nothing useful, but the endpoints are what make the guarantee.
+- **The inactive flag is enforced by `authenticate`, not by token creation.** Both the DRF token endpoint and
+  SimpleJWT's obtain serializer call `authenticate`, so an unactivated account is refused. `RefreshToken.for_user`
+  does **not** check it, so ticket 30 and the WebSocket middleware in ticket 39 must not mint tokens through that
+  path without checking `is_active` themselves.
+
 ## Considered options
 
 **Adopt Djoser and pin it exactly.** The lowest-code path. Rejected on the combination above: untested on our

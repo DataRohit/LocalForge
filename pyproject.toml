@@ -107,7 +107,7 @@ convention = "google"
 [tool.ruff.lint.per-file-ignores]
 "src/config/settings/*.py" = ["F403"]
 "src/manage.py" = ["PLC0415"]
-"**/migrations/*.py" = ["D", "RUF012"]
+"**/migrations/*.py" = ["D", "E501", "RUF012"]
 "scripts/*.py" = ["T201", "TC003"]
 "scripts/gen_secrets.py" = ["S603"]
 "scripts/preflight.py" = ["S603"]
