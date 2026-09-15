@@ -27,12 +27,36 @@ discovery.relabel "containers" {
     target_label  = "compose_service"
   }
 
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+
 }
 
 loki.source.docker "containers" {
   host       = "unix:///var/run/docker.sock"
   targets    = discovery.relabel.containers.output
   labels     = { job = "docker" }
+  forward_to = [loki.process.structured.receiver]
+}
+
+loki.process "structured" {
+  stage.json {
+    expressions = {
+      level      = "level",
+      logger     = "logger",
+      request_id = "request_id",
+    }
+  }
+
+  stage.labels {
+    values = {
+      level  = "",
+      logger = "",
+    }
+  }
+
   forward_to = [loki.write.storage.receiver]
 }
 

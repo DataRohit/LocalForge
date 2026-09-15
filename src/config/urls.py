@@ -6,13 +6,14 @@ and the health endpoint the platform polls until the fixed application surface i
 
 from django.contrib import admin
 from django.urls import path
-from health_check.views import HealthCheckView
+
+from config.health import CorrelatedHealthCheckView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path(
         "health/",
-        HealthCheckView.as_view(checks=["health_check.checks.Database"]),
+        CorrelatedHealthCheckView.as_view(checks=["config.health.TimedDatabaseHealthCheck"]),
         name="health",
     ),
 ]

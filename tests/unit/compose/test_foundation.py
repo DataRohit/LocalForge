@@ -2315,6 +2315,9 @@ def reference(name: str) -> str:
 POSTGRES_PORT = 5432
 PROMETHEUS_CONFIG = REPOSITORY_ROOT / "docker" / "prometheus" / "prometheus.yml"
 ALLOY_CONFIG = REPOSITORY_ROOT / "docker" / "alloy" / "config.alloy"
+PLATFORM_DASHBOARD = (
+    REPOSITORY_ROOT / "docker" / "grafana" / "provisioning" / "dashboards" / "platform.json"
+)
 
 
 @pytest.mark.unit
@@ -2442,10 +2445,12 @@ def test_the_log_collector_reads_the_socket_read_only_and_labels_what_it_ships()
     config = ALLOY_CONFIG.read_text(encoding="utf-8")
 
     assert "/var/run/docker.sock:/var/run/docker.sock:ro" in volumes
-    for label in ("container", "compose_project", "compose_service"):
+    for label in ("container", "compose_project", "compose_service", "service"):
         assert f'target_label  = "{label}"' in config, label
 
     assert "com.docker.compose.project=localforge-dev" in config
+    assert 'loki.process "structured"' in config
+    assert 'request_id = "request_id"' in config
 
 
 @pytest.mark.unit
@@ -2500,6 +2505,43 @@ def test_the_visualisation_service_is_provisioned_and_closed_to_anonymous_use() 
 
 
 @pytest.mark.unit
+def test_the_application_dashboard_covers_the_observability_contract() -> None:
+    """Provision the request, database, and log views the ticket requires.
+
+    Confirms the checked-in dashboard queries each django-prometheus family and selects application
+    logs by their service label, so the visualization survives a Grafana volume reset.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any required panel or query is absent.
+    """
+    dashboard = json.loads(PLATFORM_DASHBOARD.read_text(encoding="utf-8"))
+    expressions = {
+        target["expr"] for panel in dashboard["panels"] for target in panel.get("targets", [])
+    }
+
+    completion_queries = {
+        query for query in expressions if "localforge_http_responses_total" in query
+    }
+
+    assert any("sum by (method)" in query for query in completion_queries)
+    assert any("sum by (status)" in query for query in completion_queries)
+    assert any("localforge_http_request_duration_seconds_bucket" in query for query in expressions)
+    assert all(
+        'view!~"health|prometheus-django-metrics"' in query
+        for query in expressions
+        if "localforge_http_" in query
+    )
+    assert any("django_db_execute_total" in query for query in expressions)
+    assert '{service="django-uv5n2"} | json' in expressions
+
+
+@pytest.mark.unit
 def test_nothing_in_the_observability_stack_reports_outward() -> None:
     """Keep the stack from calling its vendors.
 
@@ -2544,11 +2586,50 @@ def test_every_scrape_target_is_a_registered_container() -> None:
         AssertionError: If a job names something absent from the registry.
     """
     scrape = yaml.safe_load(PROMETHEUS_CONFIG.read_text(encoding="utf-8"))
-    declared = set(merged(DEVELOPMENT_FILE)["services"])
+    services = merged(DEVELOPMENT_FILE)["services"]
+    declared = set(services)
+
+    for service in services.values():
+        networks = service.get("networks", {})
+        if isinstance(networks, dict):
+            for network in networks.values():
+                if isinstance(network, dict):
+                    declared.update(network.get("aliases", []))
 
     for job in scrape["scrape_configs"]:
         for target in job["static_configs"][0]["targets"]:
             assert target.split(":")[0] in declared, job["job_name"]
+
+
+@pytest.mark.unit
+def test_application_metrics_use_only_the_observability_path() -> None:
+    """Scrape Django without publishing its metrics through the edge proxy.
+
+    Confirms Prometheus reaches the application by its registered container name on their shared
+    observability network and that no Traefik router names the internal endpoint.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the target is absent, the network is missing, or the edge publishes it.
+    """
+    services = merged(DEVELOPMENT_FILE)["services"]
+    scrape = yaml.safe_load(PROMETHEUS_CONFIG.read_text(encoding="utf-8"))
+    jobs = {job["job_name"]: job for job in scrape["scrape_configs"]}
+    django_networks = services["django-uv5n2"]["networks"]
+    prometheus_networks = services["prometheus-pm5db"]["networks"]
+    django_labels = services["django-uv5n2"].get("labels", [])
+
+    assert jobs["django"]["static_configs"][0]["targets"] == ["django-metrics-nb4xt:8001"]
+    assert "obsv-net-nb4xt" in django_networks
+    assert "obsv-net-nb4xt" in prometheus_networks
+    assert django_networks["obsv-net-nb4xt"]["aliases"] == ["django-metrics-nb4xt"]
+    assert "8001:8001" not in services["django-uv5n2"]["ports"]
+    assert not any("/metrics" in label for label in django_labels)
 
 
 @pytest.mark.unit
@@ -2596,6 +2677,7 @@ def test_the_observability_stack_starts_in_the_documented_order() -> None:
 
     assert prometheus["postgres-exporter-pe4rk"]["condition"] == "service_healthy"
     assert prometheus["valkey-cache-exporter-ve7ts"]["condition"] == "service_started"
+    assert prometheus["django-uv5n2"]["condition"] == "service_healthy"
     assert grafana["prometheus-pm5db"]["condition"] == "service_healthy"
     assert grafana["loki-lk3ny"]["condition"] == "service_started"
 

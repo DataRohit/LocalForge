@@ -101,6 +101,7 @@ def test_the_asgi_application_dispatches_both_protocols() -> None:
     assert isinstance(asgi.application, ProtocolTypeRouter)
     assert set(asgi.application.application_mapping) == {"http", "websocket"}
     assert isinstance(asgi.django_application, ASGIHandler)
+    assert asgi.application.application_mapping["http"] is asgi.http_application
 
 
 @pytest.mark.unit

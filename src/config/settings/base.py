@@ -22,6 +22,7 @@ ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS")
 CSRF_TRUSTED_ORIGINS = env.list("DJANGO_CSRF_TRUSTED_ORIGINS")
 
 INSTALLED_APPS = [
+    "django_prometheus",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -35,6 +36,8 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "django_prometheus.middleware.PrometheusBeforeMiddleware",
+    "config.logs.request_context_middleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -42,6 +45,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "config.logs.BoundedPrometheusAfterMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -91,7 +95,7 @@ _database_options = {
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.postgresql",
+        "ENGINE": "django_prometheus.db.backends.postgresql",
         "NAME": env.str("POSTGRES_DB"),
         "USER": env.str("POSTGRES_USER"),
         "PASSWORD": env.str("POSTGRES_PASSWORD"),
@@ -102,7 +106,7 @@ DATABASES = {
         "OPTIONS": _database_options,
     },
     "replica": {
-        "ENGINE": "django.db.backends.postgresql",
+        "ENGINE": "django_prometheus.db.backends.postgresql",
         "NAME": env.str("POSTGRES_DB"),
         "USER": env.str("POSTGRES_USER"),
         "PASSWORD": env.str("POSTGRES_PASSWORD"),
@@ -296,6 +300,9 @@ LOGGING: dict[str, Any] = {
         },
     },
     "filters": {
+        "request_context": {
+            "()": "config.logs.RequestContextFilter",
+        },
         "task_arguments": {
             "()": "config.logs.TaskArgumentRedactionFilter",
         },
@@ -305,12 +312,13 @@ LOGGING: dict[str, Any] = {
             "class": "logging.StreamHandler",
             "stream": "ext://sys.stdout",
             "formatter": "structured",
+            "filters": ["request_context"],
         },
         "queue": {
             "class": "logging.StreamHandler",
             "stream": "ext://sys.stdout",
             "formatter": "structured",
-            "filters": ["task_arguments"],
+            "filters": ["request_context", "task_arguments"],
         },
     },
     "root": {
@@ -325,6 +333,21 @@ LOGGING: dict[str, Any] = {
         },
         "celery": {
             "handlers": ["queue"],
+            "level": LOG_LEVEL,
+            "propagate": False,
+        },
+        "uvicorn": {
+            "handlers": ["stdout"],
+            "level": LOG_LEVEL,
+            "propagate": False,
+        },
+        "uvicorn.error": {
+            "handlers": ["stdout"],
+            "level": LOG_LEVEL,
+            "propagate": False,
+        },
+        "uvicorn.access": {
+            "handlers": [],
             "level": LOG_LEVEL,
             "propagate": False,
         },

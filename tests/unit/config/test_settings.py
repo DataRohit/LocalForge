@@ -335,7 +335,7 @@ def test_the_database_is_configured_from_the_environment() -> None:
     assert set(aliases) == {"default", "replica"}
 
     for alias in ("default", "replica"):
-        assert aliases[alias]["ENGINE"] == "django.db.backends.postgresql"
+        assert aliases[alias]["ENGINE"] == "django_prometheus.db.backends.postgresql"
         assert aliases[alias]["NAME"] == REQUIRED_ENVIRONMENT["POSTGRES_DB"]
         assert aliases[alias]["USER"] == REQUIRED_ENVIRONMENT["POSTGRES_USER"]
         assert aliases[alias]["PASSWORD"] == REQUIRED_ENVIRONMENT["POSTGRES_PASSWORD"]
@@ -369,8 +369,40 @@ def test_logging_emits_structured_records_to_standard_output() -> None:
 
     assert handler["stream"] == "ext://sys.stdout"
     assert handler["formatter"] == "structured"
+    assert handler["filters"] == ["request_context"]
     assert formatter["()"] == "config.logs.StructuredFormatter"
     assert logging_configuration["root"]["level"] == os.environ.get("DJANGO_LOG_LEVEL", "INFO")
+    assert logging_configuration["loggers"]["uvicorn"]["handlers"] == ["stdout"]
+    assert logging_configuration["loggers"]["uvicorn.error"]["handlers"] == ["stdout"]
+    assert logging_configuration["loggers"]["uvicorn.access"]["handlers"] == []
+
+
+@pytest.mark.unit
+def test_request_and_database_instrumentation_wrap_the_application() -> None:
+    """Enable application and database metrics in the required order.
+
+    Confirms django-prometheus owns both database engines and brackets the middleware stack, while
+    request correlation remains inside its outer timing boundary.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If instrumentation is absent or ordered incorrectly.
+    """
+    middleware = configured_settings.MIDDLEWARE
+
+    assert configured_settings.INSTALLED_APPS[0] == "django_prometheus"
+    assert middleware[0] == "django_prometheus.middleware.PrometheusBeforeMiddleware"
+    assert middleware[1] == "config.logs.request_context_middleware"
+    assert middleware[-1] == "config.logs.BoundedPrometheusAfterMiddleware"
+    assert all(
+        database["ENGINE"] == "django_prometheus.db.backends.postgresql"
+        for database in configured_settings.DATABASES.values()
+    )
 
 
 @pytest.mark.unit
@@ -418,6 +450,30 @@ def test_the_development_module_enables_debug() -> None:
     assert module.DEBUG is True
     assert module.ROOT_URLCONF == "config.urls"
     assert module.DATABASES["default"]["HOST"] == REQUIRED_ENVIRONMENT["POSTGRES_HOST"]
+
+
+@pytest.mark.unit
+def test_development_database_logs_follow_the_environment_level() -> None:
+    """Apply the configured application threshold to database query records.
+
+    Confirms raising the environment log level suppresses lower-severity query records before they
+    reach stdout and Loki, rather than leaving the development query handler permanently at debug.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the database logger ignores the environment level.
+    """
+    module = _execute_module_in_isolation(
+        "development",
+        REQUIRED_ENVIRONMENT | {"DJANGO_LOG_LEVEL": "WARNING"},
+    )
+
+    assert module.LOGGING["loggers"]["django.db.backends"]["level"] == "WARNING"
 
 
 @pytest.mark.unit

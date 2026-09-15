@@ -66,6 +66,8 @@ Listed so scope creep is recognisable. None exists.
 | `src/config/db_router.py` | Primary/replica router |
 | `src/config/email.py` | Multipart application email rendering and failure-safe delivery |
 | `src/config/templates/email/` | Plain-text and HTML application email templates |
+| `src/config/health.py` | Health view executor that preserves request correlation |
+| `src/config/metrics_asgi.py`, `src/config/metrics_urls.py` | Observability-only metrics listener |
 | `src/config/api.py` | Schema, Swagger UI, ReDoc views only |
 | `src/accounts/` | The project's own user model, its manager, its admin registration, and its initial migration |
 | `tests/integration/<package>/test_*.py` | One test per service integration, mirroring the package it covers |
@@ -238,7 +240,7 @@ One at a time, each with its own test in `tests/integration/`. A batched failure
 | 6f | Object storage | Upload through Django's storage API, fetch back from the S3 endpoint | byte-identical |
 | 6g | Email | `send_mail`, then `GET http://localhost:8025/api/v1/messages` | Mailpit reports one message with the expected subject |
 | 6h | Backup | `pgbackrest --stanza=localforge check`, then `backup --type=full`, then `info` | `check` exits `0`; `info` lists one full backup, status `ok` |
-| 6i | Metrics | `curl http://localhost:8000/metrics`; then Prometheus targets | `django_http_requests_total` present; every target at `/targets` is `UP` |
+| 6i | Metrics | Query `django_http_requests_before_middlewares_total` through `http://localhost:9090/api/v1/query`; then Prometheus targets | query result is non-empty and `up{job="django"} == 1`; every target at `/targets` is `UP` |
 | 6j | Logging | Emit a log line, query Loki through Grafana Explore | retrievable within 30 seconds |
 | 6k | Reverse proxy | `curl -H "Host: localforge.localhost" http://localhost:8080/health/` | `200` through Traefik, route visible in the dashboard |
 | 6l | Health aggregate | `curl http://localhost:8000/health/?format=json` | every `django-health-check` backend reports `working` |

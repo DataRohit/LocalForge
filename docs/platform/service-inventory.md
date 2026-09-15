@@ -15,7 +15,7 @@ would otherwise have surfaced as a mysterious failure at build time.
 | Container name | Role | Host ports | Internal | Networks |
 |---|---|---|---|---|
 | `traefik-tk2jp` | reverse proxy, Docker label discovery | `8080` web, `8081` dashboard | 80, 8080 | `edge-net-ne2vk` |
-| `django-uv5n2` | Django ASGI app under Uvicorn | `8000` | 8000 | `edge-net-ne2vk`, `app-net-na6hy`, `data-net-nd9pc`, `obsv-net-nb4xt`, `access-net-ha4mz` |
+| `django-uv5n2` | Django ASGI app plus observability-only metrics listener | `8000` | 8000 app, 8001 metrics on `obsv-net-nb4xt` only | `edge-net-ne2vk`, `app-net-na6hy`, `data-net-nd9pc`, `obsv-net-nb4xt`, `access-net-ha4mz` |
 | `postgres-pg3ka` | PostgreSQL 18.6 primary | `5432` | 5432 | `data-net-nd9pc`, `access-net-ha4mz` |
 | `postgres-replica-pg6vy` | PostgreSQL 18.6 hot standby | `5433` | 5432 | `data-net-nd9pc`, `access-net-ha4mz` |
 | `pgbackrest-pb2wj` | backup agent, scheduled | none | — | `data-net-nd9pc` |
@@ -114,7 +114,7 @@ run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data /
 | 4 | `celery-worker-cw8rt`, `celery-beat-cb4hq` | `rabbitmq-rq4sx` and `valkey-cache-vc5tn` healthy, and `django-uv5n2` healthy so migrations have run |
 | 5 | `traefik-tk2jp`, `flower-fl9zd`, `pgadmin-pa7fe` | their backends healthy |
 | 6 | `postgres-exporter-pe4rk`, `valkey-cache-exporter-ve7ts`, `valkey-channels-exporter-vx4nq`, `cadvisor-cv8mh`, `alloy-al6wz` | their scrape targets healthy |
-| 7 | `prometheus-pm5db` | exporters started |
+| 7 | `prometheus-pm5db` | `django-uv5n2` and health-checkable exporters healthy; remaining exporters started |
 | 8 | `grafana-gf7qv` | `prometheus-pm5db` healthy, `loki-lk3ny` started — that image carries no probe, so it can never report healthy |
 
 `django-uv5n2` runs migrations in its entrypoint **before** binding its port, so tier 4 waiting on it healthy also
@@ -237,6 +237,21 @@ module file is rendered at start from the environment, so no credential is commi
 
 Grafana is provisioned as code: datasource and dashboard provider files are mounted read-only from
 `docker/grafana/provisioning/`, so wiping the volume loses nothing.
+
+**Application observability stays on the observability path.** Prometheus scrapes
+`http://django-metrics-nb4xt:8001/metrics` over `obsv-net-nb4xt`. A second Uvicorn listener binds only to that
+network alias; the edge-facing listener on port 8000 carries no metrics route, and port 8001 is not published.
+`django-prometheus` instruments requests and both database aliases, and its multiprocess directory is cleared before
+either listener starts so both application workers contribute to one scrape. The provisioned dashboard renders
+request rate, status, latency, and database query rate.
+
+Every HTTP request receives a generated `X-Request-ID`. The same value is attached to structured records emitted
+inside the request and to its body-free completion record. Alloy parses the JSON stream, preserves the bounded
+`level` and `logger` fields as labels, and adds `service=django-uv5n2` from Docker discovery; the request identifier
+stays a parsed field rather than a high-cardinality label. The formatter redacts named credential fields, textual
+credential assignments, object representations, and passwords embedded in connection URLs before stdout. The health
+view uses a context-preserving executor so its dependency-check logs keep the same identifier across the thread
+boundary.
 
 ## 4. Testing stack
 

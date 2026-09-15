@@ -424,6 +424,8 @@ services:
         condition: service_started
       cadvisor-cv8mh:
         condition: service_healthy
+      django-uv5n2:
+        condition: service_healthy
     volumes:
       - prometheus-pm5db-data:/prometheus
       - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -529,11 +531,13 @@ services:
     ports:
       - "8000:8000"
     networks:
-      - edge-net-ne2vk
-      - app-net-na6hy
-      - data-net-nd9pc
-      - obsv-net-nb4xt
-      - access-net-ha4mz
+      edge-net-ne2vk: {}
+      app-net-na6hy: {}
+      data-net-nd9pc: {}
+      obsv-net-nb4xt:
+        aliases:
+          - django-metrics-nb4xt
+      access-net-ha4mz: {}
     volumes:
       - django-uv5n2-static:/app/staticfiles
     depends_on:

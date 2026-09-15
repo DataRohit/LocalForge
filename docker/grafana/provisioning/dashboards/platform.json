@@ -63,10 +63,71 @@
     {
       "id": 6,
       "type": "logs",
-      "title": "Container logs",
+      "title": "Application logs",
       "datasource": { "type": "loki", "uid": "loki" },
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 12 },
-      "targets": [{ "expr": "{job=\"docker\"}", "refId": "A" }]
+      "targets": [
+        {
+          "expr": "{service=\"django-uv5n2\"} | json",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Application request rate",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 22 },
+      "targets": [
+        {
+          "expr": "sum by (method) (rate(localforge_http_responses_total{view!~\"health|prometheus-django-metrics\"}[5m]))",
+          "legendFormat": "{{method}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Application response status rate",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 22 },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(localforge_http_responses_total{view!~\"health|prometheus-django-metrics\"}[5m]))",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Application request latency p95",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 22 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(localforge_http_request_duration_seconds_bucket{view!~\"health|prometheus-django-metrics\"}[5m])))",
+          "legendFormat": "p95",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Application database query rate",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 30 },
+      "targets": [
+        {
+          "expr": "sum by (alias) (rate(django_db_execute_total[5m]))",
+          "legendFormat": "{{alias}}",
+          "refId": "A"
+        }
+      ]
     }
   ]
 }

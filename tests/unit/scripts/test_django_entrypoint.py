@@ -18,6 +18,7 @@ BASH = shutil.which("bash")
 
 TIMEOUT_SECONDS = 30
 MINIMUM_SUPERVISED_PHASES = 3
+SERVER_PROCESS_COUNT = 2
 
 
 def write_tool(directory: Path, name: str, body: str) -> None:
@@ -63,6 +64,7 @@ def environment(directory: Path) -> dict[str, str]:
         "DJANGO_SETTINGS_MODULE": "config.settings.testing",
         "LOCALFORGE_WAIT_SERVICES": "postgres valkey-cache",
         "LOCALFORGE_WAIT_TIMEOUT": "5",
+        "PROMETHEUS_MULTIPROC_DIR": str(directory / "prometheus"),
         "UVICORN_WORKERS": "3",
     }
 
@@ -84,8 +86,22 @@ def tools(tmp_path: Path) -> Path:
         None.
     """
     calls = tmp_path / "calls"
-    write_tool(tmp_path, "python", f'echo "python $*" >>"{calls.as_posix()}"\nexit 0')
-    write_tool(tmp_path, "uvicorn", f'echo "uvicorn $*" >>"{calls.as_posix()}"\nexit 0')
+    write_tool(
+        tmp_path,
+        "python",
+        (
+            'if [ "$1" = "-c" ]; then echo "10.89.5.10"; exit 0; fi\n'
+            f'echo "python $*" >>"{calls.as_posix()}"\nexit 0'
+        ),
+    )
+    write_tool(
+        tmp_path,
+        "uvicorn",
+        (
+            f'echo "uvicorn $* metrics=$PROMETHEUS_MULTIPROC_DIR" >>"{calls.as_posix()}"\n'
+            "sleep 0.1\nexit 0"
+        ),
+    )
 
     return tmp_path
 
@@ -263,6 +279,38 @@ def test_the_worker_count_comes_from_the_environment(tools: Path) -> None:
 
 
 @pytest.mark.unit
+def test_metrics_are_aggregated_across_workers_without_plain_access_logs(tools: Path) -> None:
+    """Prepare multiprocess metrics before starting the server.
+
+    Confirms every worker writes into one freshly prepared directory and Uvicorn's prose access
+    logger is disabled, leaving Django's correlated JSON completion record as the request log.
+
+    Arguments:
+        tools: Directory of fabricated commands.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If aggregation is absent or plain access logging remains enabled.
+    """
+    run(tools)
+
+    server_calls = [call for call in calls(tools) if call.startswith("uvicorn")]
+    application = next(call for call in server_calls if "config.asgi:application" in call)
+    metrics = next(call for call in server_calls if "config.metrics_asgi:application" in call)
+
+    assert len(server_calls) == SERVER_PROCESS_COUNT
+    assert f"metrics={tools / 'prometheus'}" in application
+    assert f"metrics={tools / 'prometheus'}" in metrics
+    assert "--no-access-log" in application
+    assert "--no-access-log" in metrics
+    assert "--log-level warning" in application
+    assert "--log-level warning" in metrics
+    assert "--host 10.89.5.10 --port 8001 --workers 1" in metrics
+
+
+@pytest.mark.unit
 def test_a_missing_settings_module_stops_the_startup(tools: Path) -> None:
     """Refuse to start without a settings module.
 
@@ -316,4 +364,5 @@ def test_the_script_forwards_stop_signals_to_its_child() -> None:
 
     assert "trap forward_signal TERM INT" in source
     assert 'kill -TERM "${child}"' in source
+    assert 'kill -TERM "${metrics_child}"' in source
     assert source.count("supervise ") >= MINIMUM_SUPERVISED_PHASES

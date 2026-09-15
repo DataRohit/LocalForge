@@ -183,7 +183,7 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `DJANGO_SETTINGS_MODULE` | `django-uv5n2` | settings module | `config.settings.development` | no | yes |
 | `DJANGO_SECRET_KEY` | `django-uv5n2` | signing key | `<GENERATED>` | **yes** | yes |
 | `DJANGO_DEBUG` | `django-uv5n2` | debug toggle | `true` dev, `false` testing | no | yes |
-| `DJANGO_ALLOWED_HOSTS` | `django-uv5n2` | host header allowlist | `localhost,127.0.0.1,django-uv5n2` | no | yes |
+| `DJANGO_ALLOWED_HOSTS` | `django-uv5n2` | host header allowlist | `localhost,127.0.0.1,django-uv5n2,django-metrics-nb4xt` | no | yes |
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | `django-uv5n2` | CSRF origins behind Traefik | `http://localhost:8080` | no | yes |
 | `DJANGO_LOG_LEVEL` | `django-uv5n2` | root log level | `INFO` | no | no |
 | `DJANGO_TIME_ZONE` | `django-uv5n2` | application timezone, stored datetimes stay UTC-aware | `UTC` | no | no |
