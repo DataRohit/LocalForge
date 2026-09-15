@@ -5,21 +5,21 @@ application instance can serve any file and nothing is lost when a container is 
 
 **Blocked by:** 08, 17.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The default file storage backend points at the S3 endpoint, with endpoint, bucket, region, and credentials
+- [x] The default file storage backend points at the S3 endpoint, with endpoint, bucket, region, and credentials
       from the environment.
-- [ ] Static files and uploaded media are configured separately, so collected static assets and user uploads do not
+- [x] Static files and uploaded media are configured separately, so collected static assets and user uploads do not
       share a location.
-- [ ] No writable local media directory remains; an instance holds no file state.
-- [ ] Uploaded objects are private by default; public read is not enabled on the bucket.
-- [ ] An integration test uploads a file through the storage API, reads it back, and asserts the bytes are
+- [x] No writable local media directory remains; an instance holds no file state.
+- [x] Uploaded objects are private by default; public read is not enabled on the bucket.
+- [x] An integration test uploads a file through the storage API, reads it back, and asserts the bytes are
       identical.
-- [ ] A test covers overwrite behaviour for a colliding filename, so the outcome is a decision rather than an
+- [x] A test covers overwrite behaviour for a colliding filename, so the outcome is a decision rather than an
       accident.
-- [ ] A test covers deletion.
-- [ ] The storage client choice follows `docs/adr/0016-accept-release-lag.md`: the maintained library is tried
+- [x] A test covers deletion.
+- [x] The storage client choice follows `docs/adr/0016-accept-release-lag.md`: the maintained library is tried
       first, and if its gate fails, the thin first-party backend on the S3 client is written instead and the
       outcome recorded in that decision record.
-- [ ] Storage is reachable only over the internal network from the application; the endpoint variable is the only
+- [x] Storage is reachable only over the internal network from the application; the endpoint variable is the only
       thing that changes to point at a different implementation.
