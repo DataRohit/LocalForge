@@ -66,6 +66,7 @@ TESTING_OVERRIDES: Mapping[str, str] = {
     "DJANGO_SETTINGS_MODULE": "config.settings.testing",
     "DJANGO_DEBUG": "false",
     "DJANGO_ALLOWED_HOSTS": "localhost,127.0.0.1,django-test-dt5qx",
+    "DJANGO_CSRF_TRUSTED_ORIGINS": "http://localhost:8080",
     "POSTGRES_HOST": "postgres-tp8vn",
     "POSTGRES_REPLICA_HOST": "postgres-tp8vn",
     "VALKEY_CACHE_HOST": "valkey-cache-tv4kq",

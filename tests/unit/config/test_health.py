@@ -5,6 +5,8 @@ dependency logs can be correlated with the response that triggered them.
 """
 
 import asyncio
+import secrets
+import smtplib
 import threading
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
@@ -16,13 +18,17 @@ from psycopg import Error as PsycopgError
 
 from config.health import (
     HEALTH_CHECK_STATEMENT_TIMEOUT_MILLISECONDS,
+    BrokerReadinessCheck,
     ContextPreservingThreadPoolExecutor,
-    CorrelatedHealthCheckView,
     HealthCheckCapacityError,
+    MailReadinessCheck,
+    ObjectStorageReadinessCheck,
+    ReadinessView,
+    RedisReadinessCheck,
     _execute_database_probe,
+    _run_readiness_check,
     _validate_database_pool,
     context_preserving_executor,
-    health_check_executor,
     run_timed_database_check,
 )
 from config.logs import NO_REQUEST_ID, request_identifier
@@ -36,6 +42,36 @@ BLOCKING_CHECK_SECONDS = 0.5
 CANCELLATION_SETTLE_SECONDS = 0.05
 MAXIMUM_CANCELLATION_SECONDS = 0.2
 PROBE_TIMEOUT_SECONDS = 0.01
+
+
+class SynchronousReadinessProbe:
+    """Provide one successful synchronous readiness operation.
+
+    Supplies the concrete protocol shape needed to test executor admission without introducing a
+    dependency transport or an untyped dynamic object.
+
+    Attributes:
+        None.
+
+    Members:
+        run: Complete one synchronous readiness operation.
+    """
+
+    def run(self) -> None:
+        """Complete one synchronous readiness operation.
+
+        Performs no work because executor admission, rather than dependency behavior, is the
+        subject of the test that uses this probe.
+
+        Arguments:
+            None.
+
+        Returns:
+            None.
+
+        Raises:
+            None.
+        """
 
 
 @pytest.mark.unit
@@ -67,11 +103,11 @@ def test_executor_work_inherits_the_submitting_context() -> None:
 
 
 @pytest.mark.unit
-def test_health_view_selects_the_context_preserving_executor() -> None:
-    """Use the executor that retains request-local logging fields.
+def test_health_view_is_public_and_json_only() -> None:
+    """Expose readiness publicly through one machine-readable renderer.
 
-    Confirms the configured view overrides the upstream default executor, which drops context when
-    it runs synchronous checks from the asynchronous health endpoint.
+    Confirms load balancers need no authentication while browser-oriented renderers remain absent
+    and optional staff authentication can reveal only the view's bounded detail.
 
     Arguments:
         None.
@@ -80,13 +116,13 @@ def test_health_view_selects_the_context_preserving_executor() -> None:
         None.
 
     Raises:
-        AssertionError: If the view returns another executor.
+        AssertionError: If authentication, permission, or renderer policy changes.
     """
-    assert CorrelatedHealthCheckView.__dict__["get_executor"] is context_preserving_executor
+    view_attributes = vars(ReadinessView)
 
-    with context_preserving_executor(object()) as executor:
-        assert isinstance(executor, ContextPreservingThreadPoolExecutor)
-        assert executor is health_check_executor
+    assert view_attributes["authentication_classes"][0].__name__ == "SessionAuthentication"
+    assert view_attributes["permission_classes"][0].__name__ == "AllowAny"
+    assert view_attributes["renderer_classes"][0].__name__ == "JSONRenderer"
 
 
 @pytest.mark.unit
@@ -117,6 +153,202 @@ def test_executor_rejects_work_when_all_worker_slots_are_occupied() -> None:
         release.set()
         assert occupied.result() is True
         assert executor.submit(lambda: "accepted").result() == "accepted"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_readiness_reports_saturated_executor_capacity() -> None:
+    """Convert saturated synchronous probe capacity into unavailable state.
+
+    Occupies the only worker before running another synchronous check, proving overload degrades
+    readiness rather than escaping as an application error or entering an unbounded queue.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If capacity exhaustion is not represented as dependency unavailability.
+    """
+    release = threading.Event()
+
+    with ContextPreservingThreadPoolExecutor(max_workers=1) as executor:
+        occupied = executor.submit(release.wait, BLOCKING_CHECK_SECONDS)
+        result = await _run_readiness_check(
+            SynchronousReadinessProbe(),
+            executor,
+        )
+        release.set()
+        occupied.result()
+
+    assert isinstance(result.error, ServiceUnavailable)
+    assert isinstance(result.error.__cause__, HealthCheckCapacityError)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_valkey_readiness_rejects_an_unsuccessful_ping(
+    mocker: MockerFixture,
+) -> None:
+    """Reject a Valkey client that returns a false ping result.
+
+    Replaces transport work while exercising the production result validation and deterministic
+    client cleanup path.
+
+    Arguments:
+        mocker: Fixture replacing the Redis client factory.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a false ping is accepted or the client remains open.
+    """
+    client = AsyncMock()
+    client.ping.return_value = False
+    client.aclose.side_effect = TimeoutError
+    client_factory = mocker.patch("config.health.Redis.from_url", return_value=client)
+    check = RedisReadinessCheck(location="redis://cache.invalid:6379/0", password=None)
+
+    with pytest.raises(ServiceUnavailable, match="unexpected result"):
+        await check.run()
+
+    client_factory.assert_called_once()
+    client.aclose.assert_awaited_once_with()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_broker_readiness_contains_transport_failure(
+    mocker: MockerFixture,
+) -> None:
+    """Convert broker transport failure into service unavailability.
+
+    Replaces the dynamic AMQP connector with a refused transport, proving raw broker diagnostics do
+    not escape the readiness boundary.
+
+    Arguments:
+        mocker: Fixture replacing the AMQP module import.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If transport failure is not converted.
+    """
+    connect = AsyncMock(side_effect=OSError("broker unavailable"))
+    mocker.patch(
+        "config.health.import_module",
+        return_value=SimpleNamespace(connect=connect),
+    )
+    check = BrokerReadinessCheck(url="******broker.invalid:5672/vhost")
+
+    with pytest.raises(ServiceUnavailable, match="Broker readiness check"):
+        await check.run()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_broker_readiness_contains_cleanup_failure(
+    mocker: MockerFixture,
+) -> None:
+    """Convert broker cleanup failure into service unavailability.
+
+    Completes the plain AMQP handshake before close fails, proving connection cleanup cannot escape
+    the readiness boundary or leave a reconnecting robust client behind.
+
+    Arguments:
+        mocker: Fixture replacing the AMQP module import.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If cleanup failure is not converted.
+    """
+    connection = AsyncMock()
+    connection.close.side_effect = OSError("broker cleanup unavailable")
+    connect = AsyncMock(return_value=connection)
+    mocker.patch(
+        "config.health.import_module",
+        return_value=SimpleNamespace(connect=connect),
+    )
+    check = BrokerReadinessCheck(url="******broker.invalid:5672/vhost")
+
+    with pytest.raises(ServiceUnavailable, match="Broker readiness cleanup"):
+        await check.run()
+
+
+@pytest.mark.unit
+def test_object_storage_readiness_contains_transport_failure(
+    mocker: MockerFixture,
+) -> None:
+    """Convert object-storage transport failure into service unavailability.
+
+    Uses a mocked metadata client so the unit layer exercises error containment and deterministic
+    client closure without network access.
+
+    Arguments:
+        mocker: Fixture replacing the S3 client factory.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If transport failure escapes or the client remains open.
+    """
+    client = Mock()
+    client.head_bucket.side_effect = OSError("storage unavailable")
+    mocker.patch("config.health.boto3.client", return_value=client)
+    check = ObjectStorageReadinessCheck(
+        endpoint_url="http://storage.invalid",
+        access_key=secrets.token_hex(8),
+        secret_key=secrets.token_hex(8),
+        bucket_name="media",
+        region_name="us-east-1",
+    )
+
+    with pytest.raises(ServiceUnavailable, match="Object-storage readiness check"):
+        check.run()
+
+    client.close.assert_called_once_with()
+
+
+@pytest.mark.unit
+def test_mail_readiness_contains_transport_failure(
+    mocker: MockerFixture,
+) -> None:
+    """Convert mail transport failure into service unavailability.
+
+    Replaces the backend connection with an SMTP refusal, proving no diagnostic escapes and the
+    connection is still closed after failure.
+
+    Arguments:
+        mocker: Fixture replacing the Django mail connection factory.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If SMTP failure escapes or the connection remains open.
+    """
+    connection = Mock()
+    connection.open.side_effect = smtplib.SMTPException("mail unavailable")
+    connection.close.side_effect = smtplib.SMTPException("mail cleanup unavailable")
+    get_connection = mocker.patch("config.health.get_connection", return_value=connection)
+    check = MailReadinessCheck(backend="django.core.mail.backends.smtp.EmailBackend")
+
+    with pytest.raises(ServiceUnavailable, match="Mail readiness check"):
+        check.run()
+
+    get_connection.assert_called_once_with(
+        check.backend,
+        fail_silently=False,
+        timeout=2.0,
+    )
+    connection.close.assert_called_once_with()
 
 
 @pytest.mark.unit

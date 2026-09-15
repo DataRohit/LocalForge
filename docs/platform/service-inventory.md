@@ -139,7 +139,7 @@ Every row verified against upstream source or docs on 2026-09-13.
 | `loki-lk3ny`, `valkey-*-exporter-*` | **none** | measured 2026-09-14: these three images ship no shell and no HTTP client, so no in-container probe is possible. `/ready` and `/metrics` answer over HTTP but nothing inside can call them, and unlike Mailpit they carry no CLI probe either. Their liveness is asserted by Prometheus, whose targets page is the criterion that matters. Depend on them with `service_started`, never `service_healthy` |
 | `alloy-al6wz` | `bash -c "exec 3<>/dev/tcp/127.0.0.1/12345"` | the image carries no `curl` or `wget` but does carry a full Debian userland, so bash opens the socket directly. Alloy is the one service whose silent death stops log collection with no other symptom, so it keeps a probe |
 | `seaweedfs-*` | `GET /healthz` on 9333 and 8333 | **the master has no `/status` route.** The S3 gateway accepts `/status`, `/healthz`, and `/readyz`; `/healthz` works on both, so use it uniformly |
-| `django-uv5n2` | `GET /health/`, served by `django-health-check` | |
+| `django-uv5n2` | `GET /health/`, aggregating primary, replica, cache, channel layer, broker, object storage, and mail | Returns `200` only when every dependency is `working`; otherwise `503`. Public JSON exposes stable states only, while authenticated staff also receive bounded durations and generic failure categories. |
 | `prometheus-pm5db` | `GET /-/ready` | `/-/healthy` exists but answers liveness, not readiness |
 | `grafana-gf7qv` | `GET /api/health` | |
 | `cadvisor-cv8mh` | `GET /healthz` | |
@@ -157,6 +157,11 @@ recreate — `down` then `up`, a manifest edit, a re-pinned image — starts an 
 durable queue, and orphans the previous directory in the volume forever. Measured 2026-09-14. Both brokers
 therefore set `hostname:` to their registered container name.
 
+**Application liveness is distinct from readiness.** A running Django process remains alive during a dependency
+outage, but `/health/` reports `readiness: not_ready` and returns `503`. Compose and Traefik both use that endpoint,
+so an unavailable instance leaves proxy rotation without being killed or restarted merely because one dependency
+is temporarily down.
+
 ## 3. Dashboards
 
 Every service either exposes a native UI or is given a companion.
@@ -167,7 +172,7 @@ Every service either exposes a native UI or is given a companion.
 | `django-uv5n2` | Django admin | `http://localhost:8000/admin/` | native | Django superuser |
 | `django-uv5n2` | Swagger UI | `http://localhost:8000/api/schema/swagger-ui/` | native, drf-spectacular | none locally; assets from the sidecar |
 | `django-uv5n2` | ReDoc | `http://localhost:8000/api/schema/redoc/` | native, drf-spectacular | none locally |
-| `django-uv5n2` | health detail | `http://localhost:8000/health/` | native, django-health-check | none locally |
+| `django-uv5n2` | JSON readiness | `http://localhost:8000/health/` | first-party API | public stable states; authenticated staff receive bounded details |
 | `postgres-pg3ka`, `postgres-replica-pg6vy` | pgAdmin 4 | `http://localhost:5050/` | **companion** | `PGADMIN_DEFAULT_EMAIL` + `PGADMIN_DEFAULT_PASSWORD` |
 | `valkey-cache-vc5tn`, `valkey-channels-vh8dm` | Grafana dashboard fed by the two exporters | `http://localhost:3000/` | **companion** | Grafana login |
 | `rabbitmq-rq4sx` | management plugin | `http://localhost:15672/` | native | `RABBITMQ_DEFAULT_USER` + `RABBITMQ_DEFAULT_PASS` |

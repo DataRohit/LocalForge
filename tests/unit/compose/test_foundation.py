@@ -2107,6 +2107,59 @@ def test_the_proxy_matches_its_registered_image_ports_and_network() -> None:
 
 
 @pytest.mark.unit
+def test_the_proxy_routes_the_registered_application_host() -> None:
+    """Route the public development host to Django by Docker labels.
+
+    Confirms backend discovery, entry-point selection, internal port, and readiness probing are
+    declared on the application container rather than in static proxy configuration.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If routing or backend health configuration is incomplete.
+    """
+    services = merged(DEVELOPMENT_FILE)["services"]
+    application = services["django-uv5n2"]
+    labels = set(application["labels"])
+
+    assert "traefik.enable=true" in labels
+    assert "traefik.http.routers.localforge.rule=Host(`localforge.localhost`)" in labels
+    assert "traefik.http.routers.localforge.entrypoints=web" in labels
+    assert "traefik.http.routers.localforge.service=localforge" in labels
+    assert "traefik.http.services.localforge.loadbalancer.server.port=8000" in labels
+    assert "traefik.http.services.localforge.loadbalancer.healthcheck.path=/health/" in labels
+    assert services[PROXY_SERVICE]["depends_on"]["django-uv5n2"]["condition"] == "service_healthy"
+
+
+@pytest.mark.unit
+def test_proxy_and_compose_use_the_same_readiness_endpoint() -> None:
+    """Align container ordering and proxy backend rotation.
+
+    Confirms both health mechanisms call the public readiness route, so Compose and Traefik agree
+    about whether the application may serve traffic.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If either mechanism probes a different application path.
+    """
+    application = merged(DEVELOPMENT_FILE)["services"]["django-uv5n2"]
+    compose_probe = " ".join(application["healthcheck"]["test"])
+    labels = " ".join(application["labels"])
+
+    assert "127.0.0.1:8000/health/" in compose_probe
+    assert "loadbalancer.healthcheck.path=/health/" in labels
+
+
+@pytest.mark.unit
 def test_the_proxy_reads_the_docker_socket_read_only() -> None:
     """Mount the socket without write access to the file.
 

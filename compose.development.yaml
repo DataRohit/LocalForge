@@ -20,6 +20,9 @@ services:
       - "traefik.http.routers.dashboard.service=api@internal"
       - "traefik.http.routers.dashboard.middlewares=dashboard-auth"
       - "traefik.http.middlewares.dashboard-auth.basicauth.users=${TRAEFIK_DASHBOARD_AUTH}"
+    depends_on:
+      django-uv5n2:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "traefik", "healthcheck", "--ping"]
       interval: 15s
@@ -540,6 +543,16 @@ services:
       access-net-ha4mz: {}
     volumes:
       - django-uv5n2-static:/app/staticfiles
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.localforge.rule=Host(`localforge.localhost`)"
+      - "traefik.http.routers.localforge.entrypoints=web"
+      - "traefik.http.routers.localforge.service=localforge"
+      - "traefik.http.services.localforge.loadbalancer.server.port=8000"
+      - "traefik.http.services.localforge.loadbalancer.healthcheck.path=/health/"
+      - "traefik.http.services.localforge.loadbalancer.healthcheck.hostname=localforge.localhost"
+      - "traefik.http.services.localforge.loadbalancer.healthcheck.interval=5s"
+      - "traefik.http.services.localforge.loadbalancer.healthcheck.timeout=3s"
     depends_on:
       postgres-pg3ka:
         condition: service_healthy

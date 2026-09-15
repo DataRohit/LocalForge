@@ -29,8 +29,8 @@ SETTINGS_DIRECTORY = Path(str(settings_package.__file__)).resolve().parent
 REQUIRED_ENVIRONMENT = {
     "DJANGO_SECRET_KEY": secrets.token_urlsafe(32),
     "DJANGO_DEBUG": "true",
-    "DJANGO_ALLOWED_HOSTS": "localhost",
-    "DJANGO_CSRF_TRUSTED_ORIGINS": "http://localhost:8080",
+    "DJANGO_ALLOWED_HOSTS": "localhost,localforge.localhost",
+    "DJANGO_CSRF_TRUSTED_ORIGINS": ("http://localhost:8080,http://localforge.localhost:8080"),
     "POSTGRES_DB": "localforge",
     "POSTGRES_USER": "localforge_app",
     "POSTGRES_PASSWORD": secrets.token_urlsafe(16),
@@ -55,7 +55,7 @@ REQUIRED_ENVIRONMENT = {
     "MAILPIT_WEB_PORT": "8025",
     "DEFAULT_FROM_EMAIL": "no-reply@localforge.invalid",
     "DJANGO_SITE_NAME": "LocalForge",
-    "DJANGO_SITE_URL": "http://localhost:8000",
+    "DJANGO_SITE_URL": "http://localforge.localhost:8080",
     "S3_ENDPOINT_URL": "http://seaweedfs-sw9cr:8333",
     "S3_ACCESS_KEY_ID": secrets.token_hex(20),
     "S3_SECRET_ACCESS_KEY": secrets.token_hex(20),
@@ -263,6 +263,32 @@ def test_email_delivery_uses_environment_configuration() -> None:
     assert REQUIRED_ENVIRONMENT["DJANGO_SITE_NAME"] == module.SITE_NAME
     assert REQUIRED_ENVIRONMENT["DJANGO_SITE_URL"] == module.SITE_URL
     assert module.TEMPLATES[0]["DIRS"] == [module.BASE_DIR / "config" / "templates"]
+
+
+@pytest.mark.unit
+def test_development_accepts_the_proxy_host_and_origin() -> None:
+    """Accept browser and load-balancer traffic through the registered proxy host.
+
+    Confirms allowed hosts, trusted origins, and generated absolute links use one public
+    development address while retaining direct localhost browser access.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the proxy host is rejected or email links bypass it.
+    """
+    module = _execute_module_in_isolation("base", REQUIRED_ENVIRONMENT)
+
+    assert module.ALLOWED_HOSTS == ["localhost", "localforge.localhost"]
+    assert module.CSRF_TRUSTED_ORIGINS == [
+        "http://localhost:8080",
+        "http://localforge.localhost:8080",
+    ]
+    assert module.SITE_URL == "http://localforge.localhost:8080"
 
 
 @pytest.mark.unit

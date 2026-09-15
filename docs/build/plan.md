@@ -243,7 +243,7 @@ One at a time, each with its own test in `tests/integration/`. A batched failure
 | 6i | Metrics | Query `django_http_requests_before_middlewares_total` through `http://localhost:9090/api/v1/query`; then Prometheus targets | query result is non-empty and `up{job="django"} == 1`; every target at `/targets` is `UP` |
 | 6j | Logging | Emit a log line, query Loki through Grafana Explore | retrievable within 30 seconds |
 | 6k | Reverse proxy | `curl -H "Host: localforge.localhost" http://localhost:8080/health/` | `200` through Traefik, route visible in the dashboard |
-| 6l | Health aggregate | `curl http://localhost:8000/health/?format=json` | every `django-health-check` backend reports `working` |
+| 6l | Health aggregate | `curl -H "Accept: application/json" http://localhost:8000/health/` | status is `ready`; all seven named dependency checks report `working` |
 
 Three of these — 6c, 6d, 6f — exercise dependencies carrying **release lag**. They are end-to-end on purpose: an
 import check would pass while the behaviour is broken. If one fails, apply the escape in

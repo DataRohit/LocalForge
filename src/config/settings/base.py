@@ -32,8 +32,14 @@ INSTALLED_APPS = [
     "health_check",
     "accounts",
     "channels",
+    "rest_framework",
+    "drf_spectacular",
     "storages",
 ]
+
+REST_FRAMEWORK = {
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
 
 MIDDLEWARE = [
     "django_prometheus.middleware.PrometheusBeforeMiddleware",
