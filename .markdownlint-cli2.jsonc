@@ -1,3 +1,5 @@
 {
-  "ignores": [".agents/**"]
+  "ignores": [
+    ".agents/**"
+  ]
 }

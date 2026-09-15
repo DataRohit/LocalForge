@@ -3,15 +3,20 @@ services:
     image: docker.io/library/postgres:18.6
     container_name: postgres-tp8vn
     restart: unless-stopped
+
     env_file:
       - .env.testing
+
     ports:
       - "25432:5432"
+
     networks:
       - data-net-nt8fq
       - access-net-ht6pn
+
     volumes:
       - postgres-tp8vn-data:/var/lib/postgresql
+
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 10s
@@ -23,15 +28,20 @@ services:
     image: docker.io/valkey/valkey:9.1.2
     container_name: valkey-cache-tv4kq
     restart: unless-stopped
+
     env_file:
       - .env.testing
+
     ports:
       - "26379:6379"
+
     networks:
       - app-net-nt5rk
       - access-net-ht6pn
+
     volumes:
       - valkey-cache-tv4kq-data:/data
+
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
@@ -41,6 +51,7 @@ services:
         --maxmemory-policy "$$VALKEY_CACHE_MAXMEMORY_POLICY"
         --dir /data
         --save 60 1
+
     healthcheck:
       test: ["CMD-SHELL", "valkey-cli --no-auth-warning -a \"$$VALKEY_CACHE_PASSWORD\" ping | grep -q PONG"]
       interval: 10s
@@ -52,15 +63,20 @@ services:
     image: docker.io/valkey/valkey:9.1.2
     container_name: valkey-channels-tv9zw
     restart: unless-stopped
+
     env_file:
       - .env.testing
+
     ports:
       - "26380:6379"
+
     networks:
       - app-net-nt5rk
       - access-net-ht6pn
+
     volumes:
       - valkey-channels-tv9zw-data:/data
+
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
@@ -68,6 +84,7 @@ services:
         --requirepass "$$VALKEY_CHANNELS_PASSWORD"
         --dir /data
         --save 60 1
+
     healthcheck:
       test: ["CMD-SHELL", "valkey-cli --no-auth-warning -a \"$$VALKEY_CHANNELS_PASSWORD\" ping | grep -q PONG"]
       interval: 10s
@@ -80,15 +97,20 @@ services:
     container_name: rabbitmq-tr6mc
     hostname: rabbitmq-tr6mc
     restart: unless-stopped
+
     env_file:
       - .env.testing
+
     ports:
       - "25672:5672"
+
     networks:
       - app-net-nt5rk
       - access-net-ht6pn
+
     volumes:
       - rabbitmq-tr6mc-data:/var/lib/rabbitmq
+
     healthcheck:
       test:
         - CMD-SHELL
@@ -104,17 +126,22 @@ services:
     image: docker.io/chrislusf/seaweedfs:4.46
     container_name: seaweedfs-ts3jd
     restart: unless-stopped
+
     env_file:
       - .env.testing
+
     ports:
       - "28333:8333"
       - "29333:9333"
+
     networks:
       - app-net-nt5rk
       - access-net-ht6pn
+
     volumes:
       - seaweedfs-ts3jd-data:/data
       - ./docker/seaweedfs/s3.json:/etc/seaweedfs/s3.json.template:ro
+
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
@@ -126,6 +153,7 @@ services:
         && exec weed server -dir=/data -s3 -s3.config=/etc/seaweedfs/s3.json
         -s3.port.iceberg=0 -s3.port.lance=0 -ip.bind=0.0.0.0
         -master.telemetry=false
+
     healthcheck:
       test:
         - CMD-SHELL
@@ -143,16 +171,21 @@ services:
     restart: unless-stopped
     profiles:
       - smtp
+
     env_file:
       - .env.testing
+
     ports:
       - "21025:1025"
       - "28025:8025"
+
     networks:
       - app-net-nt5rk
       - access-net-ht6pn
+
     volumes:
       - mailpit-tm7bh-data:/data
+
     command:
       - --database
       - /data/mailpit.db
@@ -161,6 +194,7 @@ services:
       - --block-remote-css-and-fonts
       - --allowed-hosts
       - localhost,127.0.0.1
+
     healthcheck:
       test: ["CMD", "/mailpit", "readyz"]
       interval: 15s
@@ -176,14 +210,18 @@ services:
       target: test
     container_name: django-test-dt5qx
     restart: "no"
+
     env_file:
       - .env.testing
+
     networks:
       - app-net-nt5rk
       - data-net-nt8fq
+
     volumes:
       - ./.env.development:/app/.env.development:ro
       - ./.env.testing:/app/.env.testing:ro
+
     depends_on:
       postgres-tp8vn:
         condition: service_healthy

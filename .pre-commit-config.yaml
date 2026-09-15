@@ -1,12 +1,16 @@
 minimum_pre_commit_version: 4.6.2
 exclude: ^\.agents/
+
 default_install_hook_types:
   - pre-commit
   - commit-msg
   - pre-push
+
 default_stages:
   - pre-commit
+
 fail_fast: false
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -31,14 +35,17 @@ repos:
           - --fix=lf
         exclude: '\.(bat|cmd|ps1)$'
       - id: trailing-whitespace
+
   - repo: https://github.com/adrienverge/yamllint.git
     rev: v1.38.0
     hooks:
       - id: yamllint
+
   - repo: https://github.com/DavidAnson/markdownlint-cli2
     rev: v0.23.2
     hooks:
       - id: markdownlint-cli2
+
   - repo: local
     hooks:
       - id: ruff-check
@@ -47,12 +54,14 @@ repos:
         language: system
         types:
           - python
+
       - id: ruff-format
         name: ruff format
         entry: uv run ruff format
         language: system
         types:
           - python
+
       - id: docs-standard
         name: documentation standard
         entry: uv run python scripts/check_docstrings.py
@@ -60,6 +69,7 @@ repos:
         pass_filenames: false
         types:
           - python
+
       - id: mypy
         name: mypy
         entry: uv run mypy
@@ -67,6 +77,7 @@ repos:
         stages:
           - pre-push
         pass_filenames: false
+
       - id: ty
         name: ty
         entry: uvx ty@0.0.78 check --force-exclude
@@ -74,6 +85,7 @@ repos:
         stages:
           - pre-push
         pass_filenames: false
+
       - id: pytest
         name: pytest with coverage
         entry: uv run pytest
@@ -81,6 +93,7 @@ repos:
         stages:
           - pre-push
         pass_filenames: false
+
       - id: validate-commit-message
         name: validate commit message
         entry: python .github/scripts/validate_commit_message.py

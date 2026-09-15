@@ -185,6 +185,17 @@ uv run python scripts/gen_secrets.py --environment all
 docker compose --env-file .env.development -f compose.yaml -f compose.development.yaml up -d --build
 ```
 
+For a deliberate clean-room verification, remove only LocalForge resources and rebuild local images without cache.
+This destroys development data and is not the ordinary restart path.
+
+```console
+docker compose --env-file .env.development -f compose.yaml -f compose.development.yaml down --volumes --remove-orphans
+docker image rm localforge/django:0.1.0 localforge/pgbackrest:18.6
+docker compose --env-file .env.development -f compose.yaml -f compose.development.yaml build --no-cache --pull
+docker compose --env-file .env.development -f compose.yaml -f compose.development.yaml pull --ignore-buildable
+docker compose --env-file .env.development -f compose.yaml -f compose.development.yaml up -d
+```
+
 **Gate 5a — everything healthy.**
 
 ```console
@@ -193,9 +204,9 @@ docker compose --env-file .env.development -f compose.yaml -f compose.developmen
 
 Pass: 22 rows, every `State` `running`, every health-checked service `healthy`, nothing `restarting`.
 
-**Gate 5a-i — the media bucket exists.** Object storage starts empty, so the bucket the application uploads into
-is created once the gateway is healthy. The step is idempotent, so it is safe on every bring-up. It runs from the
-host, so it is pointed at the published port rather than the container name the environment file carries.
+**Gate 5a-i — the media bucket exists.** Object storage starts empty, so the Django entrypoint creates the bucket
+after the gateway is healthy and before migrations or serving. The step is idempotent and reads the container's
+process environment. The host command below independently verifies the same contract through the published port.
 
 ```console
 uv run python scripts/seed_storage.py --environment development --endpoint http://127.0.0.1:8333
@@ -258,6 +269,9 @@ Gate: all twelve pass and `uv run poe check` is still green.
 [../platform/service-inventory.md](../platform/service-inventory.md) Section 4 and **no dashboard or UI service**.
 
 ```console
+docker compose --profile smtp --env-file .env.testing -f compose.yaml -f compose.testing.yaml down --volumes --remove-orphans
+docker image rm localforge/django-test:0.1.0
+docker compose --profile smtp --env-file .env.testing -f compose.yaml -f compose.testing.yaml build --no-cache django-test-dt5qx
 docker compose --env-file .env.testing -f compose.yaml -f compose.testing.yaml up -d
 uv run python scripts/seed_storage.py --environment testing
 docker compose --env-file .env.testing -f compose.yaml -f compose.testing.yaml run --rm django-test-dt5qx

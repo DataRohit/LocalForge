@@ -17,7 +17,7 @@ ENTRYPOINT = REPOSITORY_ROOT / "docker" / "django" / "entrypoint.sh"
 BASH = shutil.which("bash")
 
 TIMEOUT_SECONDS = 30
-MINIMUM_SUPERVISED_PHASES = 3
+MINIMUM_SUPERVISED_PHASES = 4
 SERVER_PROCESS_COUNT = 2
 
 
@@ -157,9 +157,8 @@ def calls(directory: Path) -> list[str]:
 def test_the_port_is_bound_last(tools: Path) -> None:
     """Open the port only once the instance can serve.
 
-    Confirms the dependency gate, the migration, and the static collection all run before the
-    server starts, which is what makes anything waiting on this container healthy also wait on a
-    current schema.
+    Confirms dependency waiting, bucket seeding, migration, and static collection all run before
+    the server starts, which makes fresh volumes ready before the health endpoint is exposed.
 
     Arguments:
         tools: Directory of fabricated commands.
@@ -175,9 +174,10 @@ def test_the_port_is_bound_last(tools: Path) -> None:
     recorded = calls(tools)
 
     assert "wait_for_services.py" in recorded[0]
-    assert "migrate" in recorded[1]
-    assert "collectstatic" in recorded[2]
-    assert recorded[3].startswith("uvicorn")
+    assert "seed_storage.py --process-environment" in recorded[1]
+    assert "migrate" in recorded[2]
+    assert "collectstatic" in recorded[3]
+    assert recorded[4].startswith("uvicorn")
 
 
 @pytest.mark.unit
@@ -227,6 +227,35 @@ def test_a_failed_migration_stops_the_startup(tools: Path) -> None:
 
     assert run(tools).returncode != 0
     assert not any("uvicorn" in call for call in calls(tools))
+
+
+@pytest.mark.unit
+def test_a_failed_bucket_seed_stops_the_startup(tools: Path) -> None:
+    """Refuse to serve without the configured media bucket.
+
+    Fails only the idempotent seed command, proving a fresh object-storage volume cannot leave the
+    application permanently unhealthy while dependent Compose services wait.
+
+    Arguments:
+        tools: Directory of fabricated commands.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If migration or serving continues after seeding fails.
+    """
+    calls_file = (tools / "calls").as_posix()
+    write_tool(
+        tools,
+        "python",
+        (f'echo "python $*" >>"{calls_file}"\ncase "$*" in *seed_storage*) exit 1 ;; esac\nexit 0'),
+    )
+
+    assert run(tools).returncode != 0
+    recorded = calls(tools)
+    assert any("seed_storage.py" in call for call in recorded)
+    assert not any("migrate" in call or "uvicorn" in call for call in recorded)
 
 
 @pytest.mark.unit

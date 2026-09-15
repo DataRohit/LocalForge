@@ -3,6 +3,7 @@ entryPoints:
     address: ":80"
     http:
       aliasHeadersStrategy: delete
+
   dashboard:
     address: ":8080"
     http:

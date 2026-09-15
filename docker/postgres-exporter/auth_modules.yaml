@@ -1,9 +1,11 @@
 auth_modules:
   standby:
     type: userpass
+
     userpass:
       username: __POSTGRES_USER__
       password: __POSTGRES_PASSWORD__
+
     options:
       sslmode: disable
       dbname: __POSTGRES_DB__

@@ -7,6 +7,7 @@ uploads into, treating an existing bucket as success so the step can run on ever
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -296,10 +297,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=None,
         help="gateway URL to use instead of the one the environment file carries",
     )
+    parser.add_argument(
+        "--process-environment",
+        action="store_true",
+        help="read storage settings from the current process instead of an environment file",
+    )
     arguments = parser.parse_args(argv)
 
     try:
-        values = read_environment_file(arguments.environment)
+        values = (
+            dict(os.environ)
+            if arguments.process_environment
+            else read_environment_file(arguments.environment)
+        )
         if arguments.endpoint:
             values["S3_ENDPOINT_URL"] = arguments.endpoint
         endpoint, access_key, secret_key, region, bucket = read_settings(values)

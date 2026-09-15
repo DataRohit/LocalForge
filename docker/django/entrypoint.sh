@@ -43,6 +43,9 @@ if [ "$#" -gt 0 ]; then
   exec "$@"
 fi
 
+log "ensuring the media bucket exists"
+supervise python /app/scripts/seed_storage.py --process-environment
+
 log "applying migrations"
 supervise python /app/src/manage.py migrate --noinput
 

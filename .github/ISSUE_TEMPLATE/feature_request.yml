@@ -1,8 +1,10 @@
 name: Feature request
 description: Propose a scoped improvement
 title: "Feature: "
+
 labels:
   - enhancement
+
 body:
   - type: textarea
     id: problem
@@ -11,6 +13,7 @@ body:
       description: Describe the user need or limitation without prescribing a solution.
     validations:
       required: true
+
   - type: textarea
     id: outcome
     attributes:
@@ -18,6 +21,7 @@ body:
       description: Describe observable success criteria.
     validations:
       required: true
+
   - type: textarea
     id: proposal
     attributes:
@@ -25,11 +29,13 @@ body:
       description: Explain the approach, alternatives, and tradeoffs.
     validations:
       required: true
+
   - type: textarea
     id: impact
     attributes:
       label: Operational and compatibility impact
       description: Cover Docker, local workflows, security, stored data, and migration needs.
+
   - type: checkboxes
     id: checks
     attributes:

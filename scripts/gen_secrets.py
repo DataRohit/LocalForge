@@ -102,6 +102,23 @@ ENVIRONMENT_FILES: Mapping[str, str] = {
     TESTING_HOST: ".env.testing.host",
 }
 
+ENVIRONMENT_GROUP_STARTS = frozenset(
+    {
+        "DJANGO_SETTINGS_MODULE",
+        "POSTGRES_DB",
+        "PGBACKREST_STANZA",
+        "PGADMIN_DEFAULT_EMAIL",
+        "VALKEY_CACHE_HOST",
+        "VALKEY_CHANNELS_HOST",
+        "RABBITMQ_HOST",
+        "CELERY_BROKER_URL",
+        "EMAIL_BACKEND",
+        "S3_ENDPOINT_URL",
+        "GRAFANA_ADMIN_USER",
+        "TRAEFIK_DASHBOARD_PASSWORD",
+    }
+)
+
 NO_OVERRIDES = dict[str, str]()
 
 ENVIRONMENT_OVERRIDES: Mapping[str, Mapping[str, str]] = {
@@ -564,9 +581,8 @@ def render_value(name: str, value: str) -> str:
 def render_env_text(values: Mapping[str, str]) -> str:
     """Render variables as an environment file.
 
-    Writes one assignment per line in manifest order and nothing else. The file carries no comment
-    and no blank line, because the dotenv encryption format drops blank lines, and because a file
-    of credentials should contain only the credentials it is read for.
+    Writes assignments in manifest order with blank lines between logical service groups.
+    Keeps the file comment-free while making generated plaintext configuration scannable.
 
     Arguments:
         values: Variables to write.
@@ -577,7 +593,13 @@ def render_env_text(values: Mapping[str, str]) -> str:
     Raises:
         ManifestError: If a value cannot be written safely.
     """
-    return "\n".join(f"{name}={render_value(name, value)}" for name, value in values.items()) + "\n"
+    lines: list[str] = []
+    for name, value in values.items():
+        if lines and name in ENVIRONMENT_GROUP_STARTS:
+            lines.append("")
+        lines.append(f"{name}={render_value(name, value)}")
+
+    return "\n".join(lines) + "\n"
 
 
 def secret_names(manifest: Mapping[str, str]) -> tuple[str, ...]:

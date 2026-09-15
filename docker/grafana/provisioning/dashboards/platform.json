@@ -1,35 +1,76 @@
 {
   "uid": "localforge-platform",
   "title": "LocalForge platform",
-  "tags": ["localforge"],
+  "tags": [
+    "localforge"
+  ],
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 1,
   "refresh": "30s",
-  "time": { "from": "now-1h", "to": "now" },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
   "panels": [
     {
       "id": 1,
       "type": "stat",
       "title": "Database nodes up",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
-      "targets": [{ "expr": "pg_up", "legendFormat": "{{instance}}", "refId": "A" }]
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "pg_up",
+          "legendFormat": "{{instance}}",
+          "refId": "A"
+        }
+      ]
     },
     {
       "id": 2,
       "type": "stat",
       "title": "Cache instances up",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
-      "targets": [{ "expr": "redis_up", "legendFormat": "{{job}}", "refId": "A" }]
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "redis_up",
+          "legendFormat": "{{job}}",
+          "refId": "A"
+        }
+      ]
     },
     {
       "id": 3,
       "type": "timeseries",
       "title": "Container memory",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 0 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
       "targets": [
         {
           "expr": "sum by (name) (container_memory_working_set_bytes{name!=\"\"})",
@@ -42,8 +83,16 @@
       "id": 4,
       "type": "timeseries",
       "title": "Broker queued messages",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 6 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 6
+      },
       "targets": [
         {
           "expr": "sum by (queue) (rabbitmq_queue_messages_ready)",
@@ -56,16 +105,38 @@
       "id": 5,
       "type": "stat",
       "title": "Broker connections",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 6 },
-      "targets": [{ "expr": "rabbitmq_connections", "legendFormat": "connections", "refId": "A" }]
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 6
+      },
+      "targets": [
+        {
+          "expr": "rabbitmq_connections",
+          "legendFormat": "connections",
+          "refId": "A"
+        }
+      ]
     },
     {
       "id": 6,
       "type": "logs",
       "title": "Application logs",
-      "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 12 },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
       "targets": [
         {
           "expr": "{service=\"django-uv5n2\"} | json",
@@ -77,8 +148,16 @@
       "id": 7,
       "type": "timeseries",
       "title": "Application request rate",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 22 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 22
+      },
       "targets": [
         {
           "expr": "sum by (method) (rate(localforge_http_responses_total{view!~\"health|prometheus-django-metrics\"}[5m]))",
@@ -91,8 +170,16 @@
       "id": 8,
       "type": "timeseries",
       "title": "Application response status rate",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 22 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 22
+      },
       "targets": [
         {
           "expr": "sum by (status) (rate(localforge_http_responses_total{view!~\"health|prometheus-django-metrics\"}[5m]))",
@@ -105,8 +192,16 @@
       "id": 9,
       "type": "timeseries",
       "title": "Application request latency p95",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 22 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 22
+      },
       "targets": [
         {
           "expr": "histogram_quantile(0.95, sum by (le) (rate(localforge_http_request_duration_seconds_bucket{view!~\"health|prometheus-django-metrics\"}[5m])))",
@@ -119,8 +214,16 @@
       "id": 10,
       "type": "timeseries",
       "title": "Application database query rate",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 30 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 30
+      },
       "targets": [
         {
           "expr": "sum by (alias) (rate(django_db_execute_total[5m]))",

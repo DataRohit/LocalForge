@@ -1071,12 +1071,11 @@ def test_a_generated_file_survives_its_own_reader() -> None:
 
 
 @pytest.mark.unit
-def test_the_written_file_carries_no_comment_and_no_blank_line(repository: Path) -> None:
-    """Write only the assignments the file exists for.
+def test_the_written_file_groups_assignments_without_comments(repository: Path) -> None:
+    """Separate generated environment service groups without commentary.
 
-    Confirms the generated file contains no comment and no blank line, because the repository bans
-    comments outright and because the dotenv encryption format drops blank lines, which would
-    otherwise make a decrypted file differ from the original.
+    Confirms plaintext files contain single blank separators between logical groups while retaining
+    the repository rule that generated configuration carries no comments.
 
     Arguments:
         repository: Temporary repository holding the manifest.
@@ -1085,7 +1084,7 @@ def test_the_written_file_carries_no_comment_and_no_blank_line(repository: Path)
         None.
 
     Raises:
-        AssertionError: If the file carries a comment or a blank line.
+        AssertionError: If grouping is absent, duplicated, or mixed with comments.
     """
     gen_secrets.main([], root=repository, version_control=FakeVersionControl())
 
@@ -1093,7 +1092,10 @@ def test_the_written_file_carries_no_comment_and_no_blank_line(repository: Path)
         lines = (repository / relative).read_text(encoding="utf-8").splitlines()
 
         assert lines
-        assert all(line.strip() for line in lines)
+        assert "" in lines
+        assert all(
+            current or previous for previous, current in zip(["value", *lines], lines, strict=False)
+        )
         assert not any(line.lstrip().startswith("#") for line in lines)
 
 

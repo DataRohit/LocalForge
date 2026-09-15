@@ -163,6 +163,65 @@ def test_a_complete_configuration_is_read_in_the_documented_order() -> None:
 
 
 @pytest.mark.unit
+def test_process_environment_can_seed_from_inside_the_application_container(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Read storage configuration from the container process environment.
+
+    Supplies every registry value without an environment file and verifies startup seeding reaches
+    the normal client path with the configured internal endpoint.
+
+    Arguments:
+        monkeypatch: Fixture setting process variables and replacing the client builder.
+        capsys: Fixture capturing the success summary.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If process settings are ignored or reordered.
+    """
+    seen: list[tuple[str, str, str, str]] = []
+    for name, value in SETTINGS.items():
+        monkeypatch.setenv(name, value)
+
+    def record(endpoint: str, access_key: str, secret_key: str, region: str) -> FakeClient:
+        """Record process-derived client settings.
+
+        Captures the four connection values and returns a successful gateway stand-in.
+        Avoids network access while preserving the production call boundary.
+
+        Arguments:
+            endpoint: S3 endpoint selected by the command.
+            access_key: Configured access key.
+            secret_key: Configured secret key.
+            region: Configured signing region.
+
+        Returns:
+            Successful fake storage client.
+
+        Raises:
+            None.
+        """
+        seen.append((endpoint, access_key, secret_key, region))
+        return FakeClient()
+
+    monkeypatch.setattr(seed_storage, "build_client", record)
+
+    assert seed_storage.main(["--process-environment"]) == seed_storage.EXIT_OK
+    assert seen == [
+        (
+            SETTINGS["S3_ENDPOINT_URL"],
+            SETTINGS["S3_ACCESS_KEY_ID"],
+            SETTINGS["S3_SECRET_ACCESS_KEY"],
+            SETTINGS["S3_REGION_NAME"],
+        )
+    ]
+    assert "created" in capsys.readouterr().out
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("missing", sorted(SETTINGS))
 def test_an_incomplete_configuration_names_what_is_missing(missing: str) -> None:
     """Say which value was absent.
