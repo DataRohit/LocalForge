@@ -10,11 +10,11 @@ at.
 
 1. **Reach for a skill before improvising.** Run **`/ask-matt`** whenever you are unsure which workflow fits — it
    routes across every skill in `.agents/skills/`. Do not invent a process a skill already defines.
-   - Building a ticket → **`/implement`**, which drives **`/tdd`** and closes with **`/code-review`**.
-   - Something is broken → **`/diagnosing-bugs`**.
-   - Terminology, or recording a decision → **`/domain-modeling`**.
-   - Writing or editing `AGENTS.md`, `CONTEXT.md`, or a skill → **`/writing-for-agents`**.
-   - Designing a module's shape → **`/codebase-design`**.
+    - Building a ticket → **`/implement`**, which drives **`/tdd`** and closes with **`/code-review`**.
+    - Something is broken → **`/diagnosing-bugs`**.
+    - Terminology, or recording a decision → **`/domain-modeling`**.
+    - Writing or editing `AGENTS.md`, `CONTEXT.md`, or a skill → **`/writing-for-agents`**.
+    - Designing a module's shape → **`/codebase-design`**.
 2. **When in doubt, read [docs/](./docs/).** It is authoritative for every tool choice, name, port, variable, and
    phase gate in this platform. The map is at the bottom of this file. Guessing when `docs/` has the answer is the
    most expensive mistake available here — it produces work that has to be redone against the registry.
@@ -34,10 +34,10 @@ a health endpoint for the load balancer. Nothing else.
 
 Exactly two, and there is no third.
 
-| Environment | Purpose | Compose project |
-|---|---|---|
-| `development` | Full stack, every dashboard | `localforge-dev` |
-| `testing` | Headless subset the suite needs | `localforge-test` |
+| Environment   | Purpose                         | Compose project   |
+| ------------- | ------------------------------- | ----------------- |
+| `development` | Full stack, every dashboard     | `localforge-dev`  |
+| `testing`     | Headless subset the suite needs | `localforge-test` |
 
 `testing` must pass **in a container and on the host**. One passing is not a pass.
 
@@ -51,6 +51,11 @@ Exactly two, and there is no third.
 5. Pinned versions only. `latest` is forbidden, including Dockerfile base images.
 6. Use `uv run` for every Python command. Bare `python` here is 3.12.10, not the required 3.14.6.
 7. Keep the quality gate where it is: 100% branch coverage, Ruff `select = ["ALL"]`, mypy `strict`. Fix the code.
+8. Run ticket implementation with **GPT-5.6 Sol Fast**. Audit each ticket with two independent subagents in
+   parallel using the same complete ticket-audit brief: one **GPT-5.6 Sol Fast** agent at **High** reasoning and one
+   **Grok 4.6** agent at **High** reasoning. Both agents must audit the entire ticket; do not divide the review by
+   area or assign specialized audit scopes. Reconcile both reports and remediate every legitimate finding before
+   committing. Do not use Claude models, GPT-6 Astra, or Gemini 3.8 Flash for ticket audits.
 
 ## Scope
 
@@ -58,14 +63,14 @@ In scope: the infrastructure, its configuration, the application surface below, 
 
 **The application surface is fixed.** These routes and no others:
 
-| Group | Routes |
-|---|---|
-| Health | `/health/` — what the load balancer polls |
-| Schema | the OpenAPI document, Swagger UI, ReDoc |
-| Accounts | `/users/`, `/users/me/`, `/users/resend_activation/`, `/users/set_password/`, `/users/reset_password/`, `/users/reset_password_confirm/`, `/users/set_username/`, `/users/reset_username/`, `/users/reset_username_confirm/` |
-| Token auth | `/token/login/`, `/token/logout/` |
-| JWT auth | `/jwt/create/`, `/jwt/refresh/`, `/jwt/verify/` |
-| WebSocket | the authenticated notification socket |
+| Group      | Routes                                                                                                                                                                                                                       |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Health     | `/health/` — what the load balancer polls                                                                                                                                                                                    |
+| Schema     | the OpenAPI document, Swagger UI, ReDoc                                                                                                                                                                                      |
+| Accounts   | `/users/`, `/users/me/`, `/users/resend_activation/`, `/users/set_password/`, `/users/reset_password/`, `/users/reset_password_confirm/`, `/users/set_username/`, `/users/reset_username/`, `/users/reset_username_confirm/` |
+| Token auth | `/token/login/`, `/token/logout/`                                                                                                                                                                                            |
+| JWT auth   | `/jwt/create/`, `/jwt/refresh/`, `/jwt/verify/`                                                                                                                                                                              |
+| WebSocket  | the authenticated notification socket                                                                                                                                                                                        |
 
 Every one of these documents **every status code it can return**, with a response example for each — including
 codes raised by middleware, content negotiation, throttling, and CSRF, not only those raised in view code. See
@@ -86,11 +91,11 @@ Out of scope, stated positively so the boundary is unambiguous:
 **Write no comments.** Every explanation goes in a docstring, which is reachable at runtime, extracted by tooling,
 and shown at the call site. Docstrings are structured at three levels:
 
-| Level | Required sections |
-|---|---|
-| File | One-line title, then a 2–3 line description |
-| Class | One-line title, 2–3 line description, what it inherits, its attributes and members |
-| Function / method | One-line title, 2–3 line description, arguments, returns, raises |
+| Level             | Required sections                                                                  |
+| ----------------- | ---------------------------------------------------------------------------------- |
+| File              | One-line title, then a 2–3 line description                                        |
+| Class             | One-line title, 2–3 line description, what it inherits, its attributes and members |
+| Function / method | One-line title, 2–3 line description, arguments, returns, raises                   |
 
 This applies to application code and tests alike, and is enforced by the linter and a checker in the quality gate.
 The reasoning is in
@@ -127,15 +132,15 @@ means adding a registry row in a documentation change first.
 Nine build-plan phases with explicit gates, in [docs/build/plan.md](./docs/build/plan.md) Section 3, delivered by
 the 52 tickets in [.scratch/](./.scratch/README.md), grouped into 7 ticket phases:
 
-| Ticket phase | Delivers |
-|---|---|
-| 1 | Infrastructure: every development service running and healthy |
-| 2 | Project foundation: dependencies, settings split, standards, test layout, user model |
-| 3 | Integration: Django wired to every service, `/health` live behind the proxy |
-| 4 | REST API: the fixed route surface with every status code documented |
-| 5 | WebSockets: authenticated sockets over the channel layer |
-| 6 | Async services: worker, scheduler, dashboard, async email, event fan-out |
-| 7 | Testing and audit: both modes in parallel, convention and security audits |
+| Ticket phase | Delivers                                                                             |
+| ------------ | ------------------------------------------------------------------------------------ |
+| 1            | Infrastructure: every development service running and healthy                        |
+| 2            | Project foundation: dependencies, settings split, standards, test layout, user model |
+| 3            | Integration: Django wired to every service, `/health` live behind the proxy          |
+| 4            | REST API: the fixed route surface with every status code documented                  |
+| 5            | WebSockets: authenticated sockets over the channel layer                             |
+| 6            | Async services: worker, scheduler, dashboard, async email, event fan-out             |
+| 7            | Testing and audit: both modes in parallel, convention and security audits            |
 
 Infrastructure comes first, then the project is brought up to meet it, then Django is wired to each running
 service, then the application is built on top. Do not build the application against services that are not yet
@@ -169,33 +174,33 @@ serves under Uvicorn without it.
 
 These predate this work.
 
-| Area | Rule |
-|---|---|
-| Dependencies | `uv` with `[dependency-groups]`; use `uv add`. **Never create a `requirements.txt`** |
-| Tasks | `poethepoet`; `uv run poe check` is the full local gate |
-| Linting | Ruff, `select = ["ALL"]`, line length 100 |
-| Types | mypy `strict` plus `ty`; both must pass |
-| Tests | pytest, 100% branch coverage enforced, `xfail_strict`, markers `unit` and `integration` |
-| Markdown | markdownlint-cli2, 120-character lines outside tables and code |
-| Line endings | LF, enforced by pre-commit |
-| Commits | `COMMIT_CONVENTION.md`; a `commit-msg` hook validates the format |
-| `.agents/` | Skills. Excluded from all linting, typing, and test discovery. Put no project files there |
-| ADRs | `docs/adr/NNNN-slug.md`, per `.agents/skills/domain-modeling/ADR-FORMAT.md` |
+| Area         | Rule                                                                                      |
+| ------------ | ----------------------------------------------------------------------------------------- |
+| Dependencies | `uv` with `[dependency-groups]`; use `uv add`. **Never create a `requirements.txt`**      |
+| Tasks        | `poethepoet`; `uv run poe check` is the full local gate                                   |
+| Linting      | Ruff, `select = ["ALL"]`, line length 100                                                 |
+| Types        | mypy `strict` plus `ty`; both must pass                                                   |
+| Tests        | pytest, 100% branch coverage enforced, `xfail_strict`, markers `unit` and `integration`   |
+| Markdown     | markdownlint-cli2, 120-character lines outside tables and code                            |
+| Line endings | LF, enforced by pre-commit                                                                |
+| Commits      | `COMMIT_CONVENTION.md`; a `commit-msg` hook validates the format                          |
+| `.agents/`   | Skills. Excluded from all linting, typing, and test discovery. Put no project files there |
+| ADRs         | `docs/adr/NNNN-slug.md`, per `.agents/skills/domain-modeling/ADR-FORMAT.md`               |
 
 ## Where things live
 
-| Question | File |
-|---|---|
-| Which workflow or skill fits this task | **`/ask-matt`**, the router over `.agents/skills/` |
-| What do the words mean | [CONTEXT.md](./CONTEXT.md) |
-| What should I work on next | [.scratch/README.md](./.scratch/README.md) — 52 tickets, phased, with blockers |
-| Which tool, and why that one | [docs/adr/](./docs/adr/README.md) — one decision per file, indexed |
-| Names, IDs, variables, secrets, script contracts | [docs/platform/conventions.md](./docs/platform/conventions.md) |
+| Question                                                      | File                                                                                 |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Which workflow or skill fits this task                        | **`/ask-matt`**, the router over `.agents/skills/`                                   |
+| What do the words mean                                        | [CONTEXT.md](./CONTEXT.md)                                                           |
+| What should I work on next                                    | [.scratch/README.md](./.scratch/README.md) — 52 tickets, phased, with blockers       |
+| Which tool, and why that one                                  | [docs/adr/](./docs/adr/README.md) — one decision per file, indexed                   |
+| Names, IDs, variables, secrets, script contracts              | [docs/platform/conventions.md](./docs/platform/conventions.md)                       |
 | What a docstring must contain, and which comments are allowed | [docs/platform/documentation-standard.md](./docs/platform/documentation-standard.md) |
-| Ports, startup order, health checks, dashboards, audits | [docs/platform/service-inventory.md](./docs/platform/service-inventory.md) |
-| How this becomes Kubernetes later | [docs/platform/kubernetes-mapping.md](./docs/platform/kubernetes-mapping.md) |
-| What must be installed first | [docs/build/prerequisites.md](./docs/build/prerequisites.md) |
-| What to run, in what order | [docs/build/plan.md](./docs/build/plan.md) |
+| Ports, startup order, health checks, dashboards, audits       | [docs/platform/service-inventory.md](./docs/platform/service-inventory.md)           |
+| How this becomes Kubernetes later                             | [docs/platform/kubernetes-mapping.md](./docs/platform/kubernetes-mapping.md)         |
+| What must be installed first                                  | [docs/build/prerequisites.md](./docs/build/prerequisites.md)                         |
+| What to run, in what order                                    | [docs/build/plan.md](./docs/build/plan.md)                                           |
 
 When two documents disagree, the more specific wins: `conventions.md` for a name, `service-inventory.md` for a port.
 Fix the disagreement rather than choosing silently.
