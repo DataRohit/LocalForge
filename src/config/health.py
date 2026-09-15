@@ -37,6 +37,8 @@ from psycopg import Error as PsycopgError
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
+from config.api import ErrorCode
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
     from concurrent.futures import Executor
@@ -868,7 +870,12 @@ async def _collect_readiness() -> tuple[tuple[str, ReadinessResult], ...]:
             examples=[
                 OpenApiExample(
                     "Method not allowed",
-                    value={"detail": 'Method "POST" not allowed.'},
+                    value={
+                        "code": ErrorCode.METHOD_NOT_ALLOWED.value,
+                        "message": "The requested method is not allowed.",
+                        "details": {},
+                        "request_id": "00000000-0000-4000-8000-000000000000",
+                    },
                     response_only=True,
                 )
             ],
@@ -879,7 +886,12 @@ async def _collect_readiness() -> tuple[tuple[str, ReadinessResult], ...]:
             examples=[
                 OpenApiExample(
                     "Not acceptable",
-                    value={"detail": "Could not satisfy the request Accept header."},
+                    value={
+                        "code": ErrorCode.NOT_ACCEPTABLE.value,
+                        "message": "The requested response format is not available.",
+                        "details": {},
+                        "request_id": "00000000-0000-4000-8000-000000000000",
+                    },
                     response_only=True,
                 )
             ],

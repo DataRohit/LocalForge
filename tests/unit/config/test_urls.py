@@ -10,7 +10,9 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from django.conf import settings
-from django.urls import Resolver404, resolve
+from django.urls import Resolver404, URLResolver, get_resolver, resolve
+
+from config.api import API_PREFIX, ErrorCode
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -68,6 +70,33 @@ def test_admin_route_resolves() -> None:
 
 
 @pytest.mark.unit
+def test_api_is_mounted_under_the_versioned_prefix() -> None:
+    """Mount future application routes beneath a URL-carried version.
+
+    Inspects the root resolver and verifies its API child owns the accepted ``api/v1`` prefix,
+    leaving health and administration at their established unversioned paths.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the API prefix is absent, unversioned, or moved.
+    """
+    api_resolver = next(
+        pattern
+        for pattern in get_resolver().url_patterns
+        if isinstance(pattern, URLResolver) and pattern.namespace == "api-v1"
+    )
+
+    assert API_PREFIX == "api/v1/"
+    assert str(api_resolver.pattern) == API_PREFIX
+    assert resolve("/health/").route == "health/"
+
+
+@pytest.mark.unit
 def test_metrics_route_resolves_to_the_instrumentation_exporter() -> None:
     """Resolve the internal metrics endpoint.
 
@@ -122,11 +151,11 @@ def test_metrics_asgi_application_uses_only_the_internal_url_table() -> None:
 
 
 @pytest.mark.unit
-def test_health_route_schema_documents_both_readiness_states() -> None:
-    """Document successful and degraded readiness responses.
+def test_health_route_schema_documents_every_response_shape() -> None:
+    """Document readiness states and framework error envelopes.
 
-    Generates the OpenAPI document directly and verifies the health operation carries both status
-    codes a load balancer can receive from application-level dependency evaluation.
+    Generates the OpenAPI document directly and verifies the health operation carries every
+    reachable status plus exact envelope examples for method and representation failures.
 
     Arguments:
         None.
@@ -135,7 +164,7 @@ def test_health_route_schema_documents_both_readiness_states() -> None:
         None.
 
     Raises:
-        AssertionError: If the route or either response status is absent.
+        AssertionError: If a response status or framework error example is absent or stale.
     """
     generator_factory = cast(
         "Callable[[], SchemaGeneratorProtocol]",
@@ -147,4 +176,32 @@ def test_health_route_schema_documents_both_readiness_states() -> None:
         cast("dict[str, Any]", schema["paths"])["/health/"]["get"],
     )
 
-    assert set(operation["responses"]) == {"200", "405", "406", "503"}
+    responses = cast("dict[str, Any]", operation["responses"])
+    error_examples = {
+        status: next(
+            iter(
+                cast(
+                    "dict[str, Any]",
+                    cast("dict[str, Any]", response["content"])["application/json"]["examples"],
+                ).values()
+            )
+        )["value"]
+        for status, response in responses.items()
+        if status in {"405", "406"}
+    }
+
+    assert set(responses) == {"200", "405", "406", "503"}
+    assert error_examples == {
+        "405": {
+            "code": ErrorCode.METHOD_NOT_ALLOWED,
+            "message": "The requested method is not allowed.",
+            "details": {},
+            "request_id": "00000000-0000-4000-8000-000000000000",
+        },
+        "406": {
+            "code": ErrorCode.NOT_ACCEPTABLE,
+            "message": "The requested response format is not available.",
+            "details": {},
+            "request_id": "00000000-0000-4000-8000-000000000000",
+        },
+    }

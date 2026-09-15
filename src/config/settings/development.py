@@ -5,9 +5,17 @@ two environments is visible in one short module rather than spread through condi
 """
 
 from config.settings.base import *
-from config.settings.base import LOG_LEVEL, LOGGING, env
+from config.settings.base import LOG_LEVEL, LOGGING, REST_FRAMEWORK, env
 
 DEBUG = env.bool("DJANGO_DEBUG")
+
+REST_FRAMEWORK = {
+    **REST_FRAMEWORK,
+    "DEFAULT_RENDERER_CLASSES": [
+        "rest_framework.renderers.JSONRenderer",
+        "rest_framework.renderers.BrowsableAPIRenderer",
+    ],
+}
 
 LOGGING["filters"]["redact_query_values"] = {"()": "config.logs.QueryRedactionFilter"}
 

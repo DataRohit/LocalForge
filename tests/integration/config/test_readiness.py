@@ -7,6 +7,7 @@ balancers receive bounded machine-readable readiness without infrastructure deta
 import secrets
 import smtplib
 from http import HTTPStatus
+from importlib import import_module
 from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import AsyncMock, Mock
 
@@ -15,11 +16,49 @@ from django.conf import settings
 from django.test import override_settings
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
+from config.api import ErrorCode
+from config.logs import REQUEST_ID_HEADER
+
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    from typing import Protocol
+
     from django.test import Client
     from pytest_mock import MockerFixture
 
     from accounts.models import User
+
+    class SchemaGeneratorProtocol(Protocol):
+        """Describe the schema generation operation used by contract tests.
+
+        Inherits from ``Protocol`` and exposes only public OpenAPI document generation, keeping
+        strict test typing independent of the untyped schema implementation.
+
+        Attributes:
+            None.
+
+        Members:
+            get_schema: Generate the current public OpenAPI document.
+        """
+
+        def get_schema(self, *, request: None, public: bool) -> dict[str, object]:
+            """Generate the public route document.
+
+            Builds the schema without an incoming request so the test can inspect stable examples.
+            Exposes no implementation-specific schema generator behavior.
+
+            Arguments:
+                request: Optional schema request, unused by this test.
+                public: Whether every public operation is included.
+
+            Returns:
+                Generated OpenAPI document.
+
+            Raises:
+                None.
+            """
+            ...
+
 
 EXPECTED_CHECKS = {
     "broker",
@@ -30,6 +69,39 @@ EXPECTED_CHECKS = {
     "mail",
     "object_storage",
 }
+
+
+def _documented_health_example(status: HTTPStatus) -> dict[str, object]:
+    """Read the single documented JSON example for one health error.
+
+    Generates the public OpenAPI document and selects the example bound to the requested status,
+    making observed behavior fail whenever its documented body drifts.
+
+    Arguments:
+        status: Health response status whose example is required.
+
+    Returns:
+        Documented JSON response example.
+
+    Raises:
+        AssertionError: If the response does not carry exactly one example.
+    """
+    generator_factory = cast(
+        "Callable[[], SchemaGeneratorProtocol]",
+        import_module("drf_spectacular.generators").SchemaGenerator,
+    )
+    schema = generator_factory().get_schema(request=None, public=True)
+    operation = cast(
+        "dict[str, Any]",
+        cast("dict[str, Any]", schema["paths"])["/health/"]["get"],
+    )
+    response = cast("dict[str, Any]", operation["responses"][str(status.value)])
+    content = cast("dict[str, Any]", response["content"])["application/json"]
+    examples = cast("dict[str, Any]", content["examples"])
+
+    assert len(examples) == 1
+
+    return cast("dict[str, object]", next(iter(examples.values()))["value"])
 
 
 @pytest.mark.integration
@@ -259,10 +331,10 @@ def test_health_route_contains_mail_cleanup_failure(
     "seaweedfs",
 )
 def test_health_route_rejects_unsupported_methods_and_representations(client: Client) -> None:
-    """Return the framework's bounded method and representation errors.
+    """Match observed framework errors to their documented correlated envelopes.
 
-    Exercises the additional statuses reachable before dependency evaluation so the OpenAPI
-    contract remains complete for the public route.
+    Exercises both statuses reachable before dependency evaluation and compares each body with its
+    OpenAPI example while proving the response body and header share one request identifier.
 
     Arguments:
         client: Django client supplied by the test framework.
@@ -271,13 +343,30 @@ def test_health_route_rejects_unsupported_methods_and_representations(client: Cl
         None.
 
     Raises:
-        AssertionError: If either reachable framework status changes.
+        AssertionError: If observed status, body, documentation, or correlation changes.
     """
     unsupported_method = client.post("/health/")
     unsupported_representation = client.get(
         "/health/",
         headers={"accept": "text/plain"},
     )
+    method_payload = cast("dict[str, object]", unsupported_method.json())
+    representation_payload = cast("dict[str, object]", unsupported_representation.json())
+    documented_method = _documented_health_example(HTTPStatus.METHOD_NOT_ALLOWED)
+    documented_representation = _documented_health_example(HTTPStatus.NOT_ACCEPTABLE)
 
     assert unsupported_method.status_code == HTTPStatus.METHOD_NOT_ALLOWED
     assert unsupported_representation.status_code == HTTPStatus.NOT_ACCEPTABLE
+    assert method_payload == documented_method | {
+        "request_id": method_payload["request_id"],
+    }
+    assert representation_payload == documented_representation | {
+        "request_id": representation_payload["request_id"],
+    }
+    assert method_payload["code"] == ErrorCode.METHOD_NOT_ALLOWED
+    assert representation_payload["code"] == ErrorCode.NOT_ACCEPTABLE
+    assert method_payload["request_id"] == unsupported_method.headers[REQUEST_ID_HEADER]
+    assert (
+        representation_payload["request_id"]
+        == unsupported_representation.headers[REQUEST_ID_HEADER]
+    )

@@ -424,11 +424,75 @@ def test_request_and_database_instrumentation_wrap_the_application() -> None:
     assert configured_settings.INSTALLED_APPS[0] == "django_prometheus"
     assert middleware[0] == "django_prometheus.middleware.PrometheusBeforeMiddleware"
     assert middleware[1] == "config.logs.request_context_middleware"
+    assert middleware[2] == "config.api.api_error_envelope_middleware"
     assert middleware[-1] == "config.logs.BoundedPrometheusAfterMiddleware"
     assert all(
         database["ENGINE"] == "django_prometheus.db.backends.postgresql"
         for database in configured_settings.DATABASES.values()
     )
+
+
+@pytest.mark.unit
+def test_shared_rest_framework_defaults_close_new_routes() -> None:
+    """Configure the API's secure defaults in one place.
+
+    Confirms authentication, permission, pagination, rendering, schema, and exception handling are
+    inherited centrally, so a route must explicitly opt out when its contract differs.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a new route would be public or redeclare shared policy.
+    """
+    configuration = configured_settings.REST_FRAMEWORK
+
+    assert configuration == {
+        "DEFAULT_AUTHENTICATION_CLASSES": [
+            "rest_framework.authentication.SessionAuthentication",
+        ],
+        "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+        "DEFAULT_PERMISSION_CLASSES": [
+            "rest_framework.permissions.IsAuthenticated",
+        ],
+        "DEFAULT_RENDERER_CLASSES": [
+            "rest_framework.renderers.JSONRenderer",
+        ],
+        "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+        "EXCEPTION_HANDLER": "config.api.api_exception_handler",
+        "PAGE_SIZE": 100,
+    }
+
+
+@pytest.mark.unit
+def test_browsable_rendering_is_development_only() -> None:
+    """Expose browser-oriented rendering only in the interactive environment.
+
+    Executes both settings modules in isolation and verifies development adds the browsable
+    renderer while testing remains JSON-only and therefore headless.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If renderer availability leaks across environments.
+    """
+    development = _execute_module_in_isolation("development", REQUIRED_ENVIRONMENT)
+    testing = _execute_module_in_isolation("testing", REQUIRED_ENVIRONMENT)
+
+    assert development.REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"] == [
+        "rest_framework.renderers.JSONRenderer",
+        "rest_framework.renderers.BrowsableAPIRenderer",
+    ]
+    assert testing.REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"] == [
+        "rest_framework.renderers.JSONRenderer",
+    ]
 
 
 @pytest.mark.unit
