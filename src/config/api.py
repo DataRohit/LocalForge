@@ -10,8 +10,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from http import HTTPStatus
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, cast
 
+from django.conf import settings
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from django.http import Http404, JsonResponse
 from django.utils.decorators import async_only_middleware
@@ -36,6 +38,14 @@ from config.logs import REQUEST_ID_META_KEY, request_identifier
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+    from asgiref.typing import (
+        ASGI3Application,
+        ASGIReceiveCallable,
+        ASGIReceiveEvent,
+        ASGISendCallable,
+        ASGISendEvent,
+        Scope,
+    )
     from django.http import HttpRequest
     from django.http.response import HttpResponseBase
     from django.urls import URLPattern, URLResolver
@@ -60,6 +70,7 @@ class ErrorCode(StrEnum):
         API_ERROR: Framework failure without a more specific public category.
         AUTHENTICATION_FAILED: Credentials were supplied but rejected.
         BAD_REQUEST: Request rejection outside REST framework parsing.
+        REQUEST_TOO_LARGE: Request body exceeds the configured API limit.
         INTERNAL_SERVER_ERROR: Sanitized unexpected server failure.
         METHOD_NOT_ALLOWED: HTTP method is unsupported for the route.
         NOT_ACCEPTABLE: Requested response representation is unavailable.
@@ -67,6 +78,7 @@ class ErrorCode(StrEnum):
         NOT_FOUND: Route or resource was not found.
         PARSE_ERROR: Request body could not be parsed.
         PERMISSION_DENIED: Caller may not perform the operation.
+        SERVICE_UNAVAILABLE: Required service is temporarily unavailable.
         THROTTLED: Request exceeded an applicable rate limit.
         UNSUPPORTED_MEDIA_TYPE: Request representation is unsupported.
         VALIDATION_ERROR: Submitted fields failed validation.
@@ -78,6 +90,7 @@ class ErrorCode(StrEnum):
     API_ERROR = "api_error"
     AUTHENTICATION_FAILED = "authentication_failed"
     BAD_REQUEST = "bad_request"
+    REQUEST_TOO_LARGE = "request_too_large"
     INTERNAL_SERVER_ERROR = "internal_server_error"
     METHOD_NOT_ALLOWED = "method_not_allowed"
     NOT_ACCEPTABLE = "not_acceptable"
@@ -85,6 +98,7 @@ class ErrorCode(StrEnum):
     NOT_FOUND = "not_found"
     PARSE_ERROR = "parse_error"
     PERMISSION_DENIED = "permission_denied"
+    SERVICE_UNAVAILABLE = "service_unavailable"
     THROTTLED = "throttled"
     UNSUPPORTED_MEDIA_TYPE = "unsupported_media_type"
     VALIDATION_ERROR = "validation_error"
@@ -121,6 +135,10 @@ BAD_REQUEST = ErrorDefinition(
     ErrorCode.BAD_REQUEST,
     "The request was invalid.",
 )
+REQUEST_TOO_LARGE = ErrorDefinition(
+    ErrorCode.REQUEST_TOO_LARGE,
+    "The request body is too large.",
+)
 INTERNAL_SERVER_ERROR = ErrorDefinition(
     ErrorCode.INTERNAL_SERVER_ERROR,
     "An unexpected error occurred.",
@@ -149,6 +167,10 @@ PERMISSION_DENIED = ErrorDefinition(
     ErrorCode.PERMISSION_DENIED,
     "You do not have permission to perform this action.",
 )
+SERVICE_UNAVAILABLE = ErrorDefinition(
+    ErrorCode.SERVICE_UNAVAILABLE,
+    "A required service is unavailable.",
+)
 THROTTLED = ErrorDefinition(
     ErrorCode.THROTTLED,
     "Too many requests.",
@@ -169,10 +191,49 @@ STATUS_DEFINITIONS: dict[int, ErrorDefinition] = {
     HTTPStatus.NOT_FOUND: NOT_FOUND,
     HTTPStatus.METHOD_NOT_ALLOWED: METHOD_NOT_ALLOWED,
     HTTPStatus.NOT_ACCEPTABLE: NOT_ACCEPTABLE,
+    HTTPStatus.CONTENT_TOO_LARGE: REQUEST_TOO_LARGE,
     HTTPStatus.UNSUPPORTED_MEDIA_TYPE: UNSUPPORTED_MEDIA_TYPE,
     HTTPStatus.TOO_MANY_REQUESTS: THROTTLED,
     HTTPStatus.INTERNAL_SERVER_ERROR: INTERNAL_SERVER_ERROR,
+    HTTPStatus.SERVICE_UNAVAILABLE: SERVICE_UNAVAILABLE,
 }
+
+ERROR_STATUS_REGISTRY: Mapping[HTTPStatus, frozenset[ErrorCode]] = MappingProxyType(
+    {
+        HTTPStatus.BAD_REQUEST: frozenset(
+            {
+                ErrorCode.BAD_REQUEST,
+                ErrorCode.PARSE_ERROR,
+                ErrorCode.VALIDATION_ERROR,
+            }
+        ),
+        HTTPStatus.UNAUTHORIZED: frozenset(
+            {
+                ErrorCode.AUTHENTICATION_FAILED,
+                ErrorCode.NOT_AUTHENTICATED,
+            }
+        ),
+        HTTPStatus.FORBIDDEN: frozenset(
+            {
+                ErrorCode.NOT_AUTHENTICATED,
+                ErrorCode.PERMISSION_DENIED,
+            }
+        ),
+        HTTPStatus.NOT_FOUND: frozenset({ErrorCode.NOT_FOUND}),
+        HTTPStatus.METHOD_NOT_ALLOWED: frozenset({ErrorCode.METHOD_NOT_ALLOWED}),
+        HTTPStatus.NOT_ACCEPTABLE: frozenset({ErrorCode.NOT_ACCEPTABLE}),
+        HTTPStatus.CONTENT_TOO_LARGE: frozenset({ErrorCode.REQUEST_TOO_LARGE}),
+        HTTPStatus.UNSUPPORTED_MEDIA_TYPE: frozenset({ErrorCode.UNSUPPORTED_MEDIA_TYPE}),
+        HTTPStatus.TOO_MANY_REQUESTS: frozenset({ErrorCode.THROTTLED}),
+        HTTPStatus.INTERNAL_SERVER_ERROR: frozenset(
+            {
+                ErrorCode.API_ERROR,
+                ErrorCode.INTERNAL_SERVER_ERROR,
+            }
+        ),
+        HTTPStatus.SERVICE_UNAVAILABLE: frozenset({ErrorCode.SERVICE_UNAVAILABLE}),
+    }
+)
 
 EXCEPTION_DEFINITIONS: dict[type[Exception], ErrorDefinition] = {
     ValidationError: VALIDATION_ERROR,
@@ -230,6 +291,86 @@ def _is_api_request(request: HttpRequest) -> bool:
         None.
     """
     return request.path.startswith(f"/{API_PREFIX}")
+
+
+def _request_content_length(request: HttpRequest) -> int | None:
+    """Read a valid non-negative request body length.
+
+    Treats an absent or malformed server value as unknown so this preflight never consumes the
+    request stream or invents a size the transport did not provide.
+
+    Arguments:
+        request: Incoming Django request.
+
+    Returns:
+        Declared body length, or ``None`` when no usable value exists.
+
+    Raises:
+        None.
+    """
+    raw_length = request.META.get("CONTENT_LENGTH")
+
+    return int(raw_length) if isinstance(raw_length, str) and raw_length.isdecimal() else None
+
+
+def _scope_content_length(scope: Scope) -> int | None:
+    """Read one valid non-negative ASGI content length.
+
+    Accepts exactly one decimal header and treats missing, duplicated, non-ASCII, or malformed
+    values as unknown so actual receive events remain authoritative.
+
+    Arguments:
+        scope: Incoming ASGI connection scope.
+
+    Returns:
+        Declared body length, or ``None`` when no usable value exists.
+
+    Raises:
+        None.
+    """
+    values = [
+        value
+        for name, value in cast("list[tuple[bytes, bytes]]", scope.get("headers", []))
+        if name.lower() == b"content-length"
+    ]
+
+    if len(values) != 1 or not values[0].isdigit():
+        return None
+
+    return int(values[0])
+
+
+def _scope_without_invalid_content_length(scope: Scope, declared_length: int | None) -> Scope:
+    """Remove malformed content-length metadata before Django middleware sees it.
+
+    Preserves absent and valid declarations while treating invalid transport metadata as unknown,
+    allowing the byte-counting receive boundary to decide from actual body events.
+
+    Arguments:
+        scope: Incoming ASGI connection scope.
+        declared_length: Valid parsed length, or ``None`` when no usable value exists.
+
+    Returns:
+        Original scope when metadata is absent or valid, otherwise a copy without invalid headers.
+
+    Raises:
+        None.
+    """
+    headers = cast("list[tuple[bytes, bytes]]", scope.get("headers", []))
+    has_content_length = any(name.lower() == b"content-length" for name, _value in headers)
+
+    if declared_length is not None or not has_content_length:
+        return scope
+
+    return cast(
+        "Scope",
+        {
+            **scope,
+            "headers": [
+                (name, value) for name, value in headers if name.lower() != b"content-length"
+            ],
+        },
+    )
 
 
 def _definition_for(exception: Exception) -> ErrorDefinition:
@@ -293,11 +434,40 @@ def _payload(
     Raises:
         None.
     """
+    return _error_payload(
+        _request_identifier(request),
+        definition,
+        details=details,
+    )
+
+
+def _error_payload(
+    identifier: str,
+    definition: ErrorDefinition,
+    *,
+    details: dict[str, object] | None = None,
+) -> dict[str, object]:
+    """Build the universal error envelope from transport-level correlation.
+
+    Supports boundaries that reject before Django can construct an ``HttpRequest`` while retaining
+    the same stable code, safe message, detail mapping, and request identifier.
+
+    Arguments:
+        identifier: Correlation identifier established at the ASGI boundary.
+        definition: Stable code and safe human-readable message.
+        details: Optional per-field validation details.
+
+    Returns:
+        JSON-serializable error envelope.
+
+    Raises:
+        None.
+    """
     return {
         "code": definition.code.value,
         "message": definition.message,
         "details": details or {},
-        "request_id": _request_identifier(request),
+        "request_id": identifier,
     }
 
 
@@ -360,6 +530,183 @@ def _json_error(
     setattr(response, ERROR_ENVELOPE_ATTRIBUTE, True)
 
     return response
+
+
+def api_request_body_limit_asgi(application: ASGI3Application) -> ASGI3Application:
+    """Build an ASGI boundary that enforces the API request-body ceiling.
+
+    Rejects oversized declarations before reading transport data and counts actual HTTP body events
+    when length is absent, invalid, understated, or delivered across multiple chunks.
+
+    Arguments:
+        application: Django-compatible ASGI application receiving accepted requests.
+
+    Returns:
+        ASGI application enforcing the versioned API byte ceiling.
+
+    Raises:
+        None.
+    """
+
+    async def enforce_limit(
+        scope: Scope,
+        receive: ASGIReceiveCallable,
+        send: ASGISendCallable,
+    ) -> None:
+        """Enforce the body ceiling for one ASGI request.
+
+        Passes non-API scopes and accepted receive events through unchanged, while presenting
+        Django with a disconnect at the first chunk crossing the limit so it closes its body spool.
+
+        Arguments:
+            scope: Incoming ASGI connection scope.
+            receive: Callable yielding inbound ASGI events.
+            send: Callable accepting outbound ASGI events.
+
+        Returns:
+            None.
+
+        Raises:
+            BaseException: Any accepted application or transport failure.
+        """
+        if scope["type"] != "http" or not scope.get("path", "").startswith(f"/{API_PREFIX}"):
+            await application(scope, receive, send)
+            return
+
+        limit = cast("int", settings.API_REQUEST_BODY_MAX_BYTES)
+        declared_length = _scope_content_length(scope)
+
+        if declared_length is not None and declared_length > limit:
+            await _send_asgi_request_too_large(send)
+            return
+
+        accepted_scope = _scope_without_invalid_content_length(scope, declared_length)
+        received_bytes = 0
+        limit_exceeded = False
+
+        async def count_bytes() -> ASGIReceiveEvent:
+            """Count one inbound request event before passing it to Django.
+
+            Measures only HTTP body bytes and leaves accepted event dictionaries unchanged.
+            Crossing the ceiling becomes a disconnect so Django closes its open request spool.
+
+            Arguments:
+                None.
+
+            Returns:
+                Original event within the ceiling, or a disconnect when its body crosses it.
+
+            Raises:
+                BaseException: Any receive failure from the transport.
+            """
+            nonlocal limit_exceeded, received_bytes
+            event = await receive()
+
+            if event["type"] == "http.request":
+                received_bytes += len(event.get("body", b""))
+                if received_bytes > limit:
+                    limit_exceeded = True
+                    return {"type": "http.disconnect"}
+
+            return event
+
+        await application(accepted_scope, count_bytes, send)
+
+        if limit_exceeded:
+            await _send_asgi_request_too_large(send)
+
+    return enforce_limit
+
+
+async def _send_asgi_request_too_large(send: ASGISendCallable) -> None:
+    """Send a correlated request-too-large envelope from the ASGI boundary.
+
+    Serializes through Django's JSON response implementation so transport-level rejection matches
+    every framework-level error body without constructing a request or entering REST parsing.
+
+    Arguments:
+        send: Callable accepting outbound ASGI events.
+
+    Returns:
+        None.
+
+    Raises:
+        BaseException: Any response transport failure.
+    """
+    response = JsonResponse(
+        _error_payload(request_identifier.get(), REQUEST_TOO_LARGE),
+        status=HTTPStatus.CONTENT_TOO_LARGE,
+    )
+    headers = [
+        (name.lower().encode("latin-1"), value.encode("latin-1"))
+        for name, value in response.items()
+    ]
+    await send(
+        cast(
+            "ASGISendEvent",
+            {
+                "type": "http.response.start",
+                "status": response.status_code,
+                "headers": headers,
+                "trailers": False,
+            },
+        )
+    )
+    await send(
+        cast(
+            "ASGISendEvent",
+            {
+                "type": "http.response.body",
+                "body": response.content,
+                "more_body": False,
+            },
+        )
+    )
+
+
+@async_only_middleware
+def api_request_body_limit_middleware(
+    get_response: Callable[[HttpRequest], Awaitable[HttpResponseBase]],
+) -> Callable[[HttpRequest], Awaitable[HttpResponseBase]]:
+    """Build middleware that rejects oversized versioned API requests.
+
+    Compares the transport-declared length with the environment-derived ceiling before any parser
+    or view reads the body, while leaving health, administration, and other non-API routes alone.
+
+    Arguments:
+        get_response: Asynchronous inner middleware chain.
+
+    Returns:
+        Asynchronous middleware enforcing the API request body ceiling.
+
+    Raises:
+        None.
+    """
+
+    async def enforce_limit(request: HttpRequest) -> HttpResponseBase:
+        """Reject one oversized API request before passing control inward.
+
+        Reads request metadata only, preserving the unread body for requests within the configured
+        ceiling and avoiding allocation by application parsers for requests beyond it.
+
+        Arguments:
+            request: Incoming Django request.
+
+        Returns:
+            Content-too-large envelope or the inner response.
+
+        Raises:
+            None.
+        """
+        content_length = _request_content_length(request)
+        limit = cast("int", settings.API_REQUEST_BODY_MAX_BYTES)
+
+        if _is_api_request(request) and content_length is not None and content_length > limit:
+            return _json_error(request, REQUEST_TOO_LARGE, HTTPStatus.CONTENT_TOO_LARGE)
+
+        return await get_response(request)
+
+    return enforce_limit
 
 
 @async_only_middleware

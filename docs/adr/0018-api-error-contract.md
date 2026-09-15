@@ -38,13 +38,22 @@ must be reachable in a test and present in the schema.
 | 404 | routing, object lookup | unknown route, or an object the caller may not see |
 | 405 | the router | method not allowed on an existing route |
 | 406 | content negotiation | unacceptable `Accept` header |
+| 413 | ASGI request boundary | actual received body bytes exceed the environment-configured API ceiling |
 | 415 | content negotiation | unsupported `Content-Type` on a write |
 | 429 | throttling | rate limit exceeded, with `Retry-After` |
 | 500 | unhandled exception | must return the envelope, never a traceback or an HTML page |
 | 503 | health and readiness | a required dependency is down |
 
-Two that are easy to miss: **406 and 415** come from content negotiation before a view runs, and **403 from CSRF**
-is middleware, not a permission class. A route documented only with the codes its own code raises is incomplete.
+Three that are easy to miss: **406 and 415** come from content negotiation, **413** is rejected before Django
+constructs the request or a parser reads the body, and **403 from CSRF** is middleware or session authentication,
+not a permission class. A route documented only with the codes its own code raises is incomplete.
+
+The request-body ceiling is `DJANGO_API_REQUEST_BODY_MAX_BYTES`. The ASGI boundary rejects an oversized valid
+`Content-Length` before receiving body data, then counts every actual `http.request` body chunk so omitted,
+malformed, or understated declarations cannot bypass the ceiling. Crossing the limit presents a disconnect to
+Django so its request spool closes, then returns `request_too_large` with transport-level request correlation.
+Accepted chunks retain normal receive semantics, and non-API routes retain Django's existing behavior. The same
+value bounds Django's in-memory request spool.
 
 ## Enumeration resistance beats precise status codes
 

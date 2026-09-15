@@ -21,6 +21,9 @@ ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS")
 
 CSRF_TRUSTED_ORIGINS = env.list("DJANGO_CSRF_TRUSTED_ORIGINS")
 
+API_REQUEST_BODY_MAX_BYTES = env.int("DJANGO_API_REQUEST_BODY_MAX_BYTES")
+FILE_UPLOAD_MAX_MEMORY_SIZE = API_REQUEST_BODY_MAX_BYTES
+
 INSTALLED_APPS = [
     "django_prometheus",
     "django.contrib.admin",
@@ -58,6 +61,7 @@ CSRF_FAILURE_VIEW = "config.api.api_csrf_failure"
 MIDDLEWARE = [
     "django_prometheus.middleware.PrometheusBeforeMiddleware",
     "config.logs.request_context_middleware",
+    "config.api.api_request_body_limit_middleware",
     "config.api.api_error_envelope_middleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, cast
 from channels.routing import ProtocolTypeRouter, URLRouter
 from django.core.asgi import get_asgi_application
 
+from config.api import api_request_body_limit_asgi
 from config.logs import finalize_streaming_asgi
 
 if TYPE_CHECKING:
@@ -19,7 +20,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.development")
 
 django_application = get_asgi_application()
 http_application = finalize_streaming_asgi(
-    cast("ASGI3Application", django_application),
+    api_request_body_limit_asgi(cast("ASGI3Application", django_application)),
 )
 
 from config.routing import websocket_urlpatterns  # noqa: E402

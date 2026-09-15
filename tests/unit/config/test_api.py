@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock
 import pytest
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from django.http import Http404, JsonResponse
-from django.test import RequestFactory
+from django.test import RequestFactory, override_settings
 from rest_framework.exceptions import (
     APIException,
     AuthenticationFailed,
@@ -30,6 +30,7 @@ from rest_framework.exceptions import (
 )
 
 from config.api import (
+    ERROR_STATUS_REGISTRY,
     ErrorCode,
     api_bad_request,
     api_csrf_failure,
@@ -37,6 +38,7 @@ from config.api import (
     api_exception_handler,
     api_not_found,
     api_permission_denied,
+    api_request_body_limit_asgi,
     api_server_error,
 )
 from config.logs import REQUEST_ID_META_KEY, request_identifier
@@ -44,6 +46,14 @@ from config.logs import REQUEST_ID_META_KEY, request_identifier
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+    from asgiref.typing import (
+        ASGI3Application,
+        ASGIReceiveCallable,
+        ASGIReceiveEvent,
+        ASGISendCallable,
+        ASGISendEvent,
+        Scope,
+    )
     from django.http import HttpRequest
     from django.http.response import HttpResponseBase
     from rest_framework.response import Response
@@ -156,6 +166,100 @@ MAPPED_EXCEPTIONS = (
         id="generic-api-exception",
     ),
 )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_asgi_body_limit_preserves_disconnect_events() -> None:
+    """Pass a transport disconnect through the API body boundary.
+
+    Invokes the public wrapper with an API scope whose first inbound event is a disconnect.
+    The accepted application observes that event unchanged and no rejection response is emitted.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a non-body event is altered or produces a response.
+    """
+    observed: list[ASGIReceiveEvent] = []
+    emitted: list[ASGISendEvent] = []
+
+    async def application(
+        _scope: Scope,
+        receive: ASGIReceiveCallable,
+        _send: ASGISendCallable,
+    ) -> None:
+        """Receive one event through the body-limit wrapper.
+
+        Records the event supplied by the wrapped receive callable without producing a response.
+        This isolates transparent receive behavior from Django's disconnect handling.
+
+        Arguments:
+            _scope: Incoming API scope, unused by the accepted application.
+            receive: Wrapped receive callable supplied by the body boundary.
+            _send: Wrapped send callable, unused because disconnect produces no response.
+
+        Returns:
+            None.
+
+        Raises:
+            BaseException: Any receive failure from the wrapper.
+        """
+        observed.append(await receive())
+
+    async def receive() -> ASGIReceiveEvent:
+        """Return one client disconnect event.
+
+        Supplies a non-body ASGI event so byte counting must leave it untouched.
+        No later event is requested by the accepted application.
+
+        Arguments:
+            None.
+
+        Returns:
+            Client disconnect event.
+
+        Raises:
+            None.
+        """
+        return {"type": "http.disconnect"}
+
+    async def send(message: ASGISendEvent) -> None:
+        """Record an unexpected response event.
+
+        Retains any event so the assertion can prove disconnect forwarding emits nothing.
+        The helper does not otherwise interpret transport output.
+
+        Arguments:
+            message: Outbound event emitted by the wrapper.
+
+        Returns:
+            None.
+
+        Raises:
+            None.
+        """
+        emitted.append(message)
+
+    scope = cast(
+        "Scope",
+        {
+            "type": "http",
+            "path": "/api/v1/probe/",
+            "headers": [],
+        },
+    )
+    wrapped = api_request_body_limit_asgi(cast("ASGI3Application", application))
+
+    with override_settings(API_REQUEST_BODY_MAX_BYTES=8):
+        await wrapped(scope, receive, send)
+
+    assert observed == [{"type": "http.disconnect"}]
+    assert emitted == []
 
 
 @pytest.mark.unit
@@ -560,7 +664,63 @@ def test_error_codes_are_declared_in_one_enumeration() -> None:
         "not_found",
         "parse_error",
         "permission_denied",
+        "request_too_large",
+        "service_unavailable",
         "throttled",
         "unsupported_media_type",
         "validation_error",
     }
+
+
+@pytest.mark.unit
+def test_error_status_registry_exposes_the_complete_governing_matrix() -> None:
+    """Expose every governing HTTP status and its permitted stable codes.
+
+    Compares the durable registry with independent status and code literals so Ticket 36 can use
+    the same source to detect undocumented responses without deriving expectations from handlers.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a governing status or permitted code is missing or silently added.
+    """
+    expected = {
+        HTTPStatus.BAD_REQUEST: frozenset(
+            {
+                ErrorCode.BAD_REQUEST,
+                ErrorCode.PARSE_ERROR,
+                ErrorCode.VALIDATION_ERROR,
+            }
+        ),
+        HTTPStatus.UNAUTHORIZED: frozenset(
+            {
+                ErrorCode.AUTHENTICATION_FAILED,
+                ErrorCode.NOT_AUTHENTICATED,
+            }
+        ),
+        HTTPStatus.FORBIDDEN: frozenset(
+            {
+                ErrorCode.NOT_AUTHENTICATED,
+                ErrorCode.PERMISSION_DENIED,
+            }
+        ),
+        HTTPStatus.NOT_FOUND: frozenset({ErrorCode.NOT_FOUND}),
+        HTTPStatus.METHOD_NOT_ALLOWED: frozenset({ErrorCode.METHOD_NOT_ALLOWED}),
+        HTTPStatus.NOT_ACCEPTABLE: frozenset({ErrorCode.NOT_ACCEPTABLE}),
+        HTTPStatus.CONTENT_TOO_LARGE: frozenset({ErrorCode.REQUEST_TOO_LARGE}),
+        HTTPStatus.UNSUPPORTED_MEDIA_TYPE: frozenset({ErrorCode.UNSUPPORTED_MEDIA_TYPE}),
+        HTTPStatus.TOO_MANY_REQUESTS: frozenset({ErrorCode.THROTTLED}),
+        HTTPStatus.INTERNAL_SERVER_ERROR: frozenset(
+            {
+                ErrorCode.API_ERROR,
+                ErrorCode.INTERNAL_SERVER_ERROR,
+            }
+        ),
+        HTTPStatus.SERVICE_UNAVAILABLE: frozenset({ErrorCode.SERVICE_UNAVAILABLE}),
+    }
+
+    assert expected == ERROR_STATUS_REGISTRY

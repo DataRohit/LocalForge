@@ -25,12 +25,14 @@ if TYPE_CHECKING:
     from types import ModuleType
 
 SETTINGS_DIRECTORY = Path(str(settings_package.__file__)).resolve().parent
+BODY_LIMIT_PROBE_BYTES = 2048
 
 REQUIRED_ENVIRONMENT = {
     "DJANGO_SECRET_KEY": secrets.token_urlsafe(32),
     "DJANGO_DEBUG": "true",
     "DJANGO_ALLOWED_HOSTS": "localhost,localforge.localhost",
     "DJANGO_CSRF_TRUSTED_ORIGINS": ("http://localhost:8080,http://localforge.localhost:8080"),
+    "DJANGO_API_REQUEST_BODY_MAX_BYTES": "1048576",
     "POSTGRES_DB": "localforge",
     "POSTGRES_USER": "localforge_app",
     "POSTGRES_PASSWORD": secrets.token_urlsafe(16),
@@ -424,12 +426,38 @@ def test_request_and_database_instrumentation_wrap_the_application() -> None:
     assert configured_settings.INSTALLED_APPS[0] == "django_prometheus"
     assert middleware[0] == "django_prometheus.middleware.PrometheusBeforeMiddleware"
     assert middleware[1] == "config.logs.request_context_middleware"
-    assert middleware[2] == "config.api.api_error_envelope_middleware"
+    assert middleware[2] == "config.api.api_request_body_limit_middleware"
+    assert middleware[3] == "config.api.api_error_envelope_middleware"
     assert middleware[-1] == "config.logs.BoundedPrometheusAfterMiddleware"
     assert all(
         database["ENGINE"] == "django_prometheus.db.backends.postgresql"
         for database in configured_settings.DATABASES.values()
     )
+
+
+@pytest.mark.unit
+def test_api_request_body_limit_comes_from_the_environment() -> None:
+    """Configure the API request ceiling from the environment.
+
+    Executes shared settings with a distinct value and verifies middleware receives that integer,
+    preventing a deployment-specific memory boundary from becoming a code literal.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the body ceiling ignores or misparses the environment.
+    """
+    module = _execute_module_in_isolation(
+        "base",
+        REQUIRED_ENVIRONMENT | {"DJANGO_API_REQUEST_BODY_MAX_BYTES": str(BODY_LIMIT_PROBE_BYTES)},
+    )
+
+    assert module.API_REQUEST_BODY_MAX_BYTES == BODY_LIMIT_PROBE_BYTES
+    assert module.FILE_UPLOAD_MAX_MEMORY_SIZE == BODY_LIMIT_PROBE_BYTES
 
 
 @pytest.mark.unit
