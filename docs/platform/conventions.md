@@ -35,7 +35,7 @@ Compose default network**, and no service omits its `networks:` key.
 ### 1.4 Compose projects
 
 | Environment | Project name |
-|---|---|
+| --- | --- |
 | development | `localforge-dev` |
 | testing | `localforge-test` |
 
@@ -65,7 +65,7 @@ duplicates.**
 ### 2.2 Development
 
 | Container name | ID | Role | Image |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `traefik-tk2jp` | `tk2jp` | reverse proxy | `docker.io/library/traefik:v3.7.13` |
 | `django-uv5n2` | `uv5n2` | Django ASGI app | built, `docker/django/Dockerfile` |
 | `postgres-pg3ka` | `pg3ka` | PostgreSQL primary | built, `docker/pgbackrest/Dockerfile` |
@@ -94,7 +94,7 @@ duplicates.**
 Its own IDs, so it can coexist with development. Same never-regenerate rule.
 
 | Container name | ID | Role | Image |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `django-test-dt5qx` | `dt5qx` | pytest runner | built, `test` stage |
 | `postgres-tp8vn` | `tp8vn` | PostgreSQL, single node | `docker.io/library/postgres:18.6` |
 | `valkey-cache-tv4kq` | `tv4kq` | cache | `docker.io/valkey/valkey:9.1.2` |
@@ -106,7 +106,7 @@ Its own IDs, so it can coexist with development. Same never-regenerate rule.
 ### 2.4 Networks
 
 | Network | ID | Environment | Purpose | `internal` |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | `edge-net-ne2vk` | `ne2vk` | development | Traefik to the Django app, subnet `10.89.2.0/24` | no |
 | `access-net-ha4mz` | `ha4mz` | development | host access for every service publishing a port | no |
 | `app-net-na6hy` | `na6hy` | development | app tier to brokers, cache, storage, mail | **yes** |
@@ -136,7 +136,7 @@ zones exist. Measured 2026-09-13; see
 ### 2.5 Volumes
 
 | Volume | Owner | Contents | Environment |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `postgres-pg3ka-data` | `postgres-pg3ka` | `PGDATA`, mounted at `/var/lib/postgresql` | development |
 | `postgres-pg3ka-socket` | `postgres-pg3ka` | Unix socket the backup agent connects through | development |
 | `postgres-replica-pg6vy-data` | `postgres-replica-pg6vy` | standby `PGDATA` | development |
@@ -183,14 +183,17 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 **Sec** = secret, **Req** = required.
 
 | Variable | Owning service | Purpose | Example | Sec | Req |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | `DJANGO_SETTINGS_MODULE` | `django-uv5n2` | settings module | `config.settings.development` | no | yes |
 | `DJANGO_SECRET_KEY` | `django-uv5n2` | signing key | `<GENERATED>` | **yes** | yes |
+| `DJANGO_JWT_SIGNING_KEY` | `django-uv5n2` | dedicated HS256 JSON web token signing key, distinct from `DJANGO_SECRET_KEY` | `<GENERATED>` | **yes** | yes |
 | `DJANGO_DEBUG` | `django-uv5n2` | debug toggle | `true` dev, `false` testing | no | yes |
 | `DJANGO_ALLOWED_HOSTS` | `django-uv5n2` | host header allowlist | `localhost,127.0.0.1,localforge.localhost,django-uv5n2,django-metrics-nb4xt` | no | yes |
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | `django-uv5n2` | CSRF origins behind Traefik | `http://localhost:8080,http://localforge.localhost:8080` | no | yes |
 | `DJANGO_TRUSTED_PROXY_NETWORKS` | `django-uv5n2` | immediate-peer networks allowed to supply forwarded client addresses | `10.89.2.0/24` development, `none` testing | no | yes |
 | `DJANGO_API_REQUEST_BODY_MAX_BYTES` | `django-uv5n2` | versioned API body ceiling and request spool memory limit | `1048576` | no | yes |
+| `DJANGO_JWT_ACCESS_TOKEN_LIFETIME_SECONDS` | `django-uv5n2` | JSON web token access lifetime | `300` | no | yes |
+| `DJANGO_JWT_REFRESH_TOKEN_LIFETIME_SECONDS` | `django-uv5n2` | JSON web token refresh lifetime, longer than access | `86400` | no | yes |
 | `DJANGO_TOKEN_LOGIN_ACCOUNT_THROTTLE_RATE` | `django-uv5n2` | strict atomic token-login admissions per primary-resolved account identity in one rolling window | `5/minute` | no | yes |
 | `DJANGO_TOKEN_LOGIN_ADDRESS_THROTTLE_RATE` | `django-uv5n2` | strict atomic token-login admissions per client address in one rolling window | `30/minute` | no | yes |
 | `DJANGO_LOG_LEVEL` | `django-uv5n2` | root log level | `INFO` | no | no |
@@ -292,7 +295,7 @@ registry defines another limit.
 Testing overrides, present only in `.env.testing`:
 
 | Variable | Value | Reason |
-|---|---|---|
+| --- | --- | --- |
 | `COMPOSE_PROJECT_NAME` | `localforge-test` | selects the testing project namespace |
 | `DJANGO_SETTINGS_MODULE` | `config.settings.testing` | selects the testing module |
 | `DJANGO_DEBUG` | `false` | tests must not depend on debug behaviour |
@@ -326,13 +329,13 @@ image with no Python. The development machine is Windows, so a `.sh` entrypoint 
 ### 4.1 `scripts/gen_secrets.py`
 
 | Property | Value |
-|---|---|
+| --- | --- |
 | Responsibility | Create or top up `.env.development`, `.env.testing`, `.env.testing.host` |
 | Inputs | `--environment {development,testing,all}`, `--force`; `.env.example` is the variable manifest |
-| Generation | `secrets.token_urlsafe(64)` for `DJANGO_SECRET_KEY`; `token_urlsafe(32)` for passwords; `token_hex(20)` for S3 keys; bcrypt at cost 12 for `TRAEFIK_DASHBOARD_AUTH`, which is **composed from** `TRAEFIK_DASHBOARD_PASSWORD` rather than from a password thrown away at generation, because a dashboard credential nobody holds cannot be used to log in. `FLOWER_BASIC_AUTH` is a **plaintext** `user:password` pair, because Flower compares its configured value literally — hashing it would make the digest itself the password. Generated plaintext files remain comment-free and use blank lines between logical service groups; encrypted SOPS dotenv files cannot preserve those separators. |
+| Generation | Independent `secrets.token_urlsafe(64)` values for `DJANGO_SECRET_KEY` and `DJANGO_JWT_SIGNING_KEY`; `token_urlsafe(32)` for passwords; `token_hex(20)` for S3 keys; bcrypt at cost 12 for `TRAEFIK_DASHBOARD_AUTH`, which is **composed from** `TRAEFIK_DASHBOARD_PASSWORD` rather than from a password thrown away at generation, because a dashboard credential nobody holds cannot be used to log in. `FLOWER_BASIC_AUTH` is a **plaintext** `user:password` pair, because Flower compares its configured value literally — hashing it would make the digest itself the password. Generated plaintext files remain comment-free and use blank lines between logical service groups; encrypted SOPS dotenv files cannot preserve those separators. |
 | Quoting | A value containing `$` is written single-quoted. Compose expands unquoted values in **both** `env_file:` and `--env-file`, so a bare bcrypt hash loses everything from its third `$` onward and yields a credential that cannot authenticate. Verified against Compose v5.5.1 on 2026-09-13 |
 | Idempotency | Default run **never overwrites an existing value**, and never discards one it does not recognise; it appends only absent variables, so adding an inventory row fills the gap without invalidating a running stack. A composed value is derived when absent and **refused when present but disagreeing** with the variables it is built from, because the generator cannot prove whether such a value is stale or a deliberate edit. `--force` regenerates everything and warns that credential-derived volumes must be recreated |
-| Forcing against a live stack | **`--force` silently desynchronises a running stack.** The files get new credentials; every running service keeps the one it started with, and PostgreSQL and RabbitMQ keep theirs inside their data directories, where recreating the container does not reach them. Nothing detects it — every health check still passes, because each probe authenticates with the credential the service itself holds. **A `docker exec … psql -U … ` probe proves nothing either**: `initdb` writes a default `pg_hba.conf` that trusts loopback inside the container, so an in-container connection succeeds whatever the role's password is. Measured 2026-09-14, when `postgres-tp8vn` accepted every in-container probe while rejecting the password in its own environment file from the published port. Verify a credential **from the host, over the published port**. Measured 2026-09-14, when a forced run left the primary, the standby, both brokers and all four cache instances rejecting the passwords in their own environment files. The refusal messages recommend `--force`, so this is easy to walk into: take the stack down first, and recreate the volumes the warning lists. To repair a stack already in this state without losing data, `ALTER ROLE … WITH PASSWORD` on PostgreSQL and `rabbitmqctl change_password` on RabbitMQ, then recreate every other service and re-bootstrap the standby, whose `primary_conninfo` still carries the old password |
+| Forcing against a live stack | **`--force` silently desynchronises a running stack.** The files get new credentials; every running service keeps the one it started with, and PostgreSQL and RabbitMQ keep theirs inside their data directories, where recreating the container does not reach them. Nothing detects it — every health check still passes, because each probe authenticates with the credential the service itself holds. **A `docker exec … psql -U …` probe proves nothing either**: `initdb` writes a default `pg_hba.conf` that trusts loopback inside the container, so an in-container connection succeeds whatever the role's password is. Measured 2026-09-14, when `postgres-tp8vn` accepted every in-container probe while rejecting the password in its own environment file from the published port. Verify a credential **from the host, over the published port**. Measured 2026-09-14, when a forced run left the primary, the standby, both brokers and all four cache instances rejecting the passwords in their own environment files. The refusal messages recommend `--force`, so this is easy to walk into: take the stack down first, and recreate the volumes the warning lists. To repair a stack already in this state without losing data, `ALTER ROLE … WITH PASSWORD` on PostgreSQL and `rabbitmqctl change_password` on RabbitMQ, then recreate every other service and re-bootstrap the standby, whose `primary_conninfo` still carries the old password |
 | Transactionality | Every selected file is resolved and rendered before any is written, and writes are staged then replaced, with rollback. A refused run leaves every file byte-identical |
 | Sharing | `.env.testing` and `.env.testing.host` address the same containers and therefore hold the same credentials. They are resolved together, so a run that regenerates one because the other is missing cannot leave the pair disagreeing |
 | Exit codes | `0` ok; `1` refused because the existing files are in a state the generator will not silently resolve — a composed value disagreeing with its components, or two files that must share a credential holding different ones; `2` `.env.example` missing or unparsable; `3` refused to write a Git-tracked file, **or could not determine whether a file is tracked**; `4` `--force` without `--environment` |
@@ -425,7 +428,7 @@ Runs in `uv run poe check` and as a pre-commit hook.
    value. The set depends on the environment being regenerated:
 
    | Environment | Volumes to recreate |
-   |---|---|
+   | --- | --- |
    | development | `postgres-pg3ka-data`, `postgres-replica-pg6vy-data`, `rabbitmq-rq4sx-data`, `grafana-gf7qv-data`, `pgadmin-pa7fe-data` |
    | testing | `postgres-tp8vn-data`, `rabbitmq-tr6mc-data` |
 

@@ -5,18 +5,42 @@ through the parsing library, so no module carries a literal secret and a missing
 fails at startup naming itself.
 """
 
+from datetime import timedelta
 from ipaddress import ip_network
 from pathlib import Path
 from typing import Any
 
 import environ
 from botocore.config import Config
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 env = environ.Env()
 
 SECRET_KEY = env.str("DJANGO_SECRET_KEY")
+JWT_SIGNING_KEY = env.str("DJANGO_JWT_SIGNING_KEY")
+JWT_ACCESS_TOKEN_LIFETIME_SECONDS = env.int("DJANGO_JWT_ACCESS_TOKEN_LIFETIME_SECONDS")
+JWT_REFRESH_TOKEN_LIFETIME_SECONDS = env.int("DJANGO_JWT_REFRESH_TOKEN_LIFETIME_SECONDS")
+
+if not JWT_SIGNING_KEY:
+    message = "DJANGO_JWT_SIGNING_KEY must not be empty"
+    raise ImproperlyConfigured(message)
+
+if JWT_SIGNING_KEY == SECRET_KEY:
+    message = "DJANGO_JWT_SIGNING_KEY must differ from DJANGO_SECRET_KEY"
+    raise ImproperlyConfigured(message)
+
+if min(JWT_ACCESS_TOKEN_LIFETIME_SECONDS, JWT_REFRESH_TOKEN_LIFETIME_SECONDS) <= 0:
+    message = "JSON web token lifetimes must be positive"
+    raise ImproperlyConfigured(message)
+
+if JWT_ACCESS_TOKEN_LIFETIME_SECONDS >= JWT_REFRESH_TOKEN_LIFETIME_SECONDS:
+    message = (
+        "DJANGO_JWT_ACCESS_TOKEN_LIFETIME_SECONDS must be shorter than "
+        "DJANGO_JWT_REFRESH_TOKEN_LIFETIME_SECONDS"
+    )
+    raise ImproperlyConfigured(message)
 
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS")
 
@@ -49,6 +73,7 @@ INSTALLED_APPS = [
     "channels",
     "rest_framework",
     "rest_framework.authtoken",
+    "rest_framework_simplejwt.token_blacklist",
     "drf_spectacular",
     "storages",
 ]
@@ -73,6 +98,21 @@ REST_FRAMEWORK = {
 TOKEN_LOGIN_ACCOUNT_THROTTLE_RATE = env.str("DJANGO_TOKEN_LOGIN_ACCOUNT_THROTTLE_RATE")
 TOKEN_LOGIN_ADDRESS_THROTTLE_RATE = env.str("DJANGO_TOKEN_LOGIN_ADDRESS_THROTTLE_RATE")
 LOGIN_THROTTLE_DATABASE_ALIAS = "default"
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(seconds=JWT_ACCESS_TOKEN_LIFETIME_SECONDS),
+    "REFRESH_TOKEN_LIFETIME": timedelta(seconds=JWT_REFRESH_TOKEN_LIFETIME_SECONDS),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "ALGORITHM": "HS256",
+    "SIGNING_KEY": JWT_SIGNING_KEY,
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id",
+    "AUTH_TOKEN_CLASSES": ("rest_framework_simplejwt.tokens.AccessToken",),
+    "CHECK_USER_IS_ACTIVE": True,
+    "CHECK_REVOKE_TOKEN": False,
+}
 
 CSRF_FAILURE_VIEW = "config.api.api_csrf_failure"
 

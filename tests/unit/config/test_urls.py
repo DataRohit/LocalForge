@@ -103,11 +103,11 @@ def test_api_is_mounted_under_the_versioned_prefix() -> None:
 
 
 @pytest.mark.unit
-def test_token_authentication_exposes_only_its_two_versioned_routes() -> None:
-    """Resolve the fixed token login and logout surface.
+def test_authentication_exposes_only_its_five_versioned_routes() -> None:
+    """Resolve the fixed token and JSON web token surface.
 
-    Confirms both token operations live beneath the URL-carried API version and that neither is
-    exposed at an unversioned application path.
+    Confirms all five authentication operations live beneath the URL-carried API version and none
+    is exposed at an unversioned application path.
 
     Arguments:
         None.
@@ -116,22 +116,35 @@ def test_token_authentication_exposes_only_its_two_versioned_routes() -> None:
         None.
 
     Raises:
-        AssertionError: If either route is absent, renamed, or reachable without the API prefix.
+        AssertionError: If a route is absent, renamed, or reachable without the API prefix.
     """
+    assert resolve("/api/v1/jwt/create/").view_name == "api-v1:accounts:jwt-create"
+    assert resolve("/api/v1/jwt/refresh/").view_name == "api-v1:accounts:jwt-refresh"
+    assert resolve("/api/v1/jwt/verify/").view_name == "api-v1:accounts:jwt-verify"
     assert resolve("/api/v1/token/login/").view_name == "api-v1:accounts:token-login"
     assert resolve("/api/v1/token/logout/").view_name == "api-v1:accounts:token-logout"
 
-    with pytest.raises(Resolver404):
-        resolve("/token/login/")
-
-    with pytest.raises(Resolver404):
-        resolve("/token/logout/")
+    for path_value in (
+        "/jwt/create/",
+        "/jwt/refresh/",
+        "/jwt/verify/",
+        "/token/login/",
+        "/token/logout/",
+    ):
+        with pytest.raises(Resolver404):
+            resolve(path_value)
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
     ("method", "path_value"),
     [
+        pytest.param("get", "/api/v1/jwt/create", id="jwt-create-get"),
+        pytest.param("post", "/api/v1/jwt/create", id="jwt-create-post"),
+        pytest.param("get", "/api/v1/jwt/refresh", id="jwt-refresh-get"),
+        pytest.param("post", "/api/v1/jwt/refresh", id="jwt-refresh-post"),
+        pytest.param("get", "/api/v1/jwt/verify", id="jwt-verify-get"),
+        pytest.param("post", "/api/v1/jwt/verify", id="jwt-verify-post"),
         pytest.param("get", "/api/v1/token/login", id="login-get"),
         pytest.param("post", "/api/v1/token/login", id="login-post"),
         pytest.param("get", "/api/v1/token/logout", id="logout-get"),

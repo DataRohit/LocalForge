@@ -13,7 +13,7 @@ would otherwise have surfaced as a mysterious failure at build time.
 22 services. Ports listed are **host** ports; the internal port is given where it differs.
 
 | Container name | Role | Host ports | Internal | Networks |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | `traefik-tk2jp` | reverse proxy, Docker label discovery | `8080` web, `8081` dashboard | 80, 8080 | `edge-net-ne2vk` |
 | `django-uv5n2` | Django ASGI app plus observability-only metrics listener | `127.0.0.1:8000` | 8000 app, 8001 metrics on `obsv-net-nb4xt` only | `edge-net-ne2vk`, `app-net-na6hy`, `data-net-nd9pc`, `obsv-net-nb4xt`, `access-net-ha4mz` |
 | `postgres-pg3ka` | PostgreSQL 18.6 primary | `5432` | 5432 | `data-net-nd9pc`, `access-net-ha4mz` |
@@ -24,7 +24,7 @@ would otherwise have surfaced as a mysterious failure at build time.
 | `valkey-channels-vh8dm` | Channels layer | `6380` | 6379 | `app-net-na6hy`, `access-net-ha4mz` |
 | `rabbitmq-rq4sx` | Celery broker | `5672` AMQP, `15672` management | 5672, 15672, 15692 | `app-net-na6hy`, `access-net-ha4mz` |
 | `celery-worker-cw8rt` | task worker | none | — | `app-net-na6hy`, `data-net-nd9pc` |
-| `celery-beat-cb4hq` | periodic task scheduler | none | — | `app-net-na6hy`, `data-net-nd9pc` |
+| `celery-beat-cb4hq` | periodic task scheduler, including daily JWT token cleanup | none | — | `app-net-na6hy`, `data-net-nd9pc` |
 | `flower-fl9zd` | Celery dashboard | `5555` | 5555 | `app-net-na6hy`, `access-net-ha4mz` |
 | `mailpit-mp6gb` | SMTP capture | `1025` SMTP, `8025` web | 1025, 8025 | `app-net-na6hy`, `access-net-ha4mz` |
 | `seaweedfs-sw9cr` | S3 storage, all-in-one | `9333` master, `8082` volume, `8888` filer, `8333` S3 | 9333, 8080, 8888, 8333 | `app-net-na6hy`, `access-net-ha4mz` |
@@ -58,7 +58,7 @@ PostgreSQL has the opposite shape — primary and standby are one cluster sharin
 Each is a deliberate remap. Reverting one reintroduces a collision.
 
 | Service | Default | Published as | Reason |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `seaweedfs-sw9cr` volume | 8080 | `8082` | `traefik-tk2jp` owns host 8080 |
 | `cadvisor-cv8mh` | 8080 | `8090` | same |
 | `postgres-replica-pg6vy` | 5432 | `5433` | both PostgreSQL nodes reachable from the host at once |
@@ -112,7 +112,7 @@ run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data /
 `healthcheck`; `service_started` is not sufficient and is not used for those.
 
 | Tier | Services | Waits for |
-|---|---|---|
+| --- | --- | --- |
 | 1 | `postgres-pg3ka`, `valkey-cache-vc5tn`, `valkey-channels-vh8dm`, `rabbitmq-rq4sx`, `mailpit-mp6gb`, `seaweedfs-sw9cr`, `loki-lk3ny` | nothing |
 | 2 | `postgres-replica-pg6vy`, `pgbackrest-pb2wj` | `postgres-pg3ka` healthy |
 | 3 | `django-uv5n2` | tier 1 healthy, plus `postgres-replica-pg6vy` healthy |
@@ -126,6 +126,11 @@ run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data /
 waits on the schema being current. Celery workers never run migrations: they reuse the same image and pass their own
 command to the entrypoint, which waits for dependencies and then hands over.
 
+Ticket 43 makes `celery-beat-cb4hq` operationally responsible for running SimpleJWT's upstream
+`flushexpiredtokens` command once daily. The command's delete is routed to `default`, the authoritative primary;
+Ticket 30 proves expired outstanding and cascaded blacklist rows are removed without touching unexpired rows, but
+does not start the future scheduler early.
+
 **Tier 3's wait covers the tier-1 services that have a probe.** `loki-lk3ny` has none — Section 2.1 records why — so
 nothing can depend on it with `service_healthy`, and the application does not depend on it at all: a log store that
 is down must not stop the application serving.
@@ -135,7 +140,7 @@ is down must not stop the application serving.
 Every row verified against upstream source or docs on 2026-09-13.
 
 | Service | Check | Note |
-|---|---|---|
+| --- | --- | --- |
 | `postgres-pg3ka`, `postgres-tp8vn` | `pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"` | |
 | `postgres-replica-pg6vy` | `pg_isready` **and** `psql -tAc "SELECT pg_is_in_recovery()"` returning `t` | `pg_isready` alone cannot tell a standby from a primary |
 | `valkey-*` | `valkey-cli --no-auth-warning -a "$PASSWORD" ping` returning `PONG` | |
@@ -172,7 +177,7 @@ is temporarily down.
 Every service either exposes a native UI or is given a companion.
 
 | Service | Dashboard | URL | Native / companion | Auth |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | `traefik-tk2jp` | Traefik dashboard | `http://localhost:8081/dashboard/` | native | basic auth, `TRAEFIK_DASHBOARD_AUTH` |
 | `django-uv5n2` | Django admin | `http://localhost:8000/admin/` | native | Django superuser |
 | `django-uv5n2` | Swagger UI | `http://localhost:8000/api/schema/swagger-ui/` | native, drf-spectacular | none locally; assets from the sidecar |
@@ -268,7 +273,7 @@ boundary.
 Seven services, one profile-gated. Every dashboard and UI service is dropped; nothing here listens for a human.
 
 | Container name | Role | Host ports | Networks | Default |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | `django-test-dt5qx` | pytest runner | none | `app-net-nt5rk`, `data-net-nt8fq` | yes |
 | `postgres-tp8vn` | PostgreSQL 18.6, single node | `25432` | `data-net-nt8fq`, `access-net-ht6pn` | yes |
 | `valkey-cache-tv4kq` | cache | `26379` | `app-net-nt5rk`, `access-net-ht6pn` | yes |
@@ -294,7 +299,7 @@ machine, out of the image, and out of version control.
 ### 4.1 Exclusions, and why
 
 | Excluded | Reason |
-|---|---|
+| --- | --- |
 | `traefik-tk2jp` | Tests call the ASGI app directly. A proxy between the test and the code under test adds a failure mode and proves nothing |
 | `pgadmin-pa7fe`, `flower-fl9zd`, `grafana-gf7qv` | Dashboards. Headless rule |
 | `prometheus-pm5db` | Collection backend for dashboards. The metrics endpoint itself is asserted in-process against `django-prometheus` |
@@ -308,7 +313,7 @@ machine, out of the image, and out of version control.
 ### 4.2 The two required modes
 
 | Mode | Command | Env file | Hostnames |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Container | `docker compose ... run --rm django-test-dt5qx` | `.env.testing` | container names on the testing networks |
 | Host | `uv run poe test` with the testing stack up | `.env.testing.host` | `127.0.0.1` and the published ports above |
 
@@ -318,11 +323,12 @@ That interface hides two stages:
 1. `test-core` selects `not security_timing` and runs `pytest -n auto --dist loadgroup` with 100% branch coverage.
 2. `test-security-timing` selects `security_timing` and runs `pytest -n 4 --dist load --no-cov`.
 
-The timing stage contains only the thirteen statistical credential wall-clock cases. Each still performs five
-warmups and thirty measured requests per path and enforces a median delta no larger than the greater of twenty
-percent or ten milliseconds. The deterministic equivalent-work, schedule, and policy tests remain in the covered
-core stage. Timing cases carry no `serial` marker, and `--dist load` deliberately ignores the module's load-group
-affinity so independent parameter cases can occupy the bounded four-worker pool.
+The timing stage contains only the seventeen statistical credential wall-clock cases: the thirteen secondary-token
+cases plus four JSON web token create cases. Each still performs five warmups and thirty measured requests per path
+and enforces a median delta no larger than the greater of twenty percent or ten milliseconds. The deterministic
+equivalent-work, schedule, and policy tests remain in the covered core stage. Timing cases carry no `serial` marker,
+and `--dist load` deliberately ignores the modules' load-group affinity so independent parameter cases can occupy
+the bounded four-worker pool.
 
 `test`, `test-fresh`, and `test-parallel` all compose both stages and stop with failure if either fails.
 `test-security-timing` is the focused timing interface. `test-integration` excludes timing cases by default so an
@@ -344,7 +350,7 @@ Host mode is why every testing service publishes a host port even though contain
 Exact versions everywhere. `latest` is forbidden, including Dockerfile base images. All tags checked 2026-09-13.
 
 | Image | Tag |
-|---|---|
+| --- | --- |
 | `docker.io/library/postgres` | `18.6` |
 | `docker.io/valkey/valkey` | `9.1.2` |
 | `docker.io/library/rabbitmq` | `4.3.5-management` (development) |
@@ -364,7 +370,7 @@ Exact versions everywhere. `latest` is forbidden, including Dockerfile base imag
 Built locally rather than pulled:
 
 | Image | Dockerfile | Base |
-|---|---|---|
+| --- | --- | --- |
 | `localforge/django` | `docker/django/Dockerfile`, target `runtime`, tagged `0.1.0` | `python:3.14.6-slim`. Serves `django-uv5n2`, and later `celery-worker-cw8rt`, `celery-beat-cb4hq` and `flower-fl9zd`, which pass their own command to the entrypoint and therefore wait for dependencies without migrating |
 | `localforge/django-test` | `docker/django/Dockerfile`, target `test`, tagged `0.1.0` | the runtime stage plus the development dependencies, the suite, and the repository artifacts the suite reads |
 | `localforge/pgbackrest` | `docker/pgbackrest/Dockerfile` | `postgres:18.6` plus PGDG `pgbackrest`, tagged `18.6`. Run by **both** `pgbackrest-pb2wj` and `postgres-pg3ka`, because `archive_command` executes on the primary and therefore needs the binary there. See [../adr/0011-pgbackrest-backups.md](../adr/0011-pgbackrest-backups.md) |

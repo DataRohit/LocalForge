@@ -10,6 +10,7 @@ import importlib.util
 import os
 import secrets
 import sys
+from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from unittest import mock
@@ -34,6 +35,9 @@ REQUIRED_ENVIRONMENT = {
     "DJANGO_CSRF_TRUSTED_ORIGINS": ("http://localhost:8080,http://localforge.localhost:8080"),
     "DJANGO_TRUSTED_PROXY_NETWORKS": "10.89.2.0/24",
     "DJANGO_API_REQUEST_BODY_MAX_BYTES": "1048576",
+    "DJANGO_JWT_ACCESS_TOKEN_LIFETIME_SECONDS": "300",
+    "DJANGO_JWT_REFRESH_TOKEN_LIFETIME_SECONDS": "86400",
+    "DJANGO_JWT_SIGNING_KEY": secrets.token_urlsafe(32),
     "DJANGO_TOKEN_LOGIN_ACCOUNT_THROTTLE_RATE": "5/minute",
     "DJANGO_TOKEN_LOGIN_ADDRESS_THROTTLE_RATE": "30/minute",
     "POSTGRES_DB": "localforge",
@@ -535,6 +539,95 @@ def test_shared_rest_framework_defaults_close_new_routes() -> None:
     )
     assert configured_settings.LOGIN_THROTTLE_DATABASE_ALIAS == "default"
     assert set(configured_settings.CACHES) == {"default", "sessions"}
+
+
+@pytest.mark.unit
+def test_json_web_token_policy_comes_from_distinct_environment_values() -> None:
+    """Configure the complete JSON web token policy from the environment.
+
+    Executes shared settings with independent signing and lifetime values, proving access expires
+    first, refresh rotation blacklists replay, and the framework secret is not reused.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any JSON web token policy value is absent or unsafe.
+    """
+    module = _execute_module_in_isolation("base", REQUIRED_ENVIRONMENT)
+
+    assert "rest_framework_simplejwt.token_blacklist" in module.INSTALLED_APPS
+    assert REQUIRED_ENVIRONMENT["DJANGO_JWT_SIGNING_KEY"] == module.JWT_SIGNING_KEY
+    assert module.JWT_SIGNING_KEY != module.SECRET_KEY
+    assert {
+        "ACCESS_TOKEN_LIFETIME": timedelta(seconds=300),
+        "REFRESH_TOKEN_LIFETIME": timedelta(seconds=86400),
+        "ROTATE_REFRESH_TOKENS": True,
+        "BLACKLIST_AFTER_ROTATION": True,
+        "ALGORITHM": "HS256",
+        "SIGNING_KEY": REQUIRED_ENVIRONMENT["DJANGO_JWT_SIGNING_KEY"],
+        "AUTH_HEADER_TYPES": ("Bearer",),
+        "USER_ID_FIELD": "id",
+        "USER_ID_CLAIM": "user_id",
+        "AUTH_TOKEN_CLASSES": ("rest_framework_simplejwt.tokens.AccessToken",),
+        "CHECK_USER_IS_ACTIVE": True,
+        "CHECK_REVOKE_TOKEN": False,
+    } == module.SIMPLE_JWT
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        pytest.param(
+            {"DJANGO_JWT_SIGNING_KEY": REQUIRED_ENVIRONMENT["DJANGO_SECRET_KEY"]},
+            "DJANGO_JWT_SIGNING_KEY",
+            id="shared-signing-key",
+        ),
+        pytest.param(
+            {"DJANGO_JWT_SIGNING_KEY": ""},
+            "DJANGO_JWT_SIGNING_KEY",
+            id="empty-signing-key",
+        ),
+        pytest.param(
+            {"DJANGO_JWT_ACCESS_TOKEN_LIFETIME_SECONDS": "0"},
+            "must be positive",
+            id="nonpositive-access-lifetime",
+        ),
+        pytest.param(
+            {
+                "DJANGO_JWT_ACCESS_TOKEN_LIFETIME_SECONDS": "86400",
+                "DJANGO_JWT_REFRESH_TOKEN_LIFETIME_SECONDS": "300",
+            },
+            "must be shorter",
+            id="reversed-lifetimes",
+        ),
+    ],
+)
+def test_json_web_token_settings_reject_unsafe_relationships(
+    overrides: dict[str, str],
+    message: str,
+) -> None:
+    """Reject shared signing material and non-shorter access lifetimes.
+
+    Executes shared settings with each unsafe relationship and verifies startup fails before a
+    worker can issue credentials under the wrong security policy.
+
+    Arguments:
+        overrides: Unsafe environment values replacing the valid baseline.
+        message: Diagnostic fragment the configuration error must carry.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If unsafe JSON web token settings load successfully.
+    """
+    with pytest.raises(ImproperlyConfigured, match=message):
+        _execute_module_in_isolation("base", REQUIRED_ENVIRONMENT | overrides)
 
 
 @pytest.mark.unit

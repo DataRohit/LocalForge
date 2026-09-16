@@ -51,7 +51,7 @@ Design consequences already applied to the Compose stack:
 | `valkey-channels-vh8dm` | `SS`, 1 replica | semi | headless `ClusterIP` | `PVC` | Must stay a separate workload from the cache. Eviction on the channel layer loses WebSocket messages. |
 | `rabbitmq-rq4sx` | `SS`, 3 replicas at scale | **yes** | headless `ClusterIP` + a client `ClusterIP` | `PVC` per pod | Quorum queues need stable network identity, which is exactly what a StatefulSet provides and a Deployment does not. |
 | `celery-worker-cw8rt` | `D` | no | none | none | Second scale target. `HorizontalPodAutoscaler` driven by queue depth via KEDA, not by CPU. |
-| `celery-beat-cb4hq` | `D`, **exactly 1 replica** | holds a schedule lock | none | none | Two beat instances double-fire every periodic task. Keep `replicas: 1` with `strategy: Recreate`. This is the one place a replica count is legitimately fixed, and it is fixed in the manifest, never in code. |
+| `celery-beat-cb4hq` | `D`, **exactly 1 replica** | holds a schedule lock | none | none | Two beat instances double-fire every periodic task. Keep `replicas: 1` with `strategy: Recreate`. Its database-backed schedule includes the daily SimpleJWT `flushexpiredtokens` maintenance task, whose writes route to the authoritative primary. This is the one place a replica count is legitimately fixed, and it is fixed in the manifest, never in code. |
 | `flower-fl9zd` | `D`, 1 replica | no | `ClusterIP` | none | Development-only. |
 | `mailpit-mp6gb` | `D`, 1 replica | no | `ClusterIP` | `emptyDir` | Development-only. A real cluster uses a real relay. |
 | `seaweedfs-sw9cr` | `SS` per component | **yes** | headless per component | `PVC` per volume server | The all-in-one container splits into master, volume, filer, and S3 gateway workloads. Plan for this by addressing SeaweedFS only through its S3 endpoint variable. |
@@ -108,6 +108,7 @@ as a prefix. This is a naming translation, not a redesign, and it does not affec
 | Object storage | SeaweedFS all-in-one | split components, or a real S3 | no — only `S3_ENDPOINT_URL` changes |
 | Log collection | one Alloy container reading the Docker socket | DaemonSet reading node log paths | no |
 | Backups | container-internal schedule loop | CronJob | no, because the schedule lives in a script, not in Django |
+| Application maintenance | one database-backed `celery-beat-cb4hq`, including daily expired JWT cleanup | one scheduler Deployment retaining the same schedule | no |
 | Ingress | Traefik reading Docker labels | Traefik reading Ingress objects | no |
 | Secrets | `.env` files | Secrets / External Secrets | no, because names are identical |
 

@@ -613,7 +613,7 @@ def test_new_api_view_denies_anonymous_access_by_default(client: Client) -> None
         "details": {},
         "request_id": response.headers[REQUEST_ID_HEADER],
     }
-    assert response.headers["WWW-Authenticate"] == "Bearer"
+    assert response.headers["WWW-Authenticate"] == 'Bearer realm="api"'
 
 
 @pytest.mark.integration

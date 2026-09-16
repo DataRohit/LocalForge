@@ -1,7 +1,7 @@
 """Unit tests for token authentication boundary components.
 
-Covers the permanently inert JSON web token placeholder, security scheme documents, and credential
-redaction without touching a database, cache, broker, or any other external service.
+Covers JSON web token failure normalization, security scheme documents, and credential redaction
+without touching a database, cache, broker, or any other external service.
 """
 
 import json
@@ -12,7 +12,9 @@ from ipaddress import ip_network
 import pytest
 from django.conf import settings
 from django.test import RequestFactory, override_settings
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.request import Request
+from rest_framework_simplejwt.tokens import AccessToken
 
 from accounts.authentication import (
     JWTAuthentication,
@@ -25,11 +27,11 @@ from config.logs import StructuredFormatter
 
 
 @pytest.mark.unit
-def test_pending_jwt_authentication_never_authenticates() -> None:
-    """Keep Ticket 29's primary authentication slot permanently inert.
+def test_jwt_authentication_normalizes_malformed_credentials() -> None:
+    """Reject a malformed bearer credential through the project exception.
 
-    Presents a bearer-shaped credential and verifies the placeholder ignores it while retaining
-    the challenge Ticket 30 must explicitly replace together with the authenticator.
+    Presents a bearer-shaped invalid value and verifies package-specific detail is replaced by the
+    generic DRF failure while the standard challenge remains available.
 
     Arguments:
         None.
@@ -38,7 +40,7 @@ def test_pending_jwt_authentication_never_authenticates() -> None:
         None.
 
     Raises:
-        AssertionError: If the placeholder authenticates or loses its challenge.
+        AssertionError: If the failure type or bearer challenge changes.
     """
     request = Request(
         RequestFactory().get(
@@ -48,8 +50,65 @@ def test_pending_jwt_authentication_never_authenticates() -> None:
     )
     authentication = JWTAuthentication()
 
-    assert authentication.authenticate(request) is None
-    assert authentication.authenticate_header(request) == "Bearer"
+    with pytest.raises(AuthenticationFailed):
+        authentication.authenticate(request)
+
+    assert authentication.authenticate_header(request) == 'Bearer realm="api"'
+
+
+@pytest.mark.unit
+def test_jwt_authentication_ignores_other_authorization_schemes() -> None:
+    """Leave the secondary token scheme available after JWT authentication.
+
+    Presents a DRF token-shaped header and verifies the primary authenticator declines it without
+    error, allowing the configured secondary class to process the request next.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If JWT authentication consumes another scheme.
+    """
+    request = Request(
+        RequestFactory().get(
+            "/api/v1/token/logout/",
+            HTTP_AUTHORIZATION="Token secondary-credential",
+        )
+    )
+
+    assert JWTAuthentication().authenticate(request) is None
+
+
+@pytest.mark.unit
+def test_jwt_authentication_rejects_a_non_string_identity_claim() -> None:
+    """Reject signed access tokens whose account identity is not a string.
+
+    Builds a validly signed credential with invalid identity metadata and verifies the project
+    authenticator fails before any database lookup can coerce it.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If invalid identity metadata reaches authentication.
+    """
+    token = AccessToken()
+    token["user_id"] = 7
+    request = Request(
+        RequestFactory().get(
+            "/api/v1/token/logout/",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+    )
+
+    with pytest.raises(AuthenticationFailed):
+        JWTAuthentication().authenticate(request)
 
 
 @pytest.mark.unit

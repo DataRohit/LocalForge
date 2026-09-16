@@ -312,6 +312,11 @@ the REST API, WebSockets, the async services, and the full test and audit passes
 
 Do not start a route, model, or feature outside the fixed surface listed in [AGENTS.md](../../AGENTS.md).
 
+Ticket 30 proves SimpleJWT's upstream `flushexpiredtokens` command deletes expired outstanding and cascaded
+blacklist rows on the authoritative primary while preserving unexpired state. Ticket 43 owns the daily
+database-backed scheduler entry, its observed execution, and its logs; the earlier ticket must not start Celery Beat
+or claim that retention is operationally bounded before that schedule exists.
+
 Report before handing over: every file created, grouped by Section 2; how each release-lag gate resolved; any
 pinned version that had moved since 2026-09-13, with its new release date; the phase 8 audit output; and anything
 in `docs/` that turned out to be wrong.

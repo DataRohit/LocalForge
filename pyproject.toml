@@ -42,6 +42,7 @@ dependencies = [
     "django-prometheus>=2.5.0",
     "django-storages[s3]==1.14.6",
     "djangorestframework>=3.18.0",
+    "djangorestframework-simplejwt==5.5.1",
     "drf-spectacular>=0.30.0",
     "drf-spectacular-sidecar>=2026.9.1",
     "psycopg[binary,pool]>=3.3.5",

@@ -9,6 +9,7 @@ import tomllib
 from importlib import import_module
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -28,6 +29,7 @@ RUNTIME_DISTRIBUTIONS = (
     "django-prometheus",
     "django-storages",
     "djangorestframework",
+    "djangorestframework-simplejwt",
     "drf-spectacular",
     "drf-spectacular-sidecar",
     "psycopg",
@@ -60,6 +62,7 @@ RUNTIME_MODULES = (
     "psycopg_pool",
     "redis",
     "rest_framework",
+    "rest_framework_simplejwt",
     "storages",
     "uvicorn",
     "websockets",
@@ -178,6 +181,34 @@ def test_runtime_module_imports(module: str) -> None:
         ImportError: If the module cannot be imported.
     """
     assert import_module(module) is not None
+
+
+@pytest.mark.unit
+def test_simplejwt_is_exactly_pinned_without_the_crypto_extra() -> None:
+    """Use the checked SimpleJWT release without asymmetric-signing dependencies.
+
+    Reads the runtime manifest directly and proves the selected release is exact while no crypto
+    extra is requested for the HS256-only configuration.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the dependency can drift or installs the unused crypto extra.
+    """
+    manifest = tomllib.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    requirements = cast("list[str]", manifest["project"]["dependencies"])
+    simplejwt = [
+        requirement
+        for requirement in requirements
+        if _distribution_name(requirement) == "djangorestframework-simplejwt"
+    ]
+
+    assert simplejwt == ["djangorestframework-simplejwt==5.5.1"]
+    assert "[crypto]" not in simplejwt[0]
 
 
 @pytest.mark.unit

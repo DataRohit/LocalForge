@@ -19,7 +19,7 @@ does not say so.
 All checked 2026-09-13 against the projects' workflow files and packaging metadata on their default branch.
 
 | Dependency | Released artifact | Says what | Default branch says | Lag |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | `celery` | 5.6.3, 2026-03-26, `requires_python>=3.9` | classifiers stop at Python 3.13 | CI matrix tests **3.14** on Ubuntu and Windows, unit and integration, plus the tox envlist; `setup.py` on `main` is `python_requires=">=3.10"` with a 3.14 classifier, landed in PR #10176 on **2026-04-12** | 3.14 support landed 17 days *after* 5.6.3 shipped |
 | `channels-redis` | 4.3.0, 2025-07-22, no classifiers at all | nothing | CI matrix tests **3.14**, added 2025-12-08 in commit `da2b07d9`; 3.14 is now the lint pin | ~5 months of unreleased 3.14 work |
 | `django-storages` | 1.14.6, 2025-04-02, `requires_python>=3.7` | Django classifiers stop at 5.1 | `ci.yml` on `master` has an explicit `django-version: "6.0"` matrix entry run against Python 3.12/3.13/3.14; `tox.ini` installs `django~=6.0.0`; `pyproject.toml` carries `Framework :: Django :: 6.0` and `Django>=4.2` with no upper pin — all in commit `85928d63`, PR #1545, **2026-08-02**, which also changed backend source and tests | ~16 months, and the CHANGELOG's unreleased section is itself stale, still naming only Django 5.2 |
@@ -55,25 +55,38 @@ Run while adding the dependency baseline, as the consequences below require. Res
 package index, which is the only index this project uses.
 
 | Dependency | Newest on the index | Pinned floor | Lag still present |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `celery` | 5.6.3 | `>=5.6.3` | yes — no 5.7 and no release candidate, exactly as recorded above |
 | `channels-redis` | 4.3.0 | `>=4.3.0` | yes — no release since 2025-07-22 |
 
 Both remain pinned to their released artifact; no escape hatch has been taken, and the end-to-end gates in phase 6
 of [../build/plan.md](../build/plan.md) stay the criterion.
 
-### Dependencies deliberately not installed yet
+## Execution-time check and pin, 2026-09-16
 
-`django-storages` is the third case above and is **not** installed by the dependency baseline. Neither are two
-other lagging packages this platform has already chosen. Each is pinned by the ticket that first uses it, because
-each of those tickets carries its own instruction to re-check the lag before pinning — re-checking on the day of
-use is worth more than a floor recorded weeks earlier.
+Run immediately before Ticket 30 changed the dependency manifest.
 
-| Dependency | Released artifact | Lag | Pinned by |
-|---|---|---|---|
-| `django-storages` | 1.14.6, 2025-04-02 | ~16 months; evidence in the table above | ticket 23, which also owns the first-party fallback if its gate fails |
-| `djangorestframework-simplejwt` | 5.5.1 | `master` green on Django 6.0 × Python 3.14 (PR #959, 2026-02-09); the release predates it by ~7 months, and carries one unreleased breaking change — see [0017](./0017-first-party-account-endpoints.md) | ticket 30 |
-| `flower` | 2.1.0 | to be measured when pinned | ticket 44, which adds it to the shared application image |
+`djangorestframework-simplejwt` 5.5.1 remains the newest upstream release and the newest artifact on the configured
+package index. Its release metadata permits Python 3.14, Django 6.0, and DRF 3.18 through open lower bounds:
+`python>=3.9`, `django>=4.2`, and `djangorestframework>=3.14`. The released tox matrix stops at Django 5.2,
+Python 3.13, and DRF 3.15, so the lag remains.
+
+The default branch now declares Python 3.14 and Django 6.0 in both packaging metadata and its CI matrix. That matrix
+tests their combination through DRF 3.16, not DRF 3.18. The repository's existing target-stack probe was therefore
+repeated in an isolated uv environment: Python 3.14.6 imported SimpleJWT 5.5.1 with Django 6.0.8 and DRF 3.18.0.
+After that probe passed, Ticket 30 installed and locked the exact released artifact,
+`djangorestframework-simplejwt==5.5.1`. Neither the VCS escape hatch nor the unused `crypto` extra is required.
+
+### Later-ticket installation state
+
+These dependencies were deliberately absent from the dependency baseline and are pinned by the ticket that first
+uses them, because an execution-day compatibility check is worth more than a floor recorded weeks earlier.
+
+| Dependency | Released artifact | Current state |
+| --- | --- | --- |
+| `django-storages` | 1.14.6, 2025-04-02 | Ticket 23 re-checked, installed, and pinned 1.14.6 with its S3 extra after the complete SeaweedFS gate passed |
+| `djangorestframework-simplejwt` | 5.5.1 | Ticket 30 re-checked, installed, and locked exactly 5.5.1 after the Python 3.14.6, Django 6.0.8, and DRF 3.18.0 import probe passed |
+| `flower` | 2.1.0 | Still deliberately not installed; Ticket 44 owns its execution-time check and pin |
 
 This list exists so the cross-reference in [0017](./0017-first-party-account-endpoints.md) resolves, and so a later
 ticket finding one of them absent reads a deliberate deferral rather than an omission.

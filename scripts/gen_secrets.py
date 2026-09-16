@@ -220,6 +220,7 @@ def generate_plain_auth() -> str:
 
 SECRET_RECIPES: Mapping[str, Callable[[], str]] = {
     "DJANGO_SECRET_KEY": generate_secret_key,
+    "DJANGO_JWT_SIGNING_KEY": generate_secret_key,
     "S3_ACCESS_KEY_ID": generate_access_key,
     "S3_SECRET_ACCESS_KEY": generate_access_key,
     "FLOWER_BASIC_AUTH": generate_plain_auth,

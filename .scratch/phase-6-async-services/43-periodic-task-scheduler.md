@@ -13,6 +13,10 @@ admin rather than hardcoded, and exactly one instance running so nothing double-
       in the service's documentation and reflected in the Kubernetes mapping.
 - [ ] The scheduler starts only after the database and broker are healthy, and it does not run migrations.
 - [ ] At least one real periodic task is registered and observed to fire, proving the path end to end.
+- [ ] The database-backed scheduler runs SimpleJWT's `flushexpiredtokens` management command once daily against the
+      authoritative primary. An observed run removes expired outstanding tokens and their cascaded blacklist rows,
+      preserves unexpired rows, and records a visible success or failure. Ticket 30 proves the command semantics;
+      this ticket owns operational scheduling and retention.
 - [ ] A periodic task that overruns its interval does not stack up unboundedly.
 - [ ] Scheduler logs reach the log store, and a missed or failed run is visible.
 - [ ] The schedule state persists across a restart without re-firing tasks that already ran.
