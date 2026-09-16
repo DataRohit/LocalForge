@@ -15,7 +15,7 @@ would otherwise have surfaced as a mysterious failure at build time.
 | Container name | Role | Host ports | Internal | Networks |
 |---|---|---|---|---|
 | `traefik-tk2jp` | reverse proxy, Docker label discovery | `8080` web, `8081` dashboard | 80, 8080 | `edge-net-ne2vk` |
-| `django-uv5n2` | Django ASGI app plus observability-only metrics listener | `8000` | 8000 app, 8001 metrics on `obsv-net-nb4xt` only | `edge-net-ne2vk`, `app-net-na6hy`, `data-net-nd9pc`, `obsv-net-nb4xt`, `access-net-ha4mz` |
+| `django-uv5n2` | Django ASGI app plus observability-only metrics listener | `127.0.0.1:8000` | 8000 app, 8001 metrics on `obsv-net-nb4xt` only | `edge-net-ne2vk`, `app-net-na6hy`, `data-net-nd9pc`, `obsv-net-nb4xt`, `access-net-ha4mz` |
 | `postgres-pg3ka` | PostgreSQL 18.6 primary | `5432` | 5432 | `data-net-nd9pc`, `access-net-ha4mz` |
 | `postgres-replica-pg6vy` | PostgreSQL 18.6 hot standby | `5433` | 5432 | `data-net-nd9pc`, `access-net-ha4mz` |
 | `pgbackrest-pb2wj` | backup agent, scheduled | none | — | `data-net-nd9pc` |
@@ -64,6 +64,11 @@ Each is a deliberate remap. Reverting one reintroduces a collision.
 | `postgres-replica-pg6vy` | 5432 | `5433` | both PostgreSQL nodes reachable from the host at once |
 | `valkey-channels-vh8dm` | 6379 | `6380` | both Valkey instances reachable at once |
 | `valkey-channels-exporter-vx4nq` | 9121 | `9122` | both exporters reachable at once |
+
+The direct Django publication is additionally bound to host loopback. It remains useful for local diagnostics and
+health checks, but Traefik is the only remotely reachable application entry point. `edge-net-ne2vk` is fixed at
+`10.89.2.0/24`; Django trusts forwarded client addresses only when the immediate peer belongs to that explicit
+proxy subnet. Testing has no trusted proxy subnet and uses `REMOTE_ADDR` directly.
 
 ### 1.3 Four flags that are not optional
 
@@ -307,11 +312,30 @@ machine, out of the image, and out of version control.
 | Container | `docker compose ... run --rm django-test-dt5qx` | `.env.testing` | container names on the testing networks |
 | Host | `uv run poe test` with the testing stack up | `.env.testing.host` | `127.0.0.1` and the published ports above |
 
-Both modes run the same task, which is what keeps the collected count and the wall clock comparable. The task is
-`pytest -n auto --dist loadgroup`; the parallel flags live there rather than in `addopts` so that running one file
-or one layer stays fast. A bare `uv run pytest` is the same suite in one process, and `uv run poe test-serial` is
-the documented way to read the stack of a test that timed out — a timeout kills its worker, so the parallel run
-reports which test hung but not where.
+Both modes run the same complete Poe task, which keeps their collection arithmetic and stage timings comparable.
+That interface hides two stages:
+
+1. `test-core` selects `not security_timing` and runs `pytest -n auto --dist loadgroup` with 100% branch coverage.
+2. `test-security-timing` selects `security_timing` and runs `pytest -n 4 --dist load --no-cov`.
+
+The timing stage contains only the thirteen statistical credential wall-clock cases. Each still performs five
+warmups and thirty measured requests per path and enforces a median delta no larger than the greater of twenty
+percent or ten milliseconds. The deterministic equivalent-work, schedule, and policy tests remain in the covered
+core stage. Timing cases carry no `serial` marker, and `--dist load` deliberately ignores the module's load-group
+affinity so independent parameter cases can occupy the bounded four-worker pool.
+
+`test`, `test-fresh`, and `test-parallel` all compose both stages and stop with failure if either fails.
+`test-security-timing` is the focused timing interface. `test-integration` excludes timing cases by default so an
+ordinary focused workflow cannot accidentally serialize the benchmarks. A bare `uv run pytest` remains the same
+complete collection in one process, and `uv run poe test-serial` is the documented way to read the stack of a test
+that timed out.
+
+Both parallel stages set `--max-worker-restart=0`. A timed-out or crashed worker therefore fails the gate
+immediately instead of being replaced, avoiding known `loadgroup` restart hangs in pytest-xdist 3.8.0.
+
+Core and timing evidence is written separately to `test-results/pytest-core.xml` and
+`test-results/pytest-security-timing.xml` in host mode. The one-off container keeps the repository read-only; its
+complete console output and exit status provide the independently auditable container counts.
 
 Host mode is why every testing service publishes a host port even though container mode never uses them.
 

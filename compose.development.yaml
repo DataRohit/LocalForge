@@ -639,7 +639,7 @@ services:
       - .env.development
 
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
 
     networks:
       edge-net-ne2vk: {}
@@ -697,6 +697,9 @@ networks:
   edge-net-ne2vk:
     name: edge-net-ne2vk
     driver: bridge
+    ipam:
+      config:
+        - subnet: 10.89.2.0/24
   access-net-ha4mz:
     name: access-net-ha4mz
     driver: bridge

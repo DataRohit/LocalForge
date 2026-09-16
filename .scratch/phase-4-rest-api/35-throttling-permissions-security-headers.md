@@ -11,7 +11,8 @@ permissions that default to closed, and the response headers a browser needs to 
       endpoints, a looser one for authenticated reads, and an anonymous scope.
 - [ ] Rate-limited responses return the too-many-requests code in the standard envelope, with a `Retry-After`
       header.
-- [ ] Throttle state lives in the cache, so limits hold across application instances rather than per process.
+- [ ] Throttle state is shared across application instances rather than per process. General reusable scopes live
+      in cache; Ticket 29's security admission remains in the authoritative PostgreSQL primary and is not moved.
 - [ ] Throttling keys on both the client address and the account, so one abusive client cannot lock out an entire
       shared address, and one account cannot evade the limit by changing address.
 - [ ] The proxy sets the forwarded-address header and the application trusts it only from the proxy, so a client

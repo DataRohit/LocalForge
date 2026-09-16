@@ -9,9 +9,10 @@ import asyncio
 import socket
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import psycopg
 import pytest
@@ -19,6 +20,11 @@ import pytest
 from tests.integration import conftest as integration_conftest
 from tests.unit.conftest import NetworkAccessInUnitTestError
 
+REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent
+TOKEN_AUTHENTICATION_TEST = (
+    REPOSITORY_ROOT / "tests" / "integration" / "accounts" / "test_token_authentication.py"
+)
+SECURITY_TIMING_CASES = 13
 UNDECLARED_INTEGRATION_TEST = '''"""Probe module for the collection guard.
 
 Holds one integration test that names no service, so a real collection can be observed rejecting
@@ -45,6 +51,73 @@ def test_probe() -> None:
         None.
     """
 '''
+
+
+def _configured_tasks() -> dict[str, Any]:
+    """Read the task-runner interface from the project manifest.
+
+    Parses the public task declarations callers invoke, keeping runner contract assertions at the
+    same seam as developers, containers, and automation rather than importing Poe internals.
+
+    Arguments:
+        None.
+
+    Returns:
+        Task names mapped to their declared configuration.
+
+    Raises:
+        KeyError: If the manifest does not declare the Poe task table.
+    """
+    manifest = tomllib.loads((REPOSITORY_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+    return cast("dict[str, Any]", manifest["tool"]["poe"]["tasks"])
+
+
+def _collected_token_authentication_cases(marker_expression: str | None = None) -> set[str]:
+    """Collect token-authentication cases through pytest's command interface.
+
+    Runs collection without the suite's execution defaults and returns the node identifiers pytest
+    exposes, allowing marker partitions to be compared without executing service-backed tests.
+
+    Arguments:
+        marker_expression: Optional pytest marker expression selecting one partition.
+
+    Returns:
+        Collected token-authentication node identifiers.
+
+    Raises:
+        AssertionError: If pytest cannot collect the requested partition.
+    """
+    command = [
+        sys.executable,
+        "-m",
+        "pytest",
+        "--collect-only",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "-o",
+        "addopts=",
+    ]
+    if marker_expression is not None:
+        command.extend(["-m", marker_expression])
+    command.append(str(TOKEN_AUTHENTICATION_TEST))
+    completed = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+        cwd=REPOSITORY_ROOT,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+    return {
+        line.strip()
+        for line in completed.stdout.splitlines()
+        if line.startswith("tests/integration/accounts/test_token_authentication.py::")
+    }
 
 
 def _item(nodeid: str, markers: dict[str, object]) -> Any:  # noqa: ANN401
@@ -337,3 +410,106 @@ def test_the_services_guard_fires_during_real_collection(tmp_path: Path) -> None
 
     assert completed.returncode != 0
     assert "must name the services it needs" in completed.stdout + completed.stderr
+
+
+@pytest.mark.unit
+def test_complete_test_tasks_compose_core_and_security_timing_stages() -> None:
+    """Keep every complete task behind the same two-stage runner interface.
+
+    Confirms the default, fresh-database, and compatibility task names all execute the core stage
+    before the bounded security timing stage, so no complete gate can silently omit either.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a complete task does not compose both stages.
+    """
+    tasks = _configured_tasks()
+
+    assert tasks["test"]["sequence"] == ["test-core", "test-security-timing"]
+    assert tasks["test-fresh"]["sequence"] == ["test-core-fresh", "test-security-timing"]
+    assert tasks["test-parallel"]["sequence"] == ["test-core", "test-security-timing"]
+
+
+@pytest.mark.unit
+def test_core_and_security_timing_tasks_preserve_their_distinct_invariants() -> None:
+    """Keep coverage and wall-clock measurement concerns in separate stages.
+
+    Confirms core execution retains automatic load-group distribution and coverage while timing
+    execution selects only its explicit marker with four independent workers and a distinct report.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If either stage weakens or overlaps the other.
+    """
+    tasks = _configured_tasks()
+    core_command = tasks["test-core"]["cmd"]
+    timing_command = tasks["test-security-timing"]["cmd"]
+
+    assert "-n auto --dist loadgroup" in core_command
+    assert '-m "not security_timing"' in core_command
+    assert "--max-worker-restart=0" in core_command
+    assert "--junitxml=test-results/pytest-core.xml" in core_command
+    assert "--no-cov" not in core_command
+    assert "-n 4 --dist load" in timing_command
+    assert "-m security_timing" in timing_command
+    assert "--no-cov" in timing_command
+    assert "--max-worker-restart=0" in timing_command
+    assert "--junitxml=test-results/pytest-security-timing.xml" in timing_command
+    assert "--log-level=INFO" in timing_command
+    assert "-o junit_logging=all" in timing_command
+
+
+@pytest.mark.unit
+def test_focused_integration_task_excludes_security_timing_by_default() -> None:
+    """Keep focused integration feedback free of statistical benchmarks.
+
+    Confirms the integration task omits wall-clock cases unless callers choose the dedicated timing
+    interface, preventing an ordinary focused run from unexpectedly inheriting benchmark cost.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If focused integration execution includes timing cases.
+    """
+    command = _configured_tasks()["test-integration"]["cmd"]
+
+    assert '-m "integration and not security_timing"' in command
+
+
+@pytest.mark.unit
+def test_security_timing_marker_partitions_every_statistical_case_exactly_once() -> None:
+    """Partition statistical timing cases from deterministic core coverage.
+
+    Collects the module through pytest and proves the timing and core selections are disjoint,
+    exhaustive, and contain the approved thirteen independently parametrized wall-clock cases.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a case is missing, duplicated, or assigned to the wrong stage.
+    """
+    all_cases = _collected_token_authentication_cases()
+    timing_cases = _collected_token_authentication_cases("security_timing")
+    core_cases = _collected_token_authentication_cases("not security_timing")
+
+    assert len(timing_cases) == SECURITY_TIMING_CASES
+    assert timing_cases.isdisjoint(core_cases)
+    assert timing_cases | core_cases == all_cases

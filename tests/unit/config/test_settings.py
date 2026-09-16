@@ -32,7 +32,10 @@ REQUIRED_ENVIRONMENT = {
     "DJANGO_DEBUG": "true",
     "DJANGO_ALLOWED_HOSTS": "localhost,localforge.localhost",
     "DJANGO_CSRF_TRUSTED_ORIGINS": ("http://localhost:8080,http://localforge.localhost:8080"),
+    "DJANGO_TRUSTED_PROXY_NETWORKS": "10.89.2.0/24",
     "DJANGO_API_REQUEST_BODY_MAX_BYTES": "1048576",
+    "DJANGO_TOKEN_LOGIN_ACCOUNT_THROTTLE_RATE": "5/minute",
+    "DJANGO_TOKEN_LOGIN_ADDRESS_THROTTLE_RATE": "30/minute",
     "POSTGRES_DB": "localforge",
     "POSTGRES_USER": "localforge_app",
     "POSTGRES_PASSWORD": secrets.token_urlsafe(16),
@@ -290,6 +293,7 @@ def test_development_accepts_the_proxy_host_and_origin() -> None:
         "http://localhost:8080",
         "http://localforge.localhost:8080",
     ]
+    assert tuple(str(network) for network in module.TRUSTED_PROXY_NETWORKS) == ("10.89.2.0/24",)
     assert module.SITE_URL == "http://localforge.localhost:8080"
 
 
@@ -340,6 +344,30 @@ def test_password_hashing_prefers_a_memory_hard_algorithm() -> None:
     """
     assert configured_settings.PASSWORD_HASHERS[0].endswith("Argon2PasswordHasher")
     assert importlib.import_module("argon2") is not None
+
+
+@pytest.mark.unit
+def test_each_password_hasher_declares_one_accepted_profile_policy() -> None:
+    """Bind every configured password hasher to an explicit accepted profile.
+
+    Confirms multi-parameter hashers accept only their atomic current profile while both PBKDF2
+    variants additionally permit lower iterations that runtime hardening can top up exactly.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a configured hasher lacks or broadens its accepted-profile policy.
+    """
+    assert configured_settings.PASSWORD_HASH_ACCEPTED_PROFILES == {
+        "argon2": "current-exact",
+        "pbkdf2_sha256": "current-or-lower-iterations",
+        "pbkdf2_sha1": "current-or-lower-iterations",
+        "scrypt": "current-exact",
+    }
 
 
 @pytest.mark.unit
@@ -428,6 +456,8 @@ def test_request_and_database_instrumentation_wrap_the_application() -> None:
     assert middleware[1] == "config.logs.request_context_middleware"
     assert middleware[2] == "config.api.api_request_body_limit_middleware"
     assert middleware[3] == "config.api.api_error_envelope_middleware"
+    assert "config.api.ApiCommonMiddleware" in middleware
+    assert "django.middleware.common.CommonMiddleware" not in middleware
     assert middleware[-1] == "config.logs.BoundedPrometheusAfterMiddleware"
     assert all(
         database["ENGINE"] == "django_prometheus.db.backends.postgresql"
@@ -480,7 +510,8 @@ def test_shared_rest_framework_defaults_close_new_routes() -> None:
 
     assert configuration == {
         "DEFAULT_AUTHENTICATION_CLASSES": [
-            "rest_framework.authentication.SessionAuthentication",
+            "accounts.authentication.JWTAuthentication",
+            "accounts.authentication.PrimaryTokenAuthentication",
         ],
         "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
         "DEFAULT_PERMISSION_CLASSES": [
@@ -493,6 +524,17 @@ def test_shared_rest_framework_defaults_close_new_routes() -> None:
         "EXCEPTION_HANDLER": "config.api.api_exception_handler",
         "PAGE_SIZE": 100,
     }
+
+    assert (
+        REQUIRED_ENVIRONMENT["DJANGO_TOKEN_LOGIN_ACCOUNT_THROTTLE_RATE"]
+        == configured_settings.TOKEN_LOGIN_ACCOUNT_THROTTLE_RATE
+    )
+    assert (
+        REQUIRED_ENVIRONMENT["DJANGO_TOKEN_LOGIN_ADDRESS_THROTTLE_RATE"]
+        == configured_settings.TOKEN_LOGIN_ADDRESS_THROTTLE_RATE
+    )
+    assert configured_settings.LOGIN_THROTTLE_DATABASE_ALIAS == "default"
+    assert set(configured_settings.CACHES) == {"default", "sessions"}
 
 
 @pytest.mark.unit

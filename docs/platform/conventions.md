@@ -107,7 +107,7 @@ Its own IDs, so it can coexist with development. Same never-regenerate rule.
 
 | Network | ID | Environment | Purpose | `internal` |
 |---|---|---|---|---|
-| `edge-net-ne2vk` | `ne2vk` | development | Traefik to the Django app | no |
+| `edge-net-ne2vk` | `ne2vk` | development | Traefik to the Django app, subnet `10.89.2.0/24` | no |
 | `access-net-ha4mz` | `ha4mz` | development | host access for every service publishing a port | no |
 | `app-net-na6hy` | `na6hy` | development | app tier to brokers, cache, storage, mail | **yes** |
 | `data-net-nd9pc` | `nd9pc` | development | PostgreSQL nodes, backup agent, pgAdmin | **yes** |
@@ -122,6 +122,10 @@ Services attach to more than one network where needed. `django-uv5n2` is on all 
 `internal: true` on a service zone is the enforcement mechanism for the offline constraint: no container whose
 networks are all internal can reach the internet even if a dependency tries. It does **not** restrict traffic
 between members of that network.
+
+`edge-net-ne2vk` has the fixed `10.89.2.0/24` subnet so Django can trust forwarded client addresses only from an
+immediate peer on the proxy network. No private-address wildcard is accepted. The direct application publication
+is `127.0.0.1:8000:8000`, so host diagnostics remain available without exposing a remotely reachable proxy bypass.
 
 **A published host port does not work on an internal network.** Docker drops the publication silently — no warning,
 no error, no non-zero exit — so the container runs healthily while the port is unreachable. Every service the
@@ -185,7 +189,10 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `DJANGO_DEBUG` | `django-uv5n2` | debug toggle | `true` dev, `false` testing | no | yes |
 | `DJANGO_ALLOWED_HOSTS` | `django-uv5n2` | host header allowlist | `localhost,127.0.0.1,localforge.localhost,django-uv5n2,django-metrics-nb4xt` | no | yes |
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | `django-uv5n2` | CSRF origins behind Traefik | `http://localhost:8080,http://localforge.localhost:8080` | no | yes |
+| `DJANGO_TRUSTED_PROXY_NETWORKS` | `django-uv5n2` | immediate-peer networks allowed to supply forwarded client addresses | `10.89.2.0/24` development, `none` testing | no | yes |
 | `DJANGO_API_REQUEST_BODY_MAX_BYTES` | `django-uv5n2` | versioned API body ceiling and request spool memory limit | `1048576` | no | yes |
+| `DJANGO_TOKEN_LOGIN_ACCOUNT_THROTTLE_RATE` | `django-uv5n2` | strict atomic token-login admissions per primary-resolved account identity in one rolling window | `5/minute` | no | yes |
+| `DJANGO_TOKEN_LOGIN_ADDRESS_THROTTLE_RATE` | `django-uv5n2` | strict atomic token-login admissions per client address in one rolling window | `30/minute` | no | yes |
 | `DJANGO_LOG_LEVEL` | `django-uv5n2` | root log level | `INFO` | no | no |
 | `DJANGO_TIME_ZONE` | `django-uv5n2` | application timezone, stored datetimes stay UTC-aware | `UTC` | no | no |
 | `LOCALFORGE_WAIT_SERVICES` | `django-uv5n2` | services the entrypoint waits for before migrating, space-separated. Deliberately outside a vendor prefix, like the backup schedules | `postgres valkey-cache` | no | no |
@@ -261,6 +268,27 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 the whole logical database — sharing an index means a routine `cache.clear()` destroys every pending Celery result.
 See [../adr/0005-valkey-cache.md](../adr/0005-valkey-cache.md).
 
+Token login applies both throttle rates to every attempt, successful or failed. The address dimension limits one
+source across usernames. It uses `REMOTE_ADDR` unless the immediate peer is in
+`DJANGO_TRUSTED_PROXY_NETWORKS`; only then does it walk the forwarded chain from right to left and select the first
+valid untrusted hop. Trusted valid hops are skipped lazily, so malformed data farther left than an already selected
+client is irrelevant; malformed data encountered before any valid client hop falls back to the immediate peer. The
+account dimension resolves an existing account on the primary and hashes its immutable ID, so
+database-case-insensitive variants share one bucket while distinct PostgreSQL identities do not collide. Unknown
+input uses a hash of PostgreSQL's own lowercase result and discloses no existence state.
+
+Both dimensions are stored in the primary beside account state. Deterministically ordered transaction-scoped
+advisory locks serialize a bucket across workers; primary-database time defines each rolling window; only active
+events are counted; and one request is recorded in every dimension only when all dimensions admit. Every admission
+also takes a separate global cleanup advisory lock and deletes at most the oldest 64 events beyond the longest
+supported one-day window through the `occurred_at`-leading index. An admission inserts at most two events, so
+sustained admission removes expired backlog faster than it can add rows without making any request delete an
+unbounded current-bucket history. Cache clear, `allkeys-lru` eviction, and cache restart therefore cannot reset
+security state. PostgreSQL outage or table loss fails closed as a correlated `503`, and rejection carries the
+database-derived `Retry-After`. No global password-hash concurrency limit is added: Ticket 29's exact `30/minute`
+address and `5/minute` account admission bounds are the accepted governing limits, and neither this ticket nor the
+registry defines another limit.
+
 Testing overrides, present only in `.env.testing`:
 
 | Variable | Value | Reason |
@@ -269,6 +297,7 @@ Testing overrides, present only in `.env.testing`:
 | `DJANGO_SETTINGS_MODULE` | `config.settings.testing` | selects the testing module |
 | `DJANGO_DEBUG` | `false` | tests must not depend on debug behaviour |
 | `DJANGO_ALLOWED_HOSTS` | replaces `django-uv5n2` with `django-test-dt5qx` | the test runner's own container name; the development app does not run here |
+| `DJANGO_TRUSTED_PROXY_NETWORKS` | `none` | testing has no proxy; direct requests use `REMOTE_ADDR` |
 | `POSTGRES_HOST`, `POSTGRES_REPLICA_HOST` | `postgres-tp8vn` | single node; the replica alias points at it |
 | `VALKEY_CACHE_HOST` | `valkey-cache-tv4kq` | the testing cache container |
 | `VALKEY_CHANNELS_HOST` | `valkey-channels-tv9zw` | the testing channel-layer container |

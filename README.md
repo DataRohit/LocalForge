@@ -53,11 +53,19 @@ uv run poe typecheck
 The ty task runs the locked release from uv's trusted tool cache, which also works on Windows systems that block
 executables launched directly from a project virtual environment.
 
-Run unit and integration tests with branch coverage:
+Run the complete test gate:
 
 ```console
 uv run poe test
 uv run poe test-parallel
+```
+
+Both commands run the high-parallel core stage at 100% branch coverage, then run every statistical
+credential-timing case in the bounded four-worker timing stage. Run that stage directly when timing evidence is
+the only result needed:
+
+```console
+uv run poe test-security-timing
 ```
 
 Run a focused group without applying the whole-suite coverage threshold:
@@ -67,9 +75,11 @@ uv run poe test-unit
 uv run poe test-integration
 ```
 
-The test command requires 100% line and branch coverage. It writes the browsable report to `htmlcov/index.html` and
-the machine-readable reports to `coverage.xml` and `test-results/pytest.xml`. No source lines are excluded from
-measurement.
+Focused integration runs exclude statistical timing cases unless the dedicated task is requested. The complete
+test command writes the browsable coverage report to `htmlcov/index.html`, machine-readable coverage to
+`coverage.xml`, and separate stage results to `test-results/pytest-core.xml` and
+`test-results/pytest-security-timing.xml`. Container evidence is the complete one-off runner output and exit status;
+the container never receives a writable repository bind mount. No source lines are excluded from core measurement.
 
 Run every local quality check with one command:
 

@@ -1,38 +1,37 @@
-"""Shared HTTP API contract.
+"""Shared HTTP API boundary.
 
-Defines the versioned routing boundary, stable error vocabulary, REST framework exception mapping,
-and Django handlers that keep failures outside REST framework in the same correlated JSON shape.
+Defines versioned routing, REST framework exception conversion, request-size enforcement, and
+Django handlers that keep failures outside REST framework in the same correlated JSON shape.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
-from enum import StrEnum
 from http import HTTPStatus
-from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, cast, override
 
 from django.conf import settings
-from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
-from django.http import Http404, JsonResponse
+from django.http import JsonResponse
+from django.middleware.common import CommonMiddleware
+from django.urls import include, path
 from django.utils.decorators import async_only_middleware
 from django.views import csrf, defaults
-from rest_framework.exceptions import (
-    APIException,
-    AuthenticationFailed,
-    MethodNotAllowed,
-    NotAcceptable,
-    NotAuthenticated,
-    NotFound,
-    ParseError,
-    PermissionDenied,
-    Throttled,
-    UnsupportedMediaType,
-    ValidationError,
-)
+from rest_framework.exceptions import ValidationError
 from rest_framework.views import exception_handler as drf_exception_handler
 
+from config.api_errors import (
+    API_ERROR,
+    BAD_REQUEST,
+    EXCEPTION_DEFINITIONS,
+    INTERNAL_SERVER_ERROR,
+    NOT_FOUND,
+    PERMISSION_DENIED,
+    REQUEST_TOO_LARGE,
+    STATUS_DEFINITIONS,
+    ErrorDefinition,
+)
+from config.api_errors import ERROR_STATUS_REGISTRY as _ERROR_STATUS_REGISTRY
+from config.api_errors import ErrorCode as _ErrorCode
 from config.logs import REQUEST_ID_META_KEY, request_identifier
 
 if TYPE_CHECKING:
@@ -55,201 +54,42 @@ API_VERSION = "v1"
 API_PREFIX = f"api/{API_VERSION}/"
 NON_FIELD_ERRORS = "non_field_errors"
 ERROR_ENVELOPE_ATTRIBUTE = "localforge_error_envelope"
+ERROR_STATUS_REGISTRY = _ERROR_STATUS_REGISTRY
+ErrorCode = _ErrorCode
 
 app_name = "api"
-urlpatterns: list[URLPattern | URLResolver] = []
+urlpatterns: list[URLPattern | URLResolver] = [
+    path("", include("accounts.urls")),
+]
 
 
-class ErrorCode(StrEnum):
-    """Enumerate every machine-readable HTTP API error code.
+class ApiCommonMiddleware(CommonMiddleware):
+    """Preserve canonical redirects outside the versioned API.
 
-    Inherits from ``StrEnum`` so codes serialize as JSON strings while remaining impossible to
-    invent as unchecked literals at response call sites.
-
-    Attributes:
-        API_ERROR: Framework failure without a more specific public category.
-        AUTHENTICATION_FAILED: Credentials were supplied but rejected.
-        BAD_REQUEST: Request rejection outside REST framework parsing.
-        REQUEST_TOO_LARGE: Request body exceeds the configured API limit.
-        INTERNAL_SERVER_ERROR: Sanitized unexpected server failure.
-        METHOD_NOT_ALLOWED: HTTP method is unsupported for the route.
-        NOT_ACCEPTABLE: Requested response representation is unavailable.
-        NOT_AUTHENTICATED: Required credentials were not supplied.
-        NOT_FOUND: Route or resource was not found.
-        PARSE_ERROR: Request body could not be parsed.
-        PERMISSION_DENIED: Caller may not perform the operation.
-        SERVICE_UNAVAILABLE: Required service is temporarily unavailable.
-        THROTTLED: Request exceeded an applicable rate limit.
-        UNSUPPORTED_MEDIA_TYPE: Request representation is unsupported.
-        VALIDATION_ERROR: Submitted fields failed validation.
-
-    Members:
-        None beyond those inherited from ``StrEnum``.
-    """
-
-    API_ERROR = "api_error"
-    AUTHENTICATION_FAILED = "authentication_failed"
-    BAD_REQUEST = "bad_request"
-    REQUEST_TOO_LARGE = "request_too_large"
-    INTERNAL_SERVER_ERROR = "internal_server_error"
-    METHOD_NOT_ALLOWED = "method_not_allowed"
-    NOT_ACCEPTABLE = "not_acceptable"
-    NOT_AUTHENTICATED = "not_authenticated"
-    NOT_FOUND = "not_found"
-    PARSE_ERROR = "parse_error"
-    PERMISSION_DENIED = "permission_denied"
-    SERVICE_UNAVAILABLE = "service_unavailable"
-    THROTTLED = "throttled"
-    UNSUPPORTED_MEDIA_TYPE = "unsupported_media_type"
-    VALIDATION_ERROR = "validation_error"
-
-
-@dataclass(frozen=True, slots=True)
-class ErrorDefinition:
-    """Pair a stable error code with its safe human-readable message.
-
-    Carries the two client-facing values that must change together and prevents exception handlers
-    from deriving public text from implementation-specific exception details.
+    Inherits from Django's ``CommonMiddleware`` and suppresses append-slash redirects only beneath
+    the API prefix, allowing the routing error boundary to return its correlated JSON envelope.
 
     Attributes:
-        code: Stable machine-readable error code.
-        message: Safe human-readable explanation.
+        None beyond those inherited from ``CommonMiddleware``.
 
     Members:
-        None.
+        should_redirect_with_slash: Decide whether a slashless request may redirect.
     """
 
-    code: ErrorCode
-    message: str
+    @override
+    def should_redirect_with_slash(self, request: HttpRequest) -> bool:
+        """Decide whether Django may append a slash to one request.
 
+        Rejects redirects for all versioned API paths while delegating non-API behavior unchanged
+        to Django, including administration and other framework routes.
 
-API_ERROR = ErrorDefinition(
-    ErrorCode.API_ERROR,
-    "The request could not be completed.",
-)
-AUTHENTICATION_FAILED = ErrorDefinition(
-    ErrorCode.AUTHENTICATION_FAILED,
-    "Authentication failed.",
-)
-BAD_REQUEST = ErrorDefinition(
-    ErrorCode.BAD_REQUEST,
-    "The request was invalid.",
-)
-REQUEST_TOO_LARGE = ErrorDefinition(
-    ErrorCode.REQUEST_TOO_LARGE,
-    "The request body is too large.",
-)
-INTERNAL_SERVER_ERROR = ErrorDefinition(
-    ErrorCode.INTERNAL_SERVER_ERROR,
-    "An unexpected error occurred.",
-)
-METHOD_NOT_ALLOWED = ErrorDefinition(
-    ErrorCode.METHOD_NOT_ALLOWED,
-    "The requested method is not allowed.",
-)
-NOT_ACCEPTABLE = ErrorDefinition(
-    ErrorCode.NOT_ACCEPTABLE,
-    "The requested response format is not available.",
-)
-NOT_AUTHENTICATED = ErrorDefinition(
-    ErrorCode.NOT_AUTHENTICATED,
-    "Authentication credentials were not provided.",
-)
-NOT_FOUND = ErrorDefinition(
-    ErrorCode.NOT_FOUND,
-    "The requested resource was not found.",
-)
-PARSE_ERROR = ErrorDefinition(
-    ErrorCode.PARSE_ERROR,
-    "The request body could not be parsed.",
-)
-PERMISSION_DENIED = ErrorDefinition(
-    ErrorCode.PERMISSION_DENIED,
-    "You do not have permission to perform this action.",
-)
-SERVICE_UNAVAILABLE = ErrorDefinition(
-    ErrorCode.SERVICE_UNAVAILABLE,
-    "A required service is unavailable.",
-)
-THROTTLED = ErrorDefinition(
-    ErrorCode.THROTTLED,
-    "Too many requests.",
-)
-UNSUPPORTED_MEDIA_TYPE = ErrorDefinition(
-    ErrorCode.UNSUPPORTED_MEDIA_TYPE,
-    "The request content type is not supported.",
-)
-VALIDATION_ERROR = ErrorDefinition(
-    ErrorCode.VALIDATION_ERROR,
-    "The submitted data is invalid.",
-)
+        Arguments:
+            request: Incoming Django request.
 
-STATUS_DEFINITIONS: dict[int, ErrorDefinition] = {
-    HTTPStatus.BAD_REQUEST: BAD_REQUEST,
-    HTTPStatus.UNAUTHORIZED: NOT_AUTHENTICATED,
-    HTTPStatus.FORBIDDEN: PERMISSION_DENIED,
-    HTTPStatus.NOT_FOUND: NOT_FOUND,
-    HTTPStatus.METHOD_NOT_ALLOWED: METHOD_NOT_ALLOWED,
-    HTTPStatus.NOT_ACCEPTABLE: NOT_ACCEPTABLE,
-    HTTPStatus.CONTENT_TOO_LARGE: REQUEST_TOO_LARGE,
-    HTTPStatus.UNSUPPORTED_MEDIA_TYPE: UNSUPPORTED_MEDIA_TYPE,
-    HTTPStatus.TOO_MANY_REQUESTS: THROTTLED,
-    HTTPStatus.INTERNAL_SERVER_ERROR: INTERNAL_SERVER_ERROR,
-    HTTPStatus.SERVICE_UNAVAILABLE: SERVICE_UNAVAILABLE,
-}
-
-ERROR_STATUS_REGISTRY: Mapping[HTTPStatus, frozenset[ErrorCode]] = MappingProxyType(
-    {
-        HTTPStatus.BAD_REQUEST: frozenset(
-            {
-                ErrorCode.BAD_REQUEST,
-                ErrorCode.PARSE_ERROR,
-                ErrorCode.VALIDATION_ERROR,
-            }
-        ),
-        HTTPStatus.UNAUTHORIZED: frozenset(
-            {
-                ErrorCode.AUTHENTICATION_FAILED,
-                ErrorCode.NOT_AUTHENTICATED,
-            }
-        ),
-        HTTPStatus.FORBIDDEN: frozenset(
-            {
-                ErrorCode.NOT_AUTHENTICATED,
-                ErrorCode.PERMISSION_DENIED,
-            }
-        ),
-        HTTPStatus.NOT_FOUND: frozenset({ErrorCode.NOT_FOUND}),
-        HTTPStatus.METHOD_NOT_ALLOWED: frozenset({ErrorCode.METHOD_NOT_ALLOWED}),
-        HTTPStatus.NOT_ACCEPTABLE: frozenset({ErrorCode.NOT_ACCEPTABLE}),
-        HTTPStatus.CONTENT_TOO_LARGE: frozenset({ErrorCode.REQUEST_TOO_LARGE}),
-        HTTPStatus.UNSUPPORTED_MEDIA_TYPE: frozenset({ErrorCode.UNSUPPORTED_MEDIA_TYPE}),
-        HTTPStatus.TOO_MANY_REQUESTS: frozenset({ErrorCode.THROTTLED}),
-        HTTPStatus.INTERNAL_SERVER_ERROR: frozenset(
-            {
-                ErrorCode.API_ERROR,
-                ErrorCode.INTERNAL_SERVER_ERROR,
-            }
-        ),
-        HTTPStatus.SERVICE_UNAVAILABLE: frozenset({ErrorCode.SERVICE_UNAVAILABLE}),
-    }
-)
-
-EXCEPTION_DEFINITIONS: dict[type[Exception], ErrorDefinition] = {
-    ValidationError: VALIDATION_ERROR,
-    ParseError: PARSE_ERROR,
-    AuthenticationFailed: AUTHENTICATION_FAILED,
-    NotAuthenticated: NOT_AUTHENTICATED,
-    PermissionDenied: PERMISSION_DENIED,
-    DjangoPermissionDenied: PERMISSION_DENIED,
-    NotFound: NOT_FOUND,
-    Http404: NOT_FOUND,
-    MethodNotAllowed: METHOD_NOT_ALLOWED,
-    NotAcceptable: NOT_ACCEPTABLE,
-    UnsupportedMediaType: UNSUPPORTED_MEDIA_TYPE,
-    Throttled: THROTTLED,
-    APIException: API_ERROR,
-}
+        Returns:
+            Whether CommonMiddleware should redirect to a slash-appended path.
+        """
+        return not _is_api_request(request) and super().should_redirect_with_slash(request)
 
 
 def _request_identifier(request: HttpRequest) -> str:

@@ -54,6 +54,15 @@ Two behaviours verified in the Django 6.0 source on 2026-09-13 shape the configu
    unreachable instance that is a `RuntimeError` after seconds, and against a hung one it pins the worker for
    hours. A lost session is a lost identity; a lost page cache entry is a slower page.
 
+4. **Login throttling is deliberately not cache state.** Corrected 2026-09-15 after the Ticket 29 remediation:
+   authentication admission cannot silently reset when DB `0` is flushed or when `allkeys-lru` evicts a key under
+   memory pressure. Its address and account rolling windows therefore live beside account state in the PostgreSQL
+   primary. Transaction-scoped advisory locks serialize each opaque bucket across application processes,
+   primary-database time defines the window, and all dimensions are recorded only when every dimension admits. A
+   database outage or missing admission table fails closed as the correlated API `503` contract. General caching
+   keeps useful eviction, sessions keep their strict alias, and Ticket 35 may still use shared cache state for
+   non-security-sensitive general throttle scopes.
+
 Valkey ships no web UI, and the obvious companion is unusable: **RedisInsight is SSPL-licensed and has no Valkey
 support** — the string "Valkey" appears nowhere in its README or its fifteen most recent release notes. The
 dashboard is therefore `redis_exporter` scraped into Prometheus and rendered in Grafana, plus `valkey-cli` for

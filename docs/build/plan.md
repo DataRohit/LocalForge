@@ -68,8 +68,10 @@ Listed so scope creep is recognisable. None exists.
 | `src/config/templates/email/` | Plain-text and HTML application email templates |
 | `src/config/health.py` | Health view executor that preserves request correlation |
 | `src/config/metrics_asgi.py`, `src/config/metrics_urls.py` | Observability-only metrics listener |
-| `src/config/api.py` | Schema, Swagger UI, ReDoc views only |
-| `src/accounts/` | The project's own user model, its manager, its admin registration, and its initial migration |
+| `src/config/api.py`, `src/config/api_errors.py` | Versioned API routing and the shared error boundary and vocabulary |
+| `src/config/cache.py` | Resilient general caching |
+| `src/accounts/login_throttle.py` | Authoritative primary-database login admission |
+| `src/accounts/` | The user model, manager, admin, migrations, and first-party account authentication endpoints |
 | `tests/integration/<package>/test_*.py` | One test per service integration, mirroring the package it covers |
 | `tests/conftest.py` | Per-worker namespace every externally allocated name is built from |
 | `tests/unit/conftest.py` | Guard refusing network access from the unit layer |
@@ -280,8 +282,10 @@ uv run poe test
 
 Gate:
 
-- Pass: both runs exit `0` at 100% branch coverage and report **the same number of collected tests**; the stack
-  contains nothing from the exclusion list.
+- Pass: both complete tasks exit `0`; each core stage reports 100% branch coverage; each core count plus its
+  security-timing count equals the complete collection; host and container totals match; the stack contains
+  nothing from the exclusion list. The one-off runner writes no test artifact through a writable repository bind;
+  its complete output and exit status are the container evidence.
 - Fail: differing test counts mean environment-dependent skipping, which hides real failures. A host-only failure
   is almost always a `*_HOST` variable in `.env.testing.host` still naming a container instead of `127.0.0.1`.
 

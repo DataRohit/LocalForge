@@ -5,6 +5,7 @@ through the parsing library, so no module carries a literal secret and a missing
 fails at startup naming itself.
 """
 
+from ipaddress import ip_network
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,17 @@ ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS")
 
 CSRF_TRUSTED_ORIGINS = env.list("DJANGO_CSRF_TRUSTED_ORIGINS")
 
+_trusted_proxy_networks = env.str("DJANGO_TRUSTED_PROXY_NETWORKS")
+TRUSTED_PROXY_NETWORKS = (
+    ()
+    if _trusted_proxy_networks == "none"
+    else tuple(
+        ip_network(value.strip(), strict=False)
+        for value in _trusted_proxy_networks.split(",")
+        if value.strip()
+    )
+)
+
 API_REQUEST_BODY_MAX_BYTES = env.int("DJANGO_API_REQUEST_BODY_MAX_BYTES")
 FILE_UPLOAD_MAX_MEMORY_SIZE = API_REQUEST_BODY_MAX_BYTES
 
@@ -36,13 +48,15 @@ INSTALLED_APPS = [
     "accounts",
     "channels",
     "rest_framework",
+    "rest_framework.authtoken",
     "drf_spectacular",
     "storages",
 ]
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.SessionAuthentication",
+        "accounts.authentication.JWTAuthentication",
+        "accounts.authentication.PrimaryTokenAuthentication",
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "DEFAULT_PERMISSION_CLASSES": [
@@ -56,6 +70,10 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 100,
 }
 
+TOKEN_LOGIN_ACCOUNT_THROTTLE_RATE = env.str("DJANGO_TOKEN_LOGIN_ACCOUNT_THROTTLE_RATE")
+TOKEN_LOGIN_ADDRESS_THROTTLE_RATE = env.str("DJANGO_TOKEN_LOGIN_ADDRESS_THROTTLE_RATE")
+LOGIN_THROTTLE_DATABASE_ALIAS = "default"
+
 CSRF_FAILURE_VIEW = "config.api.api_csrf_failure"
 
 MIDDLEWARE = [
@@ -65,7 +83,7 @@ MIDDLEWARE = [
     "config.api.api_error_envelope_middleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
-    "django.middleware.common.CommonMiddleware",
+    "config.api.ApiCommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -217,6 +235,13 @@ PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher",
     "django.contrib.auth.hashers.ScryptPasswordHasher",
 ]
+
+PASSWORD_HASH_ACCEPTED_PROFILES = {
+    "argon2": "current-exact",
+    "pbkdf2_sha256": "current-or-lower-iterations",
+    "pbkdf2_sha1": "current-or-lower-iterations",
+    "scrypt": "current-exact",
+}
 
 LANGUAGE_CODE = "en-us"
 

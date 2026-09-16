@@ -18,6 +18,8 @@ from accounts.normalisation import normalise_email
 if TYPE_CHECKING:
     from collections.abc import Collection
 
+LOGIN_THROTTLE_TABLE = "accounts_login_throttle_event"
+
 
 class User(AbstractBaseUser, PermissionsMixin):
     """One account on the platform.
@@ -144,3 +146,75 @@ class User(AbstractBaseUser, PermissionsMixin):
             None.
         """
         return str(self.username)
+
+
+class LoginThrottleEvent(models.Model):
+    """One admitted login attempt in an authoritative rolling window.
+
+    Inherits from ``Model`` and stores only opaque bucket and request identifiers beside the
+    primary-database timestamp used to make admission decisions across application processes.
+
+    Attributes:
+        id: Database-generated event identifier.
+        bucket: Opaque address or account dimension.
+        request_id: Correlated request identifier unique inside one bucket.
+        occurred_at: Primary-database time at which the request was admitted.
+
+    Members:
+        None beyond those inherited from ``Model``.
+    """
+
+    bucket = models.CharField(max_length=160)
+    request_id = models.CharField(max_length=80)
+    occurred_at = models.DateTimeField()
+
+    class Meta:
+        """Database rules for authoritative login admission events.
+
+        Indexes each bucket chronologically for exact admission and all events chronologically for
+        bounded retention, while preventing duplicate request identifiers inside one dimension.
+
+        Attributes:
+            db_table: Stable table name used by outage diagnostics and migrations.
+            indexes: Chronological lookup paths for one bucket and global retention.
+            constraints: Per-bucket request identifier uniqueness.
+
+        Members:
+            None.
+        """
+
+        db_table = LOGIN_THROTTLE_TABLE
+        indexes = (
+            models.Index(
+                fields=("bucket", "occurred_at"),
+                name="accounts_login_bucket_time",
+            ),
+            models.Index(
+                fields=("occurred_at", "id"),
+                name="accounts_login_occurred_id",
+            ),
+        )
+        constraints = (
+            models.UniqueConstraint(
+                fields=("bucket", "request_id"),
+                name="accounts_login_bucket_request_unique",
+            ),
+        )
+
+    @override
+    def __str__(self) -> str:
+        """Render the opaque bucket and correlated request identifier.
+
+        Returns only identifiers already persisted for operational diagnosis and never resolves
+        either value back to a submitted address or account name.
+
+        Arguments:
+            None.
+
+        Returns:
+            Stable opaque event description.
+
+        Raises:
+            None.
+        """
+        return f"{self.bucket}:{self.request_id}"

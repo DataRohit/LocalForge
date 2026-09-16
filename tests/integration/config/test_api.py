@@ -589,7 +589,8 @@ def test_new_api_view_denies_anonymous_access_by_default(client: Client) -> None
     """Close a new versioned route unless it explicitly opts out.
 
     Calls a view with no local policy declarations and verifies the central permission produces the
-    shared error envelope before the view body can return success.
+    shared unauthorized envelope and primary Bearer challenge before the view body can return
+    success.
 
     Arguments:
         client: Django test client supplied by the framework.
@@ -605,13 +606,14 @@ def test_new_api_view_denies_anonymous_access_by_default(client: Client) -> None
 
     payload = cast("dict[str, Any]", response.json())
 
-    assert response.status_code == HTTPStatus.FORBIDDEN
+    assert response.status_code == HTTPStatus.UNAUTHORIZED
     assert payload == {
         "code": ErrorCode.NOT_AUTHENTICATED,
         "message": "Authentication credentials were not provided.",
         "details": {},
         "request_id": response.headers[REQUEST_ID_HEADER],
     }
+    assert response.headers["WWW-Authenticate"] == "Bearer"
 
 
 @pytest.mark.integration

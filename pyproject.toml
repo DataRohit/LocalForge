@@ -186,13 +186,14 @@ addopts = [
     "--cov-report=xml:coverage.xml",
     "--cov-fail-under=100",
     "--no-cov-on-fail",
-    "--junitxml=test-results/pytest.xml",
+    "--junitxml=test-results/pytest-focused.xml",
 ]
 markers = [
     "unit: isolated unit tests",
     "integration: tests spanning Django components",
     "services(*names): external services an integration test requires",
     "serial: tests that must not share a worker pool, justified in the test docstring",
+    "security_timing: statistical wall-clock security criteria run in the bounded timing stage",
 ]
 xfail_strict = true
 
@@ -276,16 +277,16 @@ help = "Run all type checkers"
 sequence = ["types-mypy", "types-ty"]
 
 [tool.poe.tasks.test]
-help = "Run the whole suite in parallel with 100 percent coverage enforcement"
-cmd = "pytest -n auto --dist loadgroup"
+help = "Run the complete core and security timing test stages"
+sequence = ["test-core", "test-security-timing"]
 
 [tool.poe.tasks.test-serial]
 help = "Run the whole suite in one process; re-run this to read a timeout's stack"
 cmd = "pytest"
 
 [tool.poe.tasks.test-fresh]
-help = "Run the whole suite against a freshly created test database"
-cmd = "pytest -n auto --dist loadgroup --create-db"
+help = "Run both stages after recreating the core test databases"
+sequence = ["test-core-fresh", "test-security-timing"]
 
 [tool.poe.tasks.test-unit]
 help = "Run focused unit tests without the whole-suite coverage gate"
@@ -293,11 +294,36 @@ cmd = "pytest -m unit --no-cov"
 
 [tool.poe.tasks.test-integration]
 help = "Run focused integration tests without the whole-suite coverage gate"
-cmd = "pytest -m integration --no-cov"
+cmd = """pytest -m "integration and not security_timing"
+  --no-cov"""
 
 [tool.poe.tasks.test-parallel]
 help = "Alias of the default test task, retained for scripts that name it"
-cmd = "pytest -n auto --dist loadgroup"
+sequence = ["test-core", "test-security-timing"]
+
+[tool.poe.tasks.test-core]
+help = "Run the core suite in high-parallel mode with 100 percent branch coverage"
+cmd = """pytest -n auto --dist loadgroup
+  -m "not security_timing"
+  --max-worker-restart=0
+  --junitxml=test-results/pytest-core.xml"""
+
+[tool.poe.tasks.test-core-fresh]
+help = "Run the core suite after recreating its test databases"
+cmd = """pytest -n auto --dist loadgroup --create-db
+  -m "not security_timing"
+  --max-worker-restart=0
+  --junitxml=test-results/pytest-core.xml"""
+
+[tool.poe.tasks.test-security-timing]
+help = "Run every statistical credential timing case with four independent workers"
+cmd = """pytest -n 4 --dist load
+  -m security_timing
+  --no-cov
+  --max-worker-restart=0
+  --junitxml=test-results/pytest-security-timing.xml
+  --log-level=INFO
+  -o junit_logging=all"""
 
 [tool.poe.tasks.check]
 help = "Run the complete local quality gate"

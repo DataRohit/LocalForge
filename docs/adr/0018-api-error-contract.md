@@ -42,7 +42,7 @@ must be reachable in a test and present in the schema.
 | 415 | content negotiation | unsupported `Content-Type` on a write |
 | 429 | throttling | rate limit exceeded, with `Retry-After` |
 | 500 | unhandled exception | must return the envelope, never a traceback or an HTML page |
-| 503 | health and readiness | a required dependency is down |
+| 503 | health, readiness, security admission | a required dependency or authoritative throttle store is down |
 
 Three that are easy to miss: **406 and 415** come from content negotiation, **413** is rejected before Django
 constructs the request or a parser reads the body, and **403 from CSRF** is middleware or session authentication,
@@ -64,6 +64,26 @@ explicitly rather than leaving a client to infer it from a 404 that never comes.
 
 This is a deliberate divergence from "return the most semantically precise code", and it is recorded here so a
 future reviewer does not "fix" it.
+
+Token login also treats stored password encodings outside the accepted verification profiles as reset-required.
+The login request does not verify those encodings: it runs the same fixed current-cost dummy schedule used for an
+unknown account, returns the identical generic `401` envelope, and leaves the account and its password unchanged.
+This prevents stored higher-cost or mixed parameters from creating attacker-selected work or disclosing account
+state through timing.
+
+The accepted profiles are atomic per configured hasher:
+
+| Hasher | Accepted profile | Other recognized profiles |
+|---|---|---|
+| Argon2 | Exact current type, version, time, memory, parallelism, and output length | Reset required |
+| PBKDF2-SHA256 | Current iterations, or a positive lower iteration count | Lower iterations are runtime-hardened to current equivalent cost; higher iterations require reset |
+| PBKDF2-SHA1 | Current iterations, or a positive lower iteration count | Lower iterations are runtime-hardened to current equivalent cost; higher iterations require reset |
+| Scrypt | Exact current work factor, block size, and parallelism | Reset required |
+
+No historical multi-parameter Argon2 or Scrypt profile is accepted because this project has no evidence that it
+previously issued one. Malformed encodings, retired algorithms, and overlong values are reset-required through the
+same bounded schedule. Active accounts with accepted current or lower PBKDF2 credentials retain normal login;
+successful accepted legacy credentials upgrade to the preferred current hasher.
 
 ## How it is documented
 

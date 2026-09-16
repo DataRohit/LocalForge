@@ -45,6 +45,12 @@ $ docker ps --format "{{.Ports}}"
 0.0.0.0:55432->5432/tcp, [::]:55432->5432/tcp
 ```
 
+Corrected 2026-09-15: the development application's diagnostic publication is narrower:
+`127.0.0.1:8000:8000`. Loopback binding does not replace the access zone, as the failed experiment above proves,
+but it prevents a second remotely reachable path from bypassing Traefik. The proxy-to-application edge zone uses
+the explicit `10.89.2.0/24` subnet, which is the only network configured as trusted for forwarded client addresses.
+Direct host requests arrive from outside that subnet and therefore use `REMOTE_ADDR`.
+
 Disabling NAT on a non-internal bridge was tested as a way to keep publishing while blocking egress,
 and does **not** work here:
 
@@ -90,6 +96,8 @@ recorded trade-off rather than a silent failure:
   internal-only and genuinely cannot reach the internet.
 - Every service zone keeps `internal: true`, so a service that later stops publishing returns to
   being provably offline by dropping one network from its list.
+- `django-uv5n2` publishes port 8000 on host loopback only. Traefik remains the remotely reachable
+  application entry point, and only immediate peers on `edge-net-ne2vk` may supply client addresses.
 - The constraint that actually matters operationally — that `docker compose up` succeeds with no
   external network, per [../build/prerequisites.md](../build/prerequisites.md) Section 4 — is
   unaffected, because it is a property of the images and configuration, not of routing.

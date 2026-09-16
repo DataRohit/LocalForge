@@ -658,6 +658,7 @@ def test_development_and_testing_never_share_a_credential(repository: Path) -> N
         ("DJANGO_SETTINGS_MODULE", "config.settings.testing"),
         ("DJANGO_DEBUG", "false"),
         ("DJANGO_CSRF_TRUSTED_ORIGINS", "http://localhost:8080"),
+        ("DJANGO_TRUSTED_PROXY_NETWORKS", "none"),
         ("DJANGO_SITE_URL", "http://localhost:8000"),
         ("POSTGRES_HOST", "postgres-tp8vn"),
         ("POSTGRES_REPLICA_HOST", "postgres-tp8vn"),

@@ -2107,6 +2107,48 @@ def test_the_proxy_matches_its_registered_image_ports_and_network() -> None:
 
 
 @pytest.mark.unit
+def test_the_application_direct_port_is_bound_to_host_loopback() -> None:
+    """Restrict the proxy-bypassing application publication to the local host.
+
+    Confirms the documented direct development endpoint remains available for diagnostics without
+    exposing a second remotely reachable path around Traefik.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the direct application port binds every host interface.
+    """
+    application = merged(DEVELOPMENT_FILE)["services"]["django-uv5n2"]
+
+    assert application["ports"] == ["127.0.0.1:8000:8000"]
+
+
+@pytest.mark.unit
+def test_the_edge_zone_has_the_trusted_proxy_subnet() -> None:
+    """Pin the proxy-to-application network to the configured trusted range.
+
+    Confirms the environment can trust only immediate peers on one explicit Docker subnet rather
+    than accepting forwarded addresses from every private or local address.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the edge zone loses or changes its trusted subnet.
+    """
+    edge_zone = load(DEVELOPMENT_FILE)["networks"]["edge-net-ne2vk"]
+
+    assert edge_zone["ipam"]["config"] == [{"subnet": "10.89.2.0/24"}]
+
+
+@pytest.mark.unit
 def test_the_proxy_routes_the_registered_application_host() -> None:
     """Route the public development host to Django by Docker labels.
 

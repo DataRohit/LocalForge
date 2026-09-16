@@ -4,8 +4,11 @@ Covers the routes the project exposes, confirming each one resolves to the expec
 change to the URL table is deliberate rather than accidental.
 """
 
+from __future__ import annotations
+
 import importlib
 import sys
+from http import HTTPStatus
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
@@ -13,10 +16,13 @@ from django.conf import settings
 from django.urls import Resolver404, URLResolver, get_resolver, resolve
 
 from config.api import API_PREFIX, ErrorCode
+from config.logs import REQUEST_ID_HEADER
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Protocol
+
+    from django.test import Client
 
     class SchemaGeneratorProtocol(Protocol):
         """Describe the schema generator operation used by the URL test.
@@ -94,6 +100,102 @@ def test_api_is_mounted_under_the_versioned_prefix() -> None:
     assert API_PREFIX == "api/v1/"
     assert str(api_resolver.pattern) == API_PREFIX
     assert resolve("/health/").route == "health/"
+
+
+@pytest.mark.unit
+def test_token_authentication_exposes_only_its_two_versioned_routes() -> None:
+    """Resolve the fixed token login and logout surface.
+
+    Confirms both token operations live beneath the URL-carried API version and that neither is
+    exposed at an unversioned application path.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If either route is absent, renamed, or reachable without the API prefix.
+    """
+    assert resolve("/api/v1/token/login/").view_name == "api-v1:accounts:token-login"
+    assert resolve("/api/v1/token/logout/").view_name == "api-v1:accounts:token-logout"
+
+    with pytest.raises(Resolver404):
+        resolve("/token/login/")
+
+    with pytest.raises(Resolver404):
+        resolve("/token/logout/")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("method", "path_value"),
+    [
+        pytest.param("get", "/api/v1/token/login", id="login-get"),
+        pytest.param("post", "/api/v1/token/login", id="login-post"),
+        pytest.param("get", "/api/v1/token/logout", id="logout-get"),
+        pytest.param("post", "/api/v1/token/logout", id="logout-post"),
+    ],
+)
+def test_slashless_api_token_routes_return_correlated_not_found(
+    client: Client,
+    method: str,
+    path_value: str,
+) -> None:
+    """Reject slashless API token paths without redirecting clients.
+
+    Sends both read and write methods through the public middleware stack and proves API routing
+    owns the response as a correlated JSON not-found envelope rather than CommonMiddleware HTML.
+
+    Arguments:
+        client: Django test client supplied by the framework.
+        method: Lowercase client method to invoke.
+        path_value: Slashless versioned token path.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the path redirects or loses its API envelope.
+    """
+    response = getattr(client, method)(
+        path_value,
+        data="{}" if method == "post" else None,
+        content_type="application/json",
+    )
+    body = cast("dict[str, Any]", response.json())
+
+    assert response.status_code == HTTPStatus.NOT_FOUND
+    assert "Location" not in response.headers
+    assert body == {
+        "code": ErrorCode.NOT_FOUND,
+        "message": "The requested resource was not found.",
+        "details": {},
+        "request_id": response.headers[REQUEST_ID_HEADER],
+    }
+
+
+@pytest.mark.unit
+def test_non_api_append_slash_redirects_remain_enabled(client: Client) -> None:
+    """Preserve append-slash behavior outside the versioned API.
+
+    Requests the slashless administration prefix and verifies CommonMiddleware still redirects to
+    Django's canonical route, limiting the API exception to its intended boundary.
+
+    Arguments:
+        client: Django test client supplied by the framework.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the non-API redirect disappears or changes destination.
+    """
+    response = client.get("/admin")
+
+    assert response.status_code == HTTPStatus.MOVED_PERMANENTLY
+    assert response.headers["Location"] == "/admin/"
 
 
 @pytest.mark.unit
