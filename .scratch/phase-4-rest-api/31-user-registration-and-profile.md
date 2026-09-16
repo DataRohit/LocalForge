@@ -5,21 +5,30 @@ their own account, and nobody can read or modify anyone else's.
 
 **Blocked by:** 29, 30.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Registration creates an inactive account and returns the created representation without any sensitive field.
-- [ ] Registration requires a password confirmation and applies the configured password validators, returning
+- [x] Registration creates an inactive account and returns the created representation without any sensitive field.
+- [x] Registration requires a password confirmation and applies the configured password validators, returning
       per-field errors in the standard envelope.
-- [ ] Registering with an existing username or email returns the same response as a successful registration, so
+- [x] Registering with an existing username or email returns the same response as a successful registration, so
       accounts cannot be enumerated; the real outcome is communicated only by the email that follows.
-- [ ] The profile endpoint returns the authenticated caller's own account and never accepts an identifier that
+- [x] The profile endpoint returns the authenticated caller's own account and never accepts an identifier that
       would let it return someone else's.
-- [ ] The profile endpoint supports partial update of the mutable fields only; the active flag, permissions flags,
+- [x] The profile endpoint supports partial update of the mutable fields only; the active flag, permissions flags,
       password, and identifier are not writable through it.
-- [ ] Deleting the profile requires the current password and is irreversible; the response documents what is
+- [x] Deleting the profile requires the current password and is irreversible; the response documents what is
       retained.
-- [ ] Listing accounts is unavailable to ordinary callers; a non-staff caller does not receive other accounts.
-- [ ] Unauthenticated access to the profile endpoint returns the unauthorized code, not a redirect to a login page.
-- [ ] Registration is rate-limited.
-- [ ] Integration tests cover registration success, every validation failure, the duplicate cases, profile read,
+- [x] Listing accounts is unavailable to ordinary callers; a non-staff caller does not receive other accounts.
+- [x] Unauthenticated access to the profile endpoint returns the unauthorized code, not a redirect to a login page.
+- [x] Registration is rate-limited.
+- [x] Integration tests cover registration success, every validation failure, the duplicate cases, profile read,
       partial update, forbidden field update, deletion, and unauthenticated access.
+
+## Decisions
+
+- Registration returns `201` with `username` and normalized `email`; the database identifier and account state are
+  omitted so PostgreSQL `LOWER` duplicates can return the identical public status and body.
+- `/users/me/` returns `id`, `username`, and `email`; only `email` is mutable because username changes belong to the
+  dedicated route in the fixed surface.
+- Successful deletion returns `204`. Its OpenAPI response documents retained detached JWT revocation metadata,
+  operational logs, and backups under their existing cleanup and retention policies.

@@ -40,6 +40,7 @@ REQUIRED_ENVIRONMENT = {
     "DJANGO_JWT_SIGNING_KEY": secrets.token_urlsafe(32),
     "DJANGO_TOKEN_LOGIN_ACCOUNT_THROTTLE_RATE": "5/minute",
     "DJANGO_TOKEN_LOGIN_ADDRESS_THROTTLE_RATE": "30/minute",
+    "DJANGO_USER_REGISTRATION_ADDRESS_THROTTLE_RATE": "5/minute",
     "POSTGRES_DB": "localforge",
     "POSTGRES_USER": "localforge_app",
     "POSTGRES_PASSWORD": secrets.token_urlsafe(16),

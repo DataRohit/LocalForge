@@ -17,7 +17,7 @@ Djoser 2.3.4 was released 2026-08-01 and **empirically works** — a probe on Py
 3.18.0, and djoser 2.3.4 exercised all fourteen endpoints successfully. Working is not the same as supported:
 
 | Signal | Finding |
-|---|---|
+| --- | --- |
 | CI matrix on `master` | Three jobs — Django 3, 4, 5. **No Django 6.0 row. No Python 3.14 row.** |
 | DRF in CI | Every row pins **DRF 3.14**. Our DRF 3.18.0 is entirely untested upstream |
 | Release cadence | ~1–2 per year, with a 13-month gap then a 12-month gap |
@@ -50,10 +50,23 @@ is unavoidable — it applies whichever schema generator path we take.
 ## What we use instead
 
 | Concern | Choice | Evidence, 2026-09-13 |
-|---|---|---|
+| --- | --- | --- |
 | JWT create / refresh / verify | `djangorestframework-simplejwt` 5.5.1 | **Release lag.** `master` is green on Django 6.0 × Python 3.14 (PR #959, merged 2026-02-09); release 5.5.1 predates it by ~7 months. Works in the probe. Handled under [0016](./0016-accept-release-lag.md) |
 | Token login / logout | `rest_framework.authtoken`, bundled with DRF 3.18.0 | Ships in DRF. See the caveats below |
 | Account endpoints | First-party views, serializers, and URLs | This decision |
+
+## Ticket 31 public account representations
+
+Recorded 2026-09-16. `POST /users/` returns `201` with only the submitted username and normalized email. It omits
+the database identifier and account state so a PostgreSQL `LOWER` uniqueness conflict can return exactly the same
+public status and body as creation; enumeration resistance takes precedence over the semantic precision of a
+different duplicate status.
+
+`/users/me/` represents the caller as `id`, `username`, and `email`. Only `email` is mutable there: `id` is the
+immutable account identifier, while username changes remain owned by the dedicated username route already fixed in
+the application surface. Profile deletion returns `204`; its schema records that the account and secondary token
+are removed while detached JWT revocation metadata, operational logs, and backups remain subject to their existing
+cleanup and retention policies.
 
 SimpleJWT carries one unreleased **breaking** change on `master` — a 404 becomes a 401. If the VCS escape from
 [0016](./0016-accept-release-lag.md) is ever taken for this package, that status change must be reflected in the

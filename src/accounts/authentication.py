@@ -220,11 +220,14 @@ class PrimaryTokenAuthentication(TokenAuthentication):
 
         Raises:
             AuthenticationFailed: If the token is unknown or its account is inactive.
+            ServiceUnavailable: If authoritative token or account state cannot be read.
         """
         try:
             token = Token.objects.using("default").select_related("user").get(key=key)
         except Token.DoesNotExist as error:
             raise AuthenticationFailed from error
+        except DatabaseError as error:
+            raise ServiceUnavailable from error
 
         user = cast("User", token.user)
         if not user.is_active:

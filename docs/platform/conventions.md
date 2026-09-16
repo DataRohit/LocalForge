@@ -196,6 +196,7 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `DJANGO_JWT_REFRESH_TOKEN_LIFETIME_SECONDS` | `django-uv5n2` | JSON web token refresh lifetime, longer than access | `86400` | no | yes |
 | `DJANGO_TOKEN_LOGIN_ACCOUNT_THROTTLE_RATE` | `django-uv5n2` | strict atomic token-login admissions per primary-resolved account identity in one rolling window | `5/minute` | no | yes |
 | `DJANGO_TOKEN_LOGIN_ADDRESS_THROTTLE_RATE` | `django-uv5n2` | strict atomic token-login admissions per client address in one rolling window | `30/minute` | no | yes |
+| `DJANGO_USER_REGISTRATION_ADDRESS_THROTTLE_RATE` | `django-uv5n2` | strict atomic account-registration admissions per client address in one rolling window | `5/minute` | no | yes |
 | `DJANGO_LOG_LEVEL` | `django-uv5n2` | root log level | `INFO` | no | no |
 | `DJANGO_TIME_ZONE` | `django-uv5n2` | application timezone, stored datetimes stay UTC-aware | `UTC` | no | no |
 | `LOCALFORGE_WAIT_SERVICES` | `django-uv5n2` | services the entrypoint waits for before migrating, space-separated. Deliberately outside a vendor prefix, like the backup schedules | `postgres valkey-cache` | no | no |

@@ -1,0 +1,865 @@
+"""User registration and self-service profile endpoints.
+
+Creates inactive accounts without identifier disclosure and exposes only the authenticated caller's
+profile, keeping account discovery and privileged state outside the fixed versioned API surface.
+"""
+
+# mypy: disable-error-code=misc
+
+import secrets
+from collections.abc import Mapping
+from hashlib import sha256
+from http import HTTPStatus
+from typing import TYPE_CHECKING, Any, cast, override
+
+from django.conf import settings
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_email
+from django.db import DatabaseError, IntegrityError, transaction
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
+from rest_framework.exceptions import AuthenticationFailed, ValidationError
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.serializers import CharField, EmailField, Serializer, UUIDField
+from rest_framework.throttling import BaseThrottle
+from rest_framework.views import APIView
+
+from accounts.login_throttle import PostgresLoginThrottleStore, RollingWindowRule
+from accounts.models import User
+from accounts.normalisation import normalise_email
+from accounts.token_authentication import (
+    ErrorEnvelopeSerializer,
+    error_example,
+    error_response,
+    parse_throttle_rate,
+    trusted_client_address,
+    verify_encoded_password,
+)
+from config.api_errors import (
+    AUTHENTICATION_FAILED,
+    INTERNAL_SERVER_ERROR,
+    METHOD_NOT_ALLOWED,
+    NOT_ACCEPTABLE,
+    NOT_AUTHENTICATED,
+    PARSE_ERROR,
+    REQUEST_TOO_LARGE,
+    SERVICE_UNAVAILABLE,
+    THROTTLED,
+    UNSUPPORTED_MEDIA_TYPE,
+    VALIDATION_ERROR,
+    ServiceUnavailable,
+)
+from config.logs import REQUEST_ID_META_KEY
+
+if TYPE_CHECKING:
+    from rest_framework.request import Request
+
+
+def normalise_valid_email(value: str) -> str:
+    """Normalize and validate one public email value.
+
+    Applies the project's canonical storage form before Django's validator runs, preventing a
+    Unicode case transformation from turning accepted input into an invalid persisted address.
+
+    Arguments:
+        value: Address that passed DRF's initial email validation.
+
+    Returns:
+        Valid normalized address.
+
+    Raises:
+        ValidationError: If the normalized address is invalid.
+    """
+    normalized = normalise_email(value)
+    try:
+        validate_email(normalized)
+    except DjangoValidationError as error:
+        raise ValidationError(error.messages) from error
+
+    return normalized
+
+
+class StrictFieldsSerializer(Serializer):
+    """Reject every input key outside a serializer's declared contract.
+
+    Inherits from DRF's ``Serializer`` and adds explicit unknown-field validation, preventing
+    privileged or misspelled values from being silently ignored by the framework default.
+
+    Attributes:
+        None beyond those inherited from ``Serializer``.
+
+    Members:
+        to_internal_value: Reject undeclared input keys before normal field validation.
+    """
+
+    @override
+    def to_internal_value(self, data: object) -> dict[str, Any]:
+        """Reject undeclared keys before validating declared fields.
+
+        Preserves DRF's normal non-object error handling while returning one field-keyed detail for
+        every extra key in a mapping.
+
+        Arguments:
+            data: Raw parsed request representation.
+
+        Returns:
+            Validated native field mapping.
+
+        Raises:
+            ValidationError: If the input mapping carries any undeclared field.
+        """
+        if isinstance(data, Mapping):
+            unexpected = sorted(str(key) for key in data if key not in self.fields)
+            if unexpected:
+                raise ValidationError(
+                    {field: ["This field is not allowed."] for field in unexpected}
+                )
+
+        return cast("dict[str, Any]", super().to_internal_value(data))
+
+
+class RegistrationSerializer(StrictFieldsSerializer):
+    """Validate one public account registration.
+
+    Inherits from ``StrictFieldsSerializer`` and checks the submitted password against every
+    configured validator using the candidate identifiers, while keeping both password fields
+    write-only.
+
+    Attributes:
+        username: Public account name.
+        email: Public account address.
+        password: Raw credential accepted only as input.
+        password_confirm: Repeated raw credential accepted only as input.
+
+    Members:
+        validate_email: Canonicalize the address before validation completes.
+        validate: Enforce confirmation and configured password policy.
+    """
+
+    username = CharField(max_length=150)
+    email = EmailField(max_length=254)
+    password = CharField(trim_whitespace=False, write_only=True)
+    password_confirm = CharField(trim_whitespace=False, write_only=True)
+
+    def validate_email(self, value: str) -> str:
+        """Canonicalize the submitted address.
+
+        Applies the model's storage normalization before the public response is built, ensuring the
+        accepted representation and the persisted identifier cannot disagree.
+
+        Arguments:
+            value: Valid syntactic email address.
+
+        Returns:
+            Lowercased and trimmed email address.
+        """
+        return normalise_valid_email(value)
+
+    @override
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        """Enforce password confirmation and every configured validator.
+
+        Supplies the candidate account to Django's password policy so similarity checks can use the
+        same username and email that a successful request persists.
+
+        Arguments:
+            attrs: Individually validated registration fields.
+
+        Returns:
+            Validated registration fields.
+
+        Raises:
+            ValidationError: If confirmation differs or password policy rejects the credential.
+        """
+        password = cast("str", attrs["password"])
+        errors: dict[str, list[str]] = {}
+        if password != attrs["password_confirm"]:
+            errors["password_confirm"] = ["The password confirmation does not match."]
+
+        candidate = User(
+            username=cast("str", attrs["username"]),
+            email=cast("str", attrs["email"]),
+        )
+        try:
+            validate_password(password, user=candidate)
+        except DjangoValidationError as error:
+            errors["password"] = list(error.messages)
+
+        if errors:
+            raise ValidationError(errors)
+
+        return attrs
+
+
+class RegistrationResponseSerializer(Serializer):
+    """Describe the enumeration-resistant registration response.
+
+    Inherits from DRF's ``Serializer`` and exposes only the accepted username and normalized email,
+    omitting database identity and account state so a duplicate request can return the same body.
+
+    Attributes:
+        username: Submitted public account name.
+        email: Submitted normalized email address.
+
+    Members:
+        None beyond those inherited from ``Serializer``.
+    """
+
+    username = CharField(read_only=True)
+    email = EmailField(read_only=True)
+
+
+class UserProfileSerializer(Serializer):
+    """Describe the authenticated caller's public profile.
+
+    Inherits from DRF's ``Serializer`` and exposes the immutable key and two public identifiers,
+    omitting activation, permission, password, token, and operational timestamp state.
+
+    Attributes:
+        id: Immutable account identifier.
+        username: Public account name changed only through its dedicated route.
+        email: Public address and the sole mutable profile field.
+
+    Members:
+        None beyond those inherited from ``Serializer``.
+    """
+
+    id = UUIDField(read_only=True)
+    username = CharField(read_only=True)
+    email = EmailField(read_only=True)
+
+
+class UserProfileUpdateSerializer(StrictFieldsSerializer):
+    """Validate the sole mutable profile field.
+
+    Inherits from ``StrictFieldsSerializer`` and accepts only email, rejecting identifiers,
+    credentials, activation state, and permissions instead of silently ignoring them.
+
+    Attributes:
+        email: Replacement public address.
+
+    Members:
+        validate_email: Canonicalize the replacement address.
+    """
+
+    email = EmailField(max_length=254, required=False)
+
+    def validate_email(self, value: str) -> str:
+        """Canonicalize the replacement address.
+
+        Applies the account model's storage normalization before PostgreSQL evaluates uniqueness,
+        keeping the returned representation identical to persisted state.
+
+        Arguments:
+            value: Valid syntactic replacement email address.
+
+        Returns:
+            Lowercased and trimmed email address.
+        """
+        return normalise_valid_email(value)
+
+
+class UserProfileDeletionSerializer(StrictFieldsSerializer):
+    """Validate the credential required to delete the caller's profile.
+
+    Inherits from ``StrictFieldsSerializer`` and accepts only the current password, preventing
+    deletion requests from carrying an account selector or unrelated mutable state.
+
+    Attributes:
+        current_password: Raw current credential accepted only as input.
+
+    Members:
+        None beyond those inherited from ``Serializer``.
+    """
+
+    current_password = CharField(trim_whitespace=False, write_only=True)
+
+
+class UserRegistrationThrottle(BaseThrottle):
+    """Enforce one authoritative registration limit per client address.
+
+    Inherits from DRF's ``BaseThrottle`` and writes admission to PostgreSQL beside account state,
+    so cache eviction, cache outage, and multiple application processes cannot reset the limit.
+
+    Attributes:
+        retry_after_seconds: Authoritative delay after a rejected request.
+
+    Members:
+        allow_request: Atomically admit or reject one registration address.
+        wait: Return the retry delay for DRF's response header.
+    """
+
+    retry_after_seconds: int | None = None
+
+    @override
+    def allow_request(self, request: Request, view: APIView) -> bool:
+        """Atomically enforce the configured registration address window.
+
+        Admits metadata and unsupported methods without recording them, then hashes a POST caller's
+        address and fails closed if PostgreSQL cannot make the admission decision.
+
+        Arguments:
+            request: Registration request being admitted.
+            view: Registration view applying the throttle.
+
+        Returns:
+            Whether authoritative shared state admitted the request.
+
+        Raises:
+            ServiceUnavailable: If authoritative throttle state is unavailable.
+            ValueError: If the configured rate is invalid.
+        """
+        del view
+        if request.method != "POST":
+            return True
+
+        limit, window_seconds = parse_throttle_rate(
+            cast("str", settings.USER_REGISTRATION_ADDRESS_THROTTLE_RATE)
+        )
+        address = sha256(trusted_client_address(request).encode()).hexdigest()
+        request_id = request.META.get(REQUEST_ID_META_KEY)
+        correlation = request_id if isinstance(request_id, str) else "uncorrelated"
+        member = f"{correlation}:{secrets.token_hex(16)}"
+
+        try:
+            decision = PostgresLoginThrottleStore(settings.LOGIN_THROTTLE_DATABASE_ALIAS).admit(
+                (
+                    RollingWindowRule(
+                        key=f"registration-address:{address}",
+                        limit=limit,
+                        window_seconds=window_seconds,
+                    ),
+                ),
+                member=member,
+            )
+        except DatabaseError as error:
+            raise ServiceUnavailable from error
+
+        self.retry_after_seconds = decision.retry_after_seconds
+
+        return decision.admitted
+
+    @override
+    def wait(self) -> float | None:
+        """Return the authoritative registration retry delay.
+
+        Supplies DRF with the exact primary-derived duration for ``Retry-After`` and returns no
+        estimate before a denied decision has populated the value.
+
+        Arguments:
+            None.
+
+        Returns:
+            Retry delay in seconds, or None before a rejection.
+        """
+        return float(self.retry_after_seconds) if self.retry_after_seconds is not None else None
+
+
+def register_account(validated_data: Mapping[str, object]) -> None:
+    """Attempt one inactive account creation without disclosing duplicates.
+
+    Hashes the credential before the single PostgreSQL insert and treats an integrity conflict as an
+    accepted duplicate, so case-insensitive uniqueness never changes the public status or body.
+
+    Arguments:
+        validated_data: Validated registration fields.
+
+    Returns:
+        None whether the account was created or already existed.
+
+    Raises:
+        ServiceUnavailable: If authoritative account persistence fails for another database reason.
+    """
+    account = User(
+        username=cast("str", validated_data["username"]),
+        email=cast("str", validated_data["email"]),
+    )
+    account.set_password(cast("str", validated_data["password"]))
+
+    try:
+        with transaction.atomic(using="default"):
+            account.save(using="default", force_insert=True)
+    except IntegrityError:
+        return
+    except DatabaseError as error:
+        raise ServiceUnavailable from error
+
+
+class UserRegistrationView(APIView):
+    """Create an inactive account through an enumeration-resistant boundary.
+
+    Inherits from DRF's ``APIView`` and opens only registration, returning accepted public
+    identifiers whether PostgreSQL created the row or rejected a case-insensitive duplicate.
+
+    Attributes:
+        authentication_classes: Empty because a new caller has no credential.
+        permission_classes: Public access required for registration.
+        throttle_classes: Authoritative client-address registration admission.
+
+    Members:
+        post: Validate and attempt one inactive account creation.
+    """
+
+    authentication_classes: tuple[type, ...] = ()
+    permission_classes = (AllowAny,)
+    throttle_classes = (UserRegistrationThrottle,)
+
+    @extend_schema(
+        operation_id="user_registration",
+        summary="Register an inactive account",
+        description=(
+            "Validates and attempts one inactive account creation. The response contains only the "
+            "submitted username and normalized email. A username or email already occupied under "
+            "PostgreSQL LOWER identity semantics returns the same status and body as creation, so "
+            "account existence is disclosed only by the later activation email."
+        ),
+        request=RegistrationSerializer,
+        auth=[],
+        responses={
+            HTTPStatus.CREATED: OpenApiResponse(
+                response=RegistrationResponseSerializer,
+                description=(
+                    "The registration was accepted; the account is inactive until activation."
+                ),
+                examples=[
+                    OpenApiExample(
+                        "Registration accepted",
+                        value={
+                            "username": "river",
+                            "email": "river@localforge.invalid",
+                        },
+                        response_only=True,
+                    )
+                ],
+            ),
+            HTTPStatus.BAD_REQUEST: OpenApiResponse(
+                response=ErrorEnvelopeSerializer,
+                description=(
+                    "The body is malformed, misses a required field, carries an undeclared field, "
+                    "has mismatched confirmation, or fails email or password validation."
+                ),
+                examples=[
+                    error_example("Malformed JSON", PARSE_ERROR),
+                    error_example(
+                        "Missing fields",
+                        VALIDATION_ERROR,
+                        details={
+                            "username": ["This field is required."],
+                            "email": ["This field is required."],
+                            "password": ["This field is required."],
+                            "password_confirm": ["This field is required."],
+                        },
+                    ),
+                    error_example(
+                        "Password confirmation mismatch",
+                        VALIDATION_ERROR,
+                        details={"password_confirm": ["The password confirmation does not match."]},
+                    ),
+                    error_example(
+                        "Password policy failure",
+                        VALIDATION_ERROR,
+                        details={
+                            "password": [
+                                "This password is too short. It must contain at least 8 characters."
+                            ]
+                        },
+                    ),
+                ],
+            ),
+            HTTPStatus.METHOD_NOT_ALLOWED: error_response(
+                "The user collection accepts only POST registration.",
+                "Method not allowed",
+                METHOD_NOT_ALLOWED,
+            ),
+            HTTPStatus.NOT_ACCEPTABLE: error_response(
+                "The requested response representation is unavailable.",
+                "Not acceptable",
+                NOT_ACCEPTABLE,
+            ),
+            HTTPStatus.CONTENT_TOO_LARGE: error_response(
+                "The request body exceeds the environment-configured API limit.",
+                "Request too large",
+                REQUEST_TOO_LARGE,
+            ),
+            HTTPStatus.UNSUPPORTED_MEDIA_TYPE: error_response(
+                "The submitted request representation is unsupported.",
+                "Unsupported media type",
+                UNSUPPORTED_MEDIA_TYPE,
+            ),
+            HTTPStatus.TOO_MANY_REQUESTS: error_response(
+                "The client address exceeded its configured registration rate.",
+                "Too many requests",
+                THROTTLED,
+            ),
+            HTTPStatus.INTERNAL_SERVER_ERROR: error_response(
+                "An unexpected server failure was contained.",
+                "Internal server error",
+                INTERNAL_SERVER_ERROR,
+            ),
+            HTTPStatus.SERVICE_UNAVAILABLE: error_response(
+                "Authoritative account persistence or registration-admission state is unavailable.",
+                "Service unavailable",
+                SERVICE_UNAVAILABLE,
+            ),
+        },
+    )
+    def post(self, request: Request) -> Response:
+        """Validate and attempt one inactive account creation.
+
+        Applies confirmation and password policy before persistence, then returns only the accepted
+        public identifiers so success and duplicate outcomes remain indistinguishable.
+
+        Arguments:
+            request: REST request carrying registration fields.
+
+        Returns:
+            Accepted public registration representation.
+
+        Raises:
+            ServiceUnavailable: If authoritative persistence is unavailable.
+            ValidationError: If any submitted field fails validation.
+        """
+        serializer = RegistrationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        register_account(serializer.validated_data)
+
+        return Response(
+            {
+                "username": serializer.validated_data["username"],
+                "email": serializer.validated_data["email"],
+            },
+            status=HTTPStatus.CREATED,
+        )
+
+
+class UserProfileView(APIView):
+    """Read, update, or delete only the authenticated caller's profile.
+
+    Inherits from DRF's ``APIView`` and obtains account identity exclusively from authentication,
+    leaving no path or body selector that can address another account.
+
+    Attributes:
+        permission_classes: Authenticated callers only.
+
+    Members:
+        get: Return the caller's public profile.
+        patch: Update only the caller's email address.
+        delete: Irreversibly remove the caller after password confirmation.
+    """
+
+    permission_classes = (IsAuthenticated,)
+
+    @extend_schema(
+        operation_id="user_profile_retrieve",
+        summary="Return the caller's profile",
+        description=(
+            "Returns only the account resolved from the supplied credential. Query parameters are "
+            "ignored and no path or request identifier can select another account."
+        ),
+        request=None,
+        responses={
+            HTTPStatus.OK: OpenApiResponse(
+                response=UserProfileSerializer,
+                description="The authenticated caller's public profile.",
+                examples=[
+                    OpenApiExample(
+                        "Caller profile",
+                        value={
+                            "id": "00000000-0000-7000-8000-000000000000",
+                            "username": "river",
+                            "email": "river@localforge.invalid",
+                        },
+                        response_only=True,
+                    )
+                ],
+            ),
+            HTTPStatus.UNAUTHORIZED: OpenApiResponse(
+                response=ErrorEnvelopeSerializer,
+                description="A credential was absent, malformed, expired, revoked, or inactive.",
+                examples=[
+                    error_example("Credential absent", NOT_AUTHENTICATED),
+                    error_example("Authentication failed", AUTHENTICATION_FAILED),
+                ],
+            ),
+            HTTPStatus.METHOD_NOT_ALLOWED: error_response(
+                "The self-profile route supports only GET, PATCH, and DELETE.",
+                "Method not allowed",
+                METHOD_NOT_ALLOWED,
+            ),
+            HTTPStatus.NOT_ACCEPTABLE: error_response(
+                "The requested response representation is unavailable.",
+                "Not acceptable",
+                NOT_ACCEPTABLE,
+            ),
+            HTTPStatus.CONTENT_TOO_LARGE: error_response(
+                "The request body exceeds the environment-configured API limit.",
+                "Request too large",
+                REQUEST_TOO_LARGE,
+            ),
+            HTTPStatus.INTERNAL_SERVER_ERROR: error_response(
+                "An unexpected server failure was contained.",
+                "Internal server error",
+                INTERNAL_SERVER_ERROR,
+            ),
+            HTTPStatus.SERVICE_UNAVAILABLE: error_response(
+                "Authoritative account or credential state is unavailable.",
+                "Service unavailable",
+                SERVICE_UNAVAILABLE,
+            ),
+        },
+    )
+    def get(self, request: Request) -> Response:
+        """Return the authenticated caller's public profile.
+
+        Serializes only the account already resolved by authentication and deliberately ignores
+        query parameters, so no submitted identifier can select another row.
+
+        Arguments:
+            request: Authenticated REST request.
+
+        Returns:
+            Caller profile containing id, username, and email.
+        """
+        account = cast("User", request.user)
+
+        return Response(UserProfileSerializer(account).data, status=HTTPStatus.OK)
+
+    @extend_schema(
+        operation_id="user_profile_update",
+        summary="Update the caller's mutable profile",
+        description=(
+            "Partially updates only email. The account id, username, password, activation flag, "
+            "staff and superuser flags, groups, and permissions are rejected as undeclared fields."
+        ),
+        request=UserProfileUpdateSerializer,
+        responses={
+            HTTPStatus.OK: OpenApiResponse(
+                response=UserProfileSerializer,
+                description="The caller's profile after applying the submitted email change.",
+                examples=[
+                    OpenApiExample(
+                        "Profile updated",
+                        value={
+                            "id": "00000000-0000-7000-8000-000000000000",
+                            "username": "river",
+                            "email": "updated@localforge.invalid",
+                        },
+                        response_only=True,
+                    )
+                ],
+            ),
+            HTTPStatus.BAD_REQUEST: OpenApiResponse(
+                response=ErrorEnvelopeSerializer,
+                description=(
+                    "The body is malformed, email is invalid or occupied, or a forbidden field "
+                    "was submitted."
+                ),
+                examples=[
+                    error_example("Malformed JSON", PARSE_ERROR),
+                    error_example(
+                        "Invalid email",
+                        VALIDATION_ERROR,
+                        details={"email": ["Enter a valid email address."]},
+                    ),
+                    error_example(
+                        "Forbidden field",
+                        VALIDATION_ERROR,
+                        details={"is_active": ["This field is not allowed."]},
+                    ),
+                ],
+            ),
+            HTTPStatus.UNAUTHORIZED: OpenApiResponse(
+                response=ErrorEnvelopeSerializer,
+                description="A credential was absent, malformed, expired, revoked, or inactive.",
+                examples=[
+                    error_example("Credential absent", NOT_AUTHENTICATED),
+                    error_example("Authentication failed", AUTHENTICATION_FAILED),
+                ],
+            ),
+            HTTPStatus.METHOD_NOT_ALLOWED: error_response(
+                "The self-profile route supports only GET, PATCH, and DELETE.",
+                "Method not allowed",
+                METHOD_NOT_ALLOWED,
+            ),
+            HTTPStatus.NOT_ACCEPTABLE: error_response(
+                "The requested response representation is unavailable.",
+                "Not acceptable",
+                NOT_ACCEPTABLE,
+            ),
+            HTTPStatus.CONTENT_TOO_LARGE: error_response(
+                "The request body exceeds the environment-configured API limit.",
+                "Request too large",
+                REQUEST_TOO_LARGE,
+            ),
+            HTTPStatus.UNSUPPORTED_MEDIA_TYPE: error_response(
+                "The submitted request representation is unsupported.",
+                "Unsupported media type",
+                UNSUPPORTED_MEDIA_TYPE,
+            ),
+            HTTPStatus.INTERNAL_SERVER_ERROR: error_response(
+                "An unexpected server failure was contained.",
+                "Internal server error",
+                INTERNAL_SERVER_ERROR,
+            ),
+            HTTPStatus.SERVICE_UNAVAILABLE: error_response(
+                "Authoritative account or credential state is unavailable.",
+                "Service unavailable",
+                SERVICE_UNAVAILABLE,
+            ),
+        },
+    )
+    def patch(self, request: Request) -> Response:
+        """Update only the authenticated caller's email address.
+
+        Rejects every undeclared field, normalizes an accepted address, and lets PostgreSQL's
+        case-insensitive constraint authoritatively reject a conflict as field validation.
+
+        Arguments:
+            request: Authenticated REST request carrying an optional email field.
+
+        Returns:
+            Updated caller profile.
+
+        Raises:
+            ServiceUnavailable: If authoritative account persistence is unavailable.
+            ValidationError: If input is invalid or the email is already occupied.
+        """
+        serializer = UserProfileUpdateSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        account = cast("User", request.user)
+        email = serializer.validated_data.get("email")
+
+        if isinstance(email, str):
+            account.email = email
+            try:
+                with transaction.atomic(using="default"):
+                    account.save(
+                        using="default",
+                        update_fields=["email", "updated_at"],
+                    )
+            except IntegrityError as error:
+                raise ValidationError(
+                    {"email": ["That email address is not available."]}
+                ) from error
+            except DatabaseError as error:
+                raise ServiceUnavailable from error
+
+        return Response(UserProfileSerializer(account).data, status=HTTPStatus.OK)
+
+    @extend_schema(
+        operation_id="user_profile_delete",
+        summary="Delete the caller's account",
+        description=(
+            "Requires the current password and irreversibly deletes the authenticated account. No "
+            "identifier can select another account."
+        ),
+        request=UserProfileDeletionSerializer,
+        responses={
+            HTTPStatus.NO_CONTENT: OpenApiResponse(
+                response=None,
+                description=(
+                    "The account and its secondary token were removed. Detached JWT revocation "
+                    "metadata remains until scheduled cleanup; operational logs and backups remain "
+                    "under their documented retention policies."
+                ),
+            ),
+            HTTPStatus.BAD_REQUEST: OpenApiResponse(
+                response=ErrorEnvelopeSerializer,
+                description=(
+                    "The body is malformed, misses current_password, carries another field, or "
+                    "supplies an incorrect current password."
+                ),
+                examples=[
+                    error_example("Malformed JSON", PARSE_ERROR),
+                    error_example(
+                        "Missing current password",
+                        VALIDATION_ERROR,
+                        details={"current_password": ["This field is required."]},
+                    ),
+                    error_example(
+                        "Incorrect current password",
+                        VALIDATION_ERROR,
+                        details={"current_password": ["The current password is incorrect."]},
+                    ),
+                ],
+            ),
+            HTTPStatus.UNAUTHORIZED: OpenApiResponse(
+                response=ErrorEnvelopeSerializer,
+                description="A credential was absent, malformed, expired, revoked, or inactive.",
+                examples=[
+                    error_example("Credential absent", NOT_AUTHENTICATED),
+                    error_example("Authentication failed", AUTHENTICATION_FAILED),
+                ],
+            ),
+            HTTPStatus.METHOD_NOT_ALLOWED: error_response(
+                "The self-profile route supports only GET, PATCH, and DELETE.",
+                "Method not allowed",
+                METHOD_NOT_ALLOWED,
+            ),
+            HTTPStatus.NOT_ACCEPTABLE: error_response(
+                "The requested response representation is unavailable.",
+                "Not acceptable",
+                NOT_ACCEPTABLE,
+            ),
+            HTTPStatus.CONTENT_TOO_LARGE: error_response(
+                "The request body exceeds the environment-configured API limit.",
+                "Request too large",
+                REQUEST_TOO_LARGE,
+            ),
+            HTTPStatus.UNSUPPORTED_MEDIA_TYPE: error_response(
+                "The submitted request representation is unsupported.",
+                "Unsupported media type",
+                UNSUPPORTED_MEDIA_TYPE,
+            ),
+            HTTPStatus.INTERNAL_SERVER_ERROR: error_response(
+                "An unexpected server failure was contained.",
+                "Internal server error",
+                INTERNAL_SERVER_ERROR,
+            ),
+            HTTPStatus.SERVICE_UNAVAILABLE: error_response(
+                "Authoritative account or credential state is unavailable.",
+                "Service unavailable",
+                SERVICE_UNAVAILABLE,
+            ),
+        },
+    )
+    def delete(self, request: Request) -> Response:
+        """Irreversibly delete the authenticated caller after password confirmation.
+
+        Locks the caller's authoritative account by immutable identifier, validates the current
+        credential against that row, and removes it while the same transaction retains the lock.
+
+        Arguments:
+            request: Authenticated REST request carrying the current password.
+
+        Returns:
+            Empty successful response after deletion.
+
+        Raises:
+            AuthenticationFailed: If the authenticated account disappears before it can be locked.
+            ServiceUnavailable: If authoritative account deletion is unavailable.
+            ValidationError: If the current password is absent or incorrect.
+        """
+        serializer = UserProfileDeletionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        account_id = cast("User", request.user).pk
+        current_password = cast("str", serializer.validated_data["current_password"])
+
+        try:
+            with transaction.atomic(using="default"):
+                locked_account = (
+                    User.objects.using("default").select_for_update().get(pk=account_id)
+                )
+                if not verify_encoded_password(current_password, locked_account.password):
+                    raise ValidationError(
+                        {"current_password": ["The current password is incorrect."]}
+                    )
+
+                locked_account.delete(using="default")
+        except User.DoesNotExist as error:
+            raise AuthenticationFailed from error
+        except DatabaseError as error:
+            raise ServiceUnavailable from error
+
+        return Response(status=HTTPStatus.NO_CONTENT)
