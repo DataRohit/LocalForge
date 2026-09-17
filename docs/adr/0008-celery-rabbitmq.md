@@ -46,7 +46,7 @@ and its clients declare that shape in three places, governed by two settings, an
 reach first:
 
 | Declared by | Queue | Setting that fixes it |
-|---|---|---|
+| --- | --- | --- |
 | Control | the per-worker pidbox mailbox | `control_queue_exclusive` |
 | Mingle, and every control client | one reply queue per client, keyed by its object id | `control_queue_exclusive` |
 | Gossip | the worker event queue | `event_queue_exclusive` |
@@ -107,6 +107,19 @@ call published that way retries rather than failing at the caller. And `dont_aut
 `SoftTimeLimitExceeded`, which is raised inside the task; the hard `TimeLimitExceeded` is raised in the parent and
 never passes the retry wrapper, so listing it is defensive rather than load-bearing.
 
+## Ticket 32 at-most-once activation delivery
+
+Recorded 2026-09-17. Activation email keeps the platform-wide late acknowledgement and worker-loss redelivery
+settings, but overrides automatic exception retry for that task. Before SMTP it validates the signed token with the
+same salt, maximum age, and subject semantics as confirmation, locks the primary account before the token, and
+commits a durable delivery claim. A duplicate invocation, broker redelivery, or worker restart therefore cannot send
+the same bearer twice.
+
+The task reacquires account-first locks and holds them through SMTP so concurrent activation cannot make the link
+stale between authoritative validation and send. If SMTP rejects the message, or a worker is lost after the claim
+and before successful delivery, that token remains claimed and is not attempted again. `/users/resend_activation/`
+is the explicit recovery path and issues a new bearer. This chooses at-most-once email over hidden duplicate delivery;
+the accepted resend response makes recovery available without exposing account state.
 
 ## Considered options
 

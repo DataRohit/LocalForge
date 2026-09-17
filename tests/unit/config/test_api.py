@@ -655,6 +655,10 @@ def test_error_codes_are_declared_in_one_enumeration() -> None:
     """
     assert {code.value for code in ErrorCode} == {
         "api_error",
+        "activation_token_expired",
+        "activation_token_foreign",
+        "activation_token_malformed",
+        "activation_token_used",
         "authentication_failed",
         "bad_request",
         "internal_server_error",
@@ -691,6 +695,10 @@ def test_error_status_registry_exposes_the_complete_governing_matrix() -> None:
     expected = {
         HTTPStatus.BAD_REQUEST: frozenset(
             {
+                ErrorCode.ACTIVATION_TOKEN_EXPIRED,
+                ErrorCode.ACTIVATION_TOKEN_FOREIGN,
+                ErrorCode.ACTIVATION_TOKEN_MALFORMED,
+                ErrorCode.ACTIVATION_TOKEN_USED,
                 ErrorCode.BAD_REQUEST,
                 ErrorCode.PARSE_ERROR,
                 ErrorCode.VALIDATION_ERROR,

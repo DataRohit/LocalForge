@@ -138,8 +138,8 @@ def test_login_throttle_store_rejects_non_positive_rules(rule: RollingWindowRule
 def test_login_throttle_store_bounds_rows_inserted_per_admission() -> None:
     """Reject more dimensions than bounded cleanup can safely outpace.
 
-    Supplies three otherwise valid rules and verifies validation occurs before database access, so
-    every accepted call can insert at most two rows while cleanup may remove sixty-four.
+    Supplies four otherwise valid rules and verifies validation occurs before database access, so
+    every accepted call can insert at most three rows while cleanup may remove sixty-four.
 
     Arguments:
         None.
@@ -153,10 +153,10 @@ def test_login_throttle_store_bounds_rows_inserted_per_admission() -> None:
     store = PostgresLoginThrottleStore("default")
     rules = tuple(
         RollingWindowRule(key=f"dimension:{index}", limit=1, window_seconds=60)
-        for index in range(3)
+        for index in range(4)
     )
 
-    with pytest.raises(ValueError, match="at most two"):
+    with pytest.raises(ValueError, match="at most three"):
         store.admit(rules, member="request-id")
 
 

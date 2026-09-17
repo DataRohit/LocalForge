@@ -9,9 +9,11 @@ from typing import TYPE_CHECKING, override
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 
+from accounts.account_activation import save_account_from_admin
 from accounts.models import User
 
 if TYPE_CHECKING:
+    from django.forms import ModelForm
     from django.http import HttpRequest
 
     AccountAdminBase = UserAdmin[User]
@@ -39,6 +41,7 @@ class AccountAdmin(AccountAdminBase):
 
     Members:
         get_readonly_fields: Decide which fields this operator may edit.
+        save_model: Persist edits through the activation-aware account service.
     """
 
     ordering = ("created_at", "id")
@@ -76,6 +79,34 @@ class AccountAdmin(AccountAdminBase):
             return fields
 
         return fields + self.privileged_fields
+
+    @override
+    def save_model(
+        self,
+        request: HttpRequest,
+        obj: User,
+        form: ModelForm[User],
+        change: bool,
+    ) -> None:
+        """Persist one administration edit with activation transition handling.
+
+        Routes every existing-account submission through the primary-locking service so activation
+        and inactive email changes invalidate outstanding links in the same transaction.
+
+        Arguments:
+            request: Request carrying the operator making the change.
+            obj: Account populated from the validated administration form.
+            form: Validated account administration form.
+            change: Whether the account already exists.
+
+        Returns:
+            None.
+        """
+        if change:
+            save_account_from_admin(obj)
+            return
+
+        super().save_model(request, obj, form, change)
 
     fieldsets = (
         (None, {"fields": ("id", "username", "password")}),

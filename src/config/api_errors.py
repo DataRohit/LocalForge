@@ -51,6 +51,10 @@ class ErrorCode(StrEnum):
         THROTTLED: Request exceeded an applicable rate limit.
         UNSUPPORTED_MEDIA_TYPE: Request representation is unsupported.
         VALIDATION_ERROR: Submitted fields failed validation.
+        ACTIVATION_TOKEN_EXPIRED: Activation token exceeded its configured lifetime.
+        ACTIVATION_TOKEN_FOREIGN: Activation token does not belong to the submitted account.
+        ACTIVATION_TOKEN_MALFORMED: Activation token cannot be decoded or authenticated.
+        ACTIVATION_TOKEN_USED: Activation token has already completed activation.
 
     Members:
         None beyond those inherited from ``StrEnum``.
@@ -71,6 +75,10 @@ class ErrorCode(StrEnum):
     THROTTLED = "throttled"
     UNSUPPORTED_MEDIA_TYPE = "unsupported_media_type"
     VALIDATION_ERROR = "validation_error"
+    ACTIVATION_TOKEN_EXPIRED = "activation_token_expired"  # noqa: S105
+    ACTIVATION_TOKEN_FOREIGN = "activation_token_foreign"  # noqa: S105
+    ACTIVATION_TOKEN_MALFORMED = "activation_token_malformed"  # noqa: S105
+    ACTIVATION_TOKEN_USED = "activation_token_used"  # noqa: S105
 
 
 class ServiceUnavailable(APIException):
@@ -91,6 +99,86 @@ class ServiceUnavailable(APIException):
     status_code = HTTPStatus.SERVICE_UNAVAILABLE
     default_code = ErrorCode.SERVICE_UNAVAILABLE
     default_detail = "A required service is unavailable."
+
+
+class ActivationTokenExpired(APIException):
+    """Represent an activation token beyond its allowed lifetime.
+
+    Inherits from DRF's ``APIException`` and fixes the public status while the shared handler
+    supplies the stable code and message.
+
+    Attributes:
+        status_code: HTTP bad-request status.
+        default_code: Stable framework-facing exception code.
+        default_detail: Safe framework-facing exception detail.
+
+    Members:
+        None.
+    """
+
+    status_code = HTTPStatus.BAD_REQUEST
+    default_code = ErrorCode.ACTIVATION_TOKEN_EXPIRED
+    default_detail = "The activation token has expired."
+
+
+class ActivationTokenForeign(APIException):
+    """Represent a token not bound to the submitted account.
+
+    Inherits from DRF's ``APIException`` and deliberately covers missing accounts and missing token
+    records too, preventing the distinction from disclosing account existence.
+
+    Attributes:
+        status_code: HTTP bad-request status.
+        default_code: Stable framework-facing exception code.
+        default_detail: Safe framework-facing exception detail.
+
+    Members:
+        None.
+    """
+
+    status_code = HTTPStatus.BAD_REQUEST
+    default_code = ErrorCode.ACTIVATION_TOKEN_FOREIGN
+    default_detail = "The activation token does not match the account."
+
+
+class ActivationTokenMalformed(APIException):
+    """Represent a token that cannot be authenticated or decoded.
+
+    Inherits from DRF's ``APIException`` and exposes no signing or parsing detail through the
+    shared error envelope.
+
+    Attributes:
+        status_code: HTTP bad-request status.
+        default_code: Stable framework-facing exception code.
+        default_detail: Safe framework-facing exception detail.
+
+    Members:
+        None.
+    """
+
+    status_code = HTTPStatus.BAD_REQUEST
+    default_code = ErrorCode.ACTIVATION_TOKEN_MALFORMED
+    default_detail = "The activation token is malformed."
+
+
+class ActivationTokenUsed(APIException):
+    """Represent an activation token consumed by an earlier confirmation.
+
+    Inherits from DRF's ``APIException`` and distinguishes replay from malformed or expired input
+    without exposing any account fields.
+
+    Attributes:
+        status_code: HTTP bad-request status.
+        default_code: Stable framework-facing exception code.
+        default_detail: Safe framework-facing exception detail.
+
+    Members:
+        None.
+    """
+
+    status_code = HTTPStatus.BAD_REQUEST
+    default_code = ErrorCode.ACTIVATION_TOKEN_USED
+    default_detail = "The activation token has already been used."
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,6 +260,22 @@ VALIDATION_ERROR = ErrorDefinition(
     ErrorCode.VALIDATION_ERROR,
     "The submitted data is invalid.",
 )
+ACTIVATION_TOKEN_EXPIRED = ErrorDefinition(
+    ErrorCode.ACTIVATION_TOKEN_EXPIRED,
+    "The activation token has expired.",
+)
+ACTIVATION_TOKEN_FOREIGN = ErrorDefinition(
+    ErrorCode.ACTIVATION_TOKEN_FOREIGN,
+    "The activation token does not match the account.",
+)
+ACTIVATION_TOKEN_MALFORMED = ErrorDefinition(
+    ErrorCode.ACTIVATION_TOKEN_MALFORMED,
+    "The activation token is malformed.",
+)
+ACTIVATION_TOKEN_USED = ErrorDefinition(
+    ErrorCode.ACTIVATION_TOKEN_USED,
+    "The activation token has already been used.",
+)
 
 STATUS_DEFINITIONS: dict[int, ErrorDefinition] = {
     HTTPStatus.BAD_REQUEST: BAD_REQUEST,
@@ -192,6 +296,10 @@ ERROR_STATUS_REGISTRY = MappingProxyType(
         HTTPStatus.BAD_REQUEST: frozenset(
             {
                 ErrorCode.BAD_REQUEST,
+                ErrorCode.ACTIVATION_TOKEN_EXPIRED,
+                ErrorCode.ACTIVATION_TOKEN_FOREIGN,
+                ErrorCode.ACTIVATION_TOKEN_MALFORMED,
+                ErrorCode.ACTIVATION_TOKEN_USED,
                 ErrorCode.PARSE_ERROR,
                 ErrorCode.VALIDATION_ERROR,
             }
@@ -238,5 +346,9 @@ EXCEPTION_DEFINITIONS: dict[type[Exception], ErrorDefinition] = {
     UnsupportedMediaType: UNSUPPORTED_MEDIA_TYPE,
     Throttled: THROTTLED,
     ServiceUnavailable: SERVICE_UNAVAILABLE,
+    ActivationTokenExpired: ACTIVATION_TOKEN_EXPIRED,
+    ActivationTokenForeign: ACTIVATION_TOKEN_FOREIGN,
+    ActivationTokenMalformed: ACTIVATION_TOKEN_MALFORMED,
+    ActivationTokenUsed: ACTIVATION_TOKEN_USED,
     APIException: API_ERROR,
 }

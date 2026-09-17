@@ -10,8 +10,9 @@ their own account, and nobody can read or modify anyone else's.
 - [x] Registration creates an inactive account and returns the created representation without any sensitive field.
 - [x] Registration requires a password confirmation and applies the configured password validators, returning
       per-field errors in the standard envelope.
-- [x] Registering with an existing username or email returns the same response as a successful registration, so
-      accounts cannot be enumerated; the real outcome is communicated only by the email that follows.
+- [x] Registering with an existing username or email returns the same response and observes the same configured
+      minimum public duration as successful registration, so accounts cannot be enumerated; the real outcome is
+      communicated only by the email that follows.
 - [x] The profile endpoint returns the authenticated caller's own account and never accepts an identifier that
       would let it return someone else's.
 - [x] The profile endpoint supports partial update of the mutable fields only; the active flag, permissions flags,
@@ -28,6 +29,8 @@ their own account, and nobody can read or modify anyone else's.
 
 - Registration returns `201` with `username` and normalized `email`; the database identifier and account state are
   omitted so PostgreSQL `LOWER` duplicates can return the identical public status and body.
+- Every completed registration `201` observes the configured monotonic `0.200`-second minimum from the earliest DRF
+  view boundary; validation, throttle, activation-confirmation, and infrastructure-error responses do not.
 - `/users/me/` returns `id`, `username`, and `email`; only `email` is mutable because username changes belong to the
   dedicated route in the fixed surface.
 - Successful deletion returns `204`. Its OpenAPI response documents retained detached JWT revocation metadata,

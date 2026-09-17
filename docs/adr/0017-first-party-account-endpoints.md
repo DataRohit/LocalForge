@@ -5,9 +5,9 @@ date: 2026-09-13
 
 # First-party account endpoints instead of Djoser
 
-The required API surface is exactly Djoser's fourteen endpoints. We implement them ourselves on DRF,
-`djangorestframework-simplejwt` 5.5.1, and DRF's bundled `authtoken`, keeping the URLs identical. We do **not**
-install Djoser.
+The required API surface follows Djoser's account contracts on DRF, `djangorestframework-simplejwt` 5.5.1, and
+DRF's bundled `authtoken`, with the activation confirmation folded into the fixed `/users/` route as recorded
+below. We do **not** install Djoser.
 
 This reverses the obvious choice, so the evidence is recorded in full. All checked 2026-09-13.
 
@@ -65,12 +65,57 @@ different duplicate status.
 `/users/me/` represents the caller as `id`, `username`, and `email`. Only `email` is mutable there: `id` is the
 immutable account identifier, while username changes remain owned by the dedicated username route already fixed in
 the application surface. Profile deletion returns `204`; its schema records that the account and secondary token
-are removed while detached JWT revocation metadata, operational logs, and backups remain subject to their existing
-cleanup and retention policies.
+are removed while digest-only activation classification tombstones, detached JWT revocation metadata, operational
+logs, and backups remain subject to their existing cleanup and retention policies.
 
 SimpleJWT carries one unreleased **breaking** change on `master` — a 404 becomes a 401. If the VCS escape from
 [0016](./0016-accept-release-lag.md) is ever taken for this package, that status change must be reflected in the
 documented contract.
+
+## Ticket 32 activation route and token contract
+
+Recorded 2026-09-17. [Djoser's published activation contract](https://djoser.readthedocs.io/en/latest/base_endpoints.html#user-activate)
+uses `POST` with `uid` and `token`, and explicitly says the emailed URL belongs to a frontend that submits that POST
+rather than to the activation endpoint itself. Its default endpoint path is `/users/activation/`, but LocalForge's
+closed route table contains `/users/` and `/users/resend_activation/` and no activation route. The route table is the
+more specific project contract.
+
+LocalForge therefore preserves the POST method and request shape while folding confirmation into `POST /users/`.
+Registration bodies still contain `username`, `email`, `password`, and `password_confirm`; activation bodies contain
+only `account` and `token`. The email link is built on `DJANGO_SITE_URL` at `/users/?account=...&token=...`, for a
+frontend to submit those values to the versioned `/users/` POST. No `/users/activation/` route exists.
+
+Activation tokens are timestamp-signed with Django's signing API, bind the immutable account key and a random nonce,
+and are stored only as SHA-256 digests. A successful confirmation locks the account before its token record, activates
+the account, and consumes every outstanding link for that account in one primary-database transaction. Expired,
+foreign, malformed, and used tokens return distinct stable `400` codes without exposing account fields.
+
+`POST /users/resend_activation/` returns the same `202` body for unknown, inactive, and active addresses. It publishes
+the same activation-shaped background task in every case, but only an inactive account has an authoritative digest
+record the task can resolve into a recipient. The resend boundary uses primary-backed atomic rolling windows of
+`30/hour` per client address and `3/hour` per normalized email, adding the same `3/hour` immutable account identity
+when one exists. The email bucket never changes at account creation, so earlier unknown-address admissions constrain
+the later account and carries no existence-dependent discriminator. Only a complete request body with exact shape
+`{email}` and a valid normalized address records the address, stable email, and optional account dimensions, for at
+most three events. Undeclared fields, missing fields, non-object bodies, invalid email values, and other methods
+record nothing. Valid requests lock a resolved primary account row before sorted advisory admission locks.
+PostgreSQL loss fails closed with the shared correlated `503`.
+
+Duplicate inactive registration uses the same normalized-email and immutable-account activation-mail admission,
+independent of caller address. Denial or admission-store loss keeps the exact public `201` response and performs the
+same dummy signing and task-publication work without creating a real token or sending mail. Registration therefore
+does not become an inbox-flooding bypass and does not disclose the duplicate.
+
+Resend issuance and confirmation serialize on the primary account row before token rows, and both re-read active
+state after acquiring it. Queue publication carries Celery expiry equal to the signed lifetime remaining at commit.
+The task repeats the same signature, age, subject, active, use, and digest checks, then commits a durable claim before
+its sole SMTP attempt. Automatic retry is disabled only for this task; late acknowledgement remains enabled and a
+duplicate or redelivered invocation observes the claim and sends nothing. SMTP failure recovers through resend.
+
+Activation records retain an immutable subject identifier and use a nullable account reference. An already-used
+bearer therefore remains `activation_token_used` after account deletion, while an unissued or mismatched bearer stays
+`activation_token_foreign`. Token material is still digest-only. Ticket 43 owns bounded primary cleanup after the
+signed maximum age, using the issue-time retention index; Ticket 32 does not implement Phase 6 scheduling.
 
 The `crypto` extra exists and pulls only `cryptography>=3.3.1`. It is needed solely for RS\*/ES\* signing; with the
 default HS256 it is dead weight and is **not** installed.

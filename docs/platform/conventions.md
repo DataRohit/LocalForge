@@ -197,6 +197,10 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `DJANGO_TOKEN_LOGIN_ACCOUNT_THROTTLE_RATE` | `django-uv5n2` | strict atomic token-login admissions per primary-resolved account identity in one rolling window | `5/minute` | no | yes |
 | `DJANGO_TOKEN_LOGIN_ADDRESS_THROTTLE_RATE` | `django-uv5n2` | strict atomic token-login admissions per client address in one rolling window | `30/minute` | no | yes |
 | `DJANGO_USER_REGISTRATION_ADDRESS_THROTTLE_RATE` | `django-uv5n2` | strict atomic account-registration admissions per client address in one rolling window | `5/minute` | no | yes |
+| `DJANGO_USER_REGISTRATION_MINIMUM_RESPONSE_DURATION_SECONDS` | `django-uv5n2` | monotonic public response floor applied only to completed indistinguishable registration outcomes | `0.200` | no | yes |
+| `DJANGO_ACCOUNT_ACTIVATION_TOKEN_LIFETIME_SECONDS` | `django-uv5n2` | maximum age of one signed account-activation token | `86400` | no | yes |
+| `DJANGO_ACCOUNT_ACTIVATION_RESEND_ADDRESS_THROTTLE_RATE` | `django-uv5n2` | strict atomic activation-resend admissions per client address | `30/hour` | no | yes |
+| `DJANGO_ACCOUNT_ACTIVATION_RESEND_ACCOUNT_THROTTLE_RATE` | `django-uv5n2` | shared strict atomic activation-resend rate for the stable normalized-email and optional immutable-account dimensions | `3/hour` | no | yes |
 | `DJANGO_LOG_LEVEL` | `django-uv5n2` | root log level | `INFO` | no | no |
 | `DJANGO_TIME_ZONE` | `django-uv5n2` | application timezone, stored datetimes stay UTC-aware | `UTC` | no | no |
 | `LOCALFORGE_WAIT_SERVICES` | `django-uv5n2` | services the entrypoint waits for before migrating, space-separated. Deliberately outside a vendor prefix, like the backup schedules | `postgres valkey-cache` | no | no |
@@ -285,13 +289,22 @@ Both dimensions are stored in the primary beside account state. Deterministicall
 advisory locks serialize a bucket across workers; primary-database time defines each rolling window; only active
 events are counted; and one request is recorded in every dimension only when all dimensions admit. Every admission
 also takes a separate global cleanup advisory lock and deletes at most the oldest 64 events beyond the longest
-supported one-day window through the `occurred_at`-leading index. An admission inserts at most two events, so
-sustained admission removes expired backlog faster than it can add rows without making any request delete an
-unbounded current-bucket history. Cache clear, `allkeys-lru` eviction, and cache restart therefore cannot reset
-security state. PostgreSQL outage or table loss fails closed as a correlated `503`, and rejection carries the
-database-derived `Retry-After`. No global password-hash concurrency limit is added: Ticket 29's exact `30/minute`
-address and `5/minute` account admission bounds are the accepted governing limits, and neither this ticket nor the
-registry defines another limit.
+supported one-day window through the `occurred_at`-leading index. Login admission inserts at most two events and
+activation resend inserts at most three, so sustained admission removes expired backlog faster than it can add rows
+without making any request delete an unbounded current-bucket history. Cache clear, `allkeys-lru` eviction, and cache
+restart therefore cannot reset security state. PostgreSQL outage or table loss fails closed as a correlated `503`,
+and rejection carries the database-derived `Retry-After`. No global password-hash concurrency limit is added:
+Ticket 29's exact `30/minute` address and `5/minute` account admission bounds are the accepted governing limits, and
+neither this ticket nor the registry defines another limit.
+
+Activation resend uses the same primary-backed admission store with separate opaque bucket prefixes. Only a complete
+request body with the exact shape `{email}` and a valid normalized address records admission. It atomically records
+the client address, the stable normalized-email identity, and, when the primary resolves an account, that immutable
+account identity: at most three events. The email identity is identical before and after account creation and has no
+existence-dependent discriminator. Undeclared fields, a missing field, a non-object body, an invalid email, and every
+non-POST method record nothing. The exact limits are `30/hour` per client address and `3/hour` for each recipient
+identity. Database loss fails closed with the same correlated `503` and primary-derived `Retry-After` behavior as
+login admission.
 
 Testing overrides, present only in `.env.testing`:
 

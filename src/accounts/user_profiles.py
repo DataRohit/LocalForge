@@ -17,7 +17,12 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
 from django.db import DatabaseError, IntegrityError, transaction
-from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
+from drf_spectacular.utils import (
+    OpenApiExample,
+    OpenApiResponse,
+    PolymorphicProxySerializer,
+    extend_schema,
+)
 from rest_framework.exceptions import AuthenticationFailed, ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -25,9 +30,25 @@ from rest_framework.serializers import CharField, EmailField, Serializer, UUIDFi
 from rest_framework.throttling import BaseThrottle
 from rest_framework.views import APIView
 
+from accounts.account_activation import (
+    RESEND_ACCEPTED_MESSAGE,
+    ActivationConfirmationSerializer,
+    ActivationResendSerializer,
+    ActivationResendThrottle,
+    admit_duplicate_activation,
+    confirm_activation,
+    issue_activation,
+    request_activation_resend,
+    schedule_dummy_activation,
+    validated_activation_resend_data,
+)
 from accounts.login_throttle import PostgresLoginThrottleStore, RollingWindowRule
 from accounts.models import User
 from accounts.normalisation import normalise_email
+from accounts.registration_timing import (
+    monotonic_now,
+    wait_for_minimum_registration_duration,
+)
 from accounts.token_authentication import (
     ErrorEnvelopeSerializer,
     error_example,
@@ -37,6 +58,10 @@ from accounts.token_authentication import (
     verify_encoded_password,
 )
 from config.api_errors import (
+    ACTIVATION_TOKEN_EXPIRED,
+    ACTIVATION_TOKEN_FOREIGN,
+    ACTIVATION_TOKEN_MALFORMED,
+    ACTIVATION_TOKEN_USED,
     AUTHENTICATION_FAILED,
     INTERNAL_SERVER_ERROR,
     METHOD_NOT_ALLOWED,
@@ -210,6 +235,22 @@ class RegistrationResponseSerializer(Serializer):
     email = EmailField(read_only=True)
 
 
+class ActivationResendResponseSerializer(Serializer):
+    """Describe the enumeration-resistant resend response.
+
+    Inherits from DRF's ``Serializer`` and exposes one accepted statement shared by unknown,
+    inactive, and active account outcomes.
+
+    Attributes:
+        detail: State-independent accepted response text.
+
+    Members:
+        None beyond those inherited from ``Serializer``.
+    """
+
+    detail = CharField(read_only=True)
+
+
 class UserProfileSerializer(Serializer):
     """Describe the authenticated caller's public profile.
 
@@ -311,7 +352,9 @@ class UserRegistrationThrottle(BaseThrottle):
             ValueError: If the configured rate is invalid.
         """
         del view
-        if request.method != "POST":
+        if request.method != "POST" or (
+            isinstance(request.data, Mapping) and set(request.data) == {"account", "token"}
+        ):
             return True
 
         limit, window_seconds = parse_throttle_rate(
@@ -359,8 +402,8 @@ class UserRegistrationThrottle(BaseThrottle):
 def register_account(validated_data: Mapping[str, object]) -> None:
     """Attempt one inactive account creation without disclosing duplicates.
 
-    Hashes the credential before the single PostgreSQL insert and treats an integrity conflict as an
-    accepted duplicate, so case-insensitive uniqueness never changes the public status or body.
+    Hashes the credential before persistence and contains activation-token failure behind the same
+    accepted outcome for new and duplicate candidates, rolling back a new account with its token.
 
     Arguments:
         validated_data: Validated registration fields.
@@ -369,7 +412,7 @@ def register_account(validated_data: Mapping[str, object]) -> None:
         None whether the account was created or already existed.
 
     Raises:
-        ServiceUnavailable: If authoritative account persistence fails for another database reason.
+        ServiceUnavailable: If authoritative account persistence or duplicate lookup fails.
     """
     account = User(
         username=cast("str", validated_data["username"]),
@@ -379,9 +422,39 @@ def register_account(validated_data: Mapping[str, object]) -> None:
 
     try:
         with transaction.atomic(using="default"):
-            account.save(using="default", force_insert=True)
-    except IntegrityError:
-        return
+            try:
+                activation_issued = True
+                with transaction.atomic(using="default"):
+                    account.save(using="default", force_insert=True)
+                    try:
+                        issue_activation(account)
+                    except DatabaseError, ServiceUnavailable:
+                        activation_issued = False
+                        transaction.set_rollback(True, using="default")
+            except IntegrityError:
+                try:
+                    existing = (
+                        User.objects.using("default").select_for_update().get(email=account.email)
+                    )
+                except User.DoesNotExist:
+                    schedule_dummy_activation()
+                    return
+                try:
+                    admitted = admit_duplicate_activation(existing, account.email)
+                except DatabaseError:
+                    admitted = False
+                if admitted and not existing.is_active:
+                    try:
+                        with transaction.atomic(using="default"):
+                            issue_activation(existing)
+                    except DatabaseError, ServiceUnavailable:
+                        schedule_dummy_activation()
+                else:
+                    schedule_dummy_activation()
+                return
+
+            if not activation_issued:
+                schedule_dummy_activation()
     except DatabaseError as error:
         raise ServiceUnavailable from error
 
@@ -398,12 +471,36 @@ class UserRegistrationView(APIView):
         throttle_classes: Authoritative client-address registration admission.
 
     Members:
+        initial: Capture the earliest practical monotonic request boundary.
         post: Validate and attempt one inactive account creation.
     """
 
     authentication_classes: tuple[type, ...] = ()
     permission_classes = (AllowAny,)
     throttle_classes = (UserRegistrationThrottle,)
+    _registration_started_at: float
+
+    @override
+    def initial(self, request: Request, *args: Any, **kwargs: Any) -> None:
+        """Capture timing before authentication, negotiation, and throttling.
+
+        Starts the accepted-registration floor at the earliest DRF view boundary while allowing
+        every validation, throttle, activation-confirmation, and infrastructure error to return
+        without an artificial delay.
+
+        Arguments:
+            request: Initialized DRF request entering policy checks.
+            *args: Positional route arguments supplied by dispatch.
+            **kwargs: Named route arguments supplied by dispatch.
+
+        Returns:
+            None.
+
+        Raises:
+            APIException: If negotiation, permissions, or throttling rejects the request.
+        """
+        self._registration_started_at = monotonic_now()
+        super().initial(request, *args, **kwargs)
 
     @extend_schema(
         operation_id="user_registration",
@@ -412,9 +509,14 @@ class UserRegistrationView(APIView):
             "Validates and attempts one inactive account creation. The response contains only the "
             "submitted username and normalized email. A username or email already occupied under "
             "PostgreSQL LOWER identity semantics returns the same status and body as creation, so "
-            "account existence is disclosed only by the later activation email."
+            "account existence is disclosed only by the later activation email. Every completed "
+            "201 response observes the environment-configured monotonic minimum duration."
         ),
-        request=RegistrationSerializer,
+        request=PolymorphicProxySerializer(
+            component_name="UserRegistrationOrActivation",
+            serializers=[RegistrationSerializer, ActivationConfirmationSerializer],
+            resource_type_field_name=None,
+        ),
         auth=[],
         responses={
             HTTPStatus.CREATED: OpenApiResponse(
@@ -432,6 +534,13 @@ class UserRegistrationView(APIView):
                         response_only=True,
                     )
                 ],
+            ),
+            HTTPStatus.NO_CONTENT: OpenApiResponse(
+                response=None,
+                description=(
+                    "The submitted account-bound token was valid, unused, and consumed while the "
+                    "account became active."
+                ),
             ),
             HTTPStatus.BAD_REQUEST: OpenApiResponse(
                 response=ErrorEnvelopeSerializer,
@@ -465,10 +574,26 @@ class UserRegistrationView(APIView):
                             ]
                         },
                     ),
+                    error_example(
+                        "Activation token expired",
+                        ACTIVATION_TOKEN_EXPIRED,
+                    ),
+                    error_example(
+                        "Activation token belongs to another account",
+                        ACTIVATION_TOKEN_FOREIGN,
+                    ),
+                    error_example(
+                        "Activation token malformed",
+                        ACTIVATION_TOKEN_MALFORMED,
+                    ),
+                    error_example(
+                        "Activation token already used",
+                        ACTIVATION_TOKEN_USED,
+                    ),
                 ],
             ),
             HTTPStatus.METHOD_NOT_ALLOWED: error_response(
-                "The user collection accepts only POST registration.",
+                "The user collection accepts only POST registration or activation.",
                 "Method not allowed",
                 METHOD_NOT_ALLOWED,
             ),
@@ -520,16 +645,143 @@ class UserRegistrationView(APIView):
             ServiceUnavailable: If authoritative persistence is unavailable.
             ValidationError: If any submitted field fails validation.
         """
+        if isinstance(request.data, Mapping) and set(request.data) == {"account", "token"}:
+            activation = ActivationConfirmationSerializer(data=request.data)
+            activation.is_valid(raise_exception=True)
+            confirm_activation(activation.validated_data)
+            return Response(status=HTTPStatus.NO_CONTENT)
+
         serializer = RegistrationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         register_account(serializer.validated_data)
-
+        wait_for_minimum_registration_duration(
+            self._registration_started_at,
+            settings.USER_REGISTRATION_MINIMUM_RESPONSE_DURATION_SECONDS,
+        )
         return Response(
             {
                 "username": serializer.validated_data["username"],
                 "email": serializer.validated_data["email"],
             },
             status=HTTPStatus.CREATED,
+        )
+
+
+class ActivationResendView(APIView):
+    """Accept an activation resend without exposing account state.
+
+    Inherits from DRF's ``APIView`` and returns one accepted representation for unknown, inactive,
+    and active addresses while authoritative task execution sends only for an inactive account.
+
+    Attributes:
+        authentication_classes: Empty because an inactive caller has no credential.
+        permission_classes: Public access required for activation recovery.
+        throttle_classes: Authoritative address and account resend admission.
+
+    Members:
+        post: Validate and schedule one indistinguishable resend outcome.
+    """
+
+    authentication_classes: tuple[type, ...] = ()
+    permission_classes = (AllowAny,)
+    throttle_classes = (ActivationResendThrottle,)
+
+    @extend_schema(
+        operation_id="user_activation_resend",
+        summary="Resend account activation",
+        description=(
+            "Accepts an email address and returns the same response for unknown, inactive, and "
+            "active accounts. Only an inactive matching account receives a fresh activation link."
+        ),
+        request=ActivationResendSerializer,
+        auth=[],
+        responses={
+            HTTPStatus.ACCEPTED: OpenApiResponse(
+                response=ActivationResendResponseSerializer,
+                description=(
+                    "The resend request was accepted without disclosing whether an account matched."
+                ),
+                examples=[
+                    OpenApiExample(
+                        "Activation resend accepted",
+                        value={"detail": RESEND_ACCEPTED_MESSAGE},
+                        response_only=True,
+                    )
+                ],
+            ),
+            HTTPStatus.BAD_REQUEST: OpenApiResponse(
+                response=ErrorEnvelopeSerializer,
+                description=(
+                    "The body is malformed, misses the email field, carries an undeclared field, "
+                    "or contains an invalid email address."
+                ),
+                examples=[
+                    error_example("Malformed JSON", PARSE_ERROR),
+                    error_example(
+                        "Invalid email",
+                        VALIDATION_ERROR,
+                        details={"email": ["Enter a valid email address."]},
+                    ),
+                ],
+            ),
+            HTTPStatus.METHOD_NOT_ALLOWED: error_response(
+                "Activation resend accepts only POST.",
+                "Method not allowed",
+                METHOD_NOT_ALLOWED,
+            ),
+            HTTPStatus.NOT_ACCEPTABLE: error_response(
+                "The requested response representation is unavailable.",
+                "Not acceptable",
+                NOT_ACCEPTABLE,
+            ),
+            HTTPStatus.CONTENT_TOO_LARGE: error_response(
+                "The request body exceeds the environment-configured API limit.",
+                "Request too large",
+                REQUEST_TOO_LARGE,
+            ),
+            HTTPStatus.UNSUPPORTED_MEDIA_TYPE: error_response(
+                "The submitted request representation is unsupported.",
+                "Unsupported media type",
+                UNSUPPORTED_MEDIA_TYPE,
+            ),
+            HTTPStatus.TOO_MANY_REQUESTS: error_response(
+                "The client address or account exceeded its configured activation resend rate.",
+                "Too many requests",
+                THROTTLED,
+            ),
+            HTTPStatus.INTERNAL_SERVER_ERROR: error_response(
+                "An unexpected server failure was contained.",
+                "Internal server error",
+                INTERNAL_SERVER_ERROR,
+            ),
+            HTTPStatus.SERVICE_UNAVAILABLE: error_response(
+                "Authoritative account, token, or resend-admission state is unavailable.",
+                "Service unavailable",
+                SERVICE_UNAVAILABLE,
+            ),
+        },
+    )
+    def post(self, request: Request) -> Response:
+        """Validate and accept one activation resend.
+
+        Normalizes the address before account resolution and returns the same body whether no
+        account, an inactive account, or an active account matched.
+
+        Arguments:
+            request: REST request carrying one email address.
+
+        Returns:
+            Enumeration-resistant accepted representation.
+
+        Raises:
+            ServiceUnavailable: If authoritative persistence is unavailable.
+            ValidationError: If the submitted address fails validation.
+        """
+        validated_data = validated_activation_resend_data(request)
+        request_activation_resend(cast("str", validated_data["email"]))
+        return Response(
+            {"detail": RESEND_ACCEPTED_MESSAGE},
+            status=HTTPStatus.ACCEPTED,
         )
 
 
@@ -759,9 +1011,10 @@ class UserProfileView(APIView):
             HTTPStatus.NO_CONTENT: OpenApiResponse(
                 response=None,
                 description=(
-                    "The account and its secondary token were removed. Detached JWT revocation "
-                    "metadata remains until scheduled cleanup; operational logs and backups remain "
-                    "under their documented retention policies."
+                    "The account and its secondary token were removed. Digest-only activation "
+                    "classification tombstones and detached JWT revocation metadata remain until "
+                    "scheduled cleanup; operational logs and backups remain under their documented "
+                    "retention policies."
                 ),
             ),
             HTTPStatus.BAD_REQUEST: OpenApiResponse(

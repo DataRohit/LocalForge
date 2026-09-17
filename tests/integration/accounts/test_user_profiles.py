@@ -14,9 +14,11 @@ from http import HTTPStatus
 from importlib import import_module
 from threading import Barrier
 from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from django.contrib.auth.hashers import PBKDF2PasswordHasher
+from django.core import mail
 from django.db import DatabaseError, close_old_connections, transaction
 from django.db.backends.utils import CursorWrapper
 from django.test import Client as DjangoClient
@@ -1682,7 +1684,7 @@ def test_registration_and_profile_routes_document_every_reachable_response() -> 
     expected = {
         "registration": (
             cast("dict[str, Any]", registration["post"]),
-            {"201", "400", "405", "406", "413", "415", "429", "500", "503"},
+            {"201", "204", "400", "405", "406", "413", "415", "429", "500", "503"},
         ),
         "profile-get": (
             cast("dict[str, Any]", profile["get"]),
@@ -1737,6 +1739,7 @@ def test_registration_and_profile_routes_document_every_reachable_response() -> 
     }
     assert set(cast("dict[str, object]", profile_update["properties"])) == {"email"}
     assert "same status and body" in registration_description
+    assert "activation" in deletion_description
     assert "JWT revocation metadata" in deletion_description
     assert "logs" in deletion_description
     assert "backups" in deletion_description
@@ -1798,6 +1801,18 @@ def test_registration_observed_statuses_exactly_match_its_documented_contract(
             data="unsupported",
             content_type="text/plain",
             REMOTE_ADDR=f"2001:db8::{uuid.uuid4().int & 0xFFFF:x}",
+        )
+        activation_link = next(
+            word for word in mail.outbox[-1].body.split() if word.startswith("http")
+        )
+        activation_query = parse_qs(urlparse(activation_link).query)
+        activated = client.post(
+            "/api/v1/users/",
+            {
+                "account": activation_query["account"][0],
+                "token": activation_query["token"][0],
+            },
+            content_type="application/json",
         )
 
     throttle_address = f"2001:db8::{uuid.uuid4().int & 0xFFFF:x}"
@@ -1868,6 +1883,7 @@ def test_registration_observed_statuses_exactly_match_its_documented_contract(
         response.status_code
         for response in (
             success,
+            activated,
             invalid,
             method_not_allowed,
             not_acceptable,

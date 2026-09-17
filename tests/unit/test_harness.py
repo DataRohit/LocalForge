@@ -24,7 +24,18 @@ REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent
 TOKEN_AUTHENTICATION_TEST = (
     REPOSITORY_ROOT / "tests" / "integration" / "accounts" / "test_token_authentication.py"
 )
-SECURITY_TIMING_CASES = 13
+JWT_AUTHENTICATION_TEST = (
+    REPOSITORY_ROOT / "tests" / "integration" / "accounts" / "test_jwt_authentication.py"
+)
+REGISTRATION_TIMING_TEST = (
+    REPOSITORY_ROOT / "tests" / "integration" / "accounts" / "test_registration_timing.py"
+)
+SECURITY_TIMING_TESTS = (
+    TOKEN_AUTHENTICATION_TEST,
+    JWT_AUTHENTICATION_TEST,
+    REGISTRATION_TIMING_TEST,
+)
+SECURITY_TIMING_CASES = 19
 UNDECLARED_INTEGRATION_TEST = '''"""Probe module for the collection guard.
 
 Holds one integration test that names no service, so a real collection can be observed rejecting
@@ -73,17 +84,18 @@ def _configured_tasks() -> dict[str, Any]:
     return cast("dict[str, Any]", manifest["tool"]["poe"]["tasks"])
 
 
-def _collected_token_authentication_cases(marker_expression: str | None = None) -> set[str]:
-    """Collect token-authentication cases through pytest's command interface.
+def _collected_security_timing_cases(marker_expression: str | None = None) -> set[str]:
+    """Collect every security-timing module through pytest's command interface.
 
     Runs collection without the suite's execution defaults and returns the node identifiers pytest
-    exposes, allowing marker partitions to be compared without executing service-backed tests.
+    exposes, allowing the complete marker partition to be compared without executing service-backed
+    tests.
 
     Arguments:
         marker_expression: Optional pytest marker expression selecting one partition.
 
     Returns:
-        Collected token-authentication node identifiers.
+        Collected security-timing node identifiers.
 
     Raises:
         AssertionError: If pytest cannot collect the requested partition.
@@ -101,7 +113,7 @@ def _collected_token_authentication_cases(marker_expression: str | None = None) 
     ]
     if marker_expression is not None:
         command.extend(["-m", marker_expression])
-    command.append(str(TOKEN_AUTHENTICATION_TEST))
+    command.extend(str(path) for path in SECURITY_TIMING_TESTS)
     completed = subprocess.run(
         command,
         capture_output=True,
@@ -116,7 +128,7 @@ def _collected_token_authentication_cases(marker_expression: str | None = None) 
     return {
         line.strip()
         for line in completed.stdout.splitlines()
-        if line.startswith("tests/integration/accounts/test_token_authentication.py::")
+        if line.startswith("tests/integration/accounts/test_") and "::" in line
     }
 
 
@@ -494,8 +506,8 @@ def test_focused_integration_task_excludes_security_timing_by_default() -> None:
 def test_security_timing_marker_partitions_every_statistical_case_exactly_once() -> None:
     """Partition statistical timing cases from deterministic core coverage.
 
-    Collects the module through pytest and proves the timing and core selections are disjoint,
-    exhaustive, and contain the approved thirteen independently parametrized wall-clock cases.
+    Collects every timing module through pytest and proves the timing and core selections are
+    disjoint, exhaustive, and contain the approved nineteen independently distributable cases.
 
     Arguments:
         None.
@@ -506,9 +518,9 @@ def test_security_timing_marker_partitions_every_statistical_case_exactly_once()
     Raises:
         AssertionError: If a case is missing, duplicated, or assigned to the wrong stage.
     """
-    all_cases = _collected_token_authentication_cases()
-    timing_cases = _collected_token_authentication_cases("security_timing")
-    core_cases = _collected_token_authentication_cases("not security_timing")
+    all_cases = _collected_security_timing_cases()
+    timing_cases = _collected_security_timing_cases("security_timing")
+    core_cases = _collected_security_timing_cases("not security_timing")
 
     assert len(timing_cases) == SECURITY_TIMING_CASES
     assert timing_cases.isdisjoint(core_cases)

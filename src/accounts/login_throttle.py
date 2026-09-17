@@ -16,7 +16,7 @@ from accounts.models import LoginThrottleEvent
 
 GLOBAL_CLEANUP_BATCH_SIZE = 64
 GLOBAL_RETENTION_SECONDS = 86400
-MAX_RULES_PER_ADMISSION = 2
+MAX_RULES_PER_ADMISSION = 3
 GLOBAL_CLEANUP_LOCK = "login-throttle:global-cleanup"
 
 
@@ -113,7 +113,7 @@ class PostgresLoginThrottleStore:
             message = "at least one rolling-window rule is required"
             raise ValueError(message)
         if len(rules) > MAX_RULES_PER_ADMISSION:
-            message = "at most two rolling-window rules are supported"
+            message = "at most three rolling-window rules are supported"
             raise ValueError(message)
         if len({rule.key for rule in rules}) != len(rules):
             message = "rolling-window rule keys must be unique"

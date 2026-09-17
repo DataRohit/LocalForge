@@ -31,7 +31,7 @@ Enumerated here because the ones that never appear in view code are exactly the 
 must be reachable in a test and present in the schema.
 
 | Status | Raised by | Typical cause |
-|---|---|---|
+| --- | --- | --- |
 | 400 | DRF serializer validation | malformed body, failed field validation |
 | 401 | authentication classes | missing, malformed, or expired credential |
 | 403 | permission classes, CSRF middleware | authenticated but not permitted; CSRF failure on a session-authenticated write |
@@ -43,6 +43,13 @@ must be reachable in a test and present in the schema.
 | 429 | throttling | rate limit exceeded, with `Retry-After` |
 | 500 | unhandled exception | must return the envelope, never a traceback or an HTML page |
 | 503 | health, readiness, security admission | a required dependency or authoritative throttle store is down |
+
+Ticket 32 adds four stable `400` codes beneath the same envelope: `activation_token_expired`,
+`activation_token_foreign`, `activation_token_malformed`, and `activation_token_used`. The foreign response also
+covers a correctly signed token whose account or digest record is absent, so it never distinguishes a missing
+account from a mismatched one. A consumed token retains an immutable subject after account deletion, so replay
+continues to return `activation_token_used`; an unissued, mismatched, or unused orphan remains
+`activation_token_foreign`.
 
 Three that are easy to miss: **406 and 415** come from content negotiation, **413** is rejected before Django
 constructs the request or a parser reads the body, and **403 from CSRF** is middleware or session authentication,
@@ -62,6 +69,19 @@ whether an account exists — not through the status code, not through the body,
 password reset returns the same accepted response for a known and an unknown address, and the schema says so
 explicitly rather than leaving a client to infer it from a 404 that never comes.
 
+Registration also preserves its normal `201` status and submitted public body when activation-token persistence
+alone fails. A new account and any partial token state roll back together, while new, inactive-email, active-email,
+and username-only candidates all schedule equivalent dummy work. Authoritative account persistence, lookup, and
+registration-admission outages remain `503` because they cannot safely establish the registration outcome.
+
+Every completed registration outcome returning that indistinguishable `201` also observes the environment's
+`DJANGO_USER_REGISTRATION_MINIMUM_RESPONSE_DURATION_SECONDS` monotonic response floor. Timing starts at the earliest
+DRF view boundary and sleeps only the remaining duration after validation, password hashing, persistence, and real
+or dummy activation work. Validation failures, throttles, activation confirmation, and infrastructure `503`
+responses do not wait on the floor. The `0.200`-second default was set on 2026-09-17 from a 30-sample host baseline:
+the slowest existing accepted-path median was `0.131551` seconds, so the floor retains approximately 52 percent
+margin without imposing a multi-second public delay.
+
 This is a deliberate divergence from "return the most semantically precise code", and it is recorded here so a
 future reviewer does not "fix" it.
 
@@ -74,7 +94,7 @@ state through timing.
 The accepted profiles are atomic per configured hasher:
 
 | Hasher | Accepted profile | Other recognized profiles |
-|---|---|---|
+| --- | --- | --- |
 | Argon2 | Exact current type, version, time, memory, parallelism, and output length | Reset required |
 | PBKDF2-SHA256 | Current iterations, or a positive lower iteration count | Lower iterations are runtime-hardened to current equivalent cost; higher iterations require reset |
 | PBKDF2-SHA1 | Current iterations, or a positive lower iteration count | Lower iterations are runtime-hardened to current equivalent cost; higher iterations require reset |

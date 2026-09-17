@@ -161,7 +161,7 @@ class LoginThrottleEvent(models.Model):
         occurred_at: Primary-database time at which the request was admitted.
 
     Members:
-        None beyond those inherited from ``Model``.
+        __str__: Render the opaque bucket and correlated request identifier.
     """
 
     bucket = models.CharField(max_length=160)
@@ -218,3 +218,82 @@ class LoginThrottleEvent(models.Model):
             None.
         """
         return f"{self.bucket}:{self.request_id}"
+
+
+class ActivationToken(models.Model):
+    """One issued account-activation token.
+
+    Inherits from ``Model`` and stores a digest, immutable subject, nullable live account, use
+    state, and durable delivery timestamps so deletion preserves classification and redelivery is
+    at most once.
+
+    Attributes:
+        id: Database-generated token record identifier.
+        account: Live account the token can activate, or null after account deletion.
+        subject_id: Immutable account identifier retained independently of the live account.
+        digest: SHA-256 digest of the signed token.
+        issued_at: Time the token record was created.
+        used_at: Time activation consumed the token, or null while unused.
+        delivery_claimed_at: Time one worker durably claimed the sole SMTP attempt.
+        delivered_at: Time SMTP accepted the claimed message, or null if it failed.
+
+    Members:
+        __str__: Render the owning account and record keys without token material.
+    """
+
+    account = models.ForeignKey(
+        User,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="activation_tokens",
+    )
+    subject_id = models.UUIDField()
+    digest = models.CharField(max_length=64, unique=True)
+    issued_at = models.DateTimeField(auto_now_add=True)
+    used_at = models.DateTimeField(null=True)
+    delivery_claimed_at = models.DateTimeField(null=True)
+    delivered_at = models.DateTimeField(null=True)
+
+    class Meta:
+        """Database rules for activation token records.
+
+        Orders records newest first and indexes immutable subject state plus issue time for
+        activation classification and the scheduler-owned bounded-retention cleanup.
+
+        Attributes:
+            ordering: Newest token records first.
+            indexes: Subject use-state and chronological retention lookup paths.
+
+        Members:
+            None.
+        """
+
+        ordering = ("-issued_at", "-id")
+        indexes = (
+            models.Index(
+                fields=("subject_id", "used_at"),
+                name="accounts_activation_subject_used",
+            ),
+            models.Index(
+                fields=("issued_at", "id"),
+                name="accounts_activation_issued_id",
+            ),
+        )
+
+    @override
+    def __str__(self) -> str:
+        """Render the record without exposing its token digest.
+
+        Returns the owning account and record keys, which identify the row for administration
+        without copying activation credential material into a display or log.
+
+        Arguments:
+            None.
+
+        Returns:
+            Safe activation-token record description.
+
+        Raises:
+            None.
+        """
+        return f"{self.subject_id}:{self.pk}"

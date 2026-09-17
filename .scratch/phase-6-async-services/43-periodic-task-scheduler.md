@@ -17,6 +17,9 @@ admin rather than hardcoded, and exactly one instance running so nothing double-
       authoritative primary. An observed run removes expired outstanding tokens and their cascaded blacklist rows,
       preserves unexpired rows, and records a visible success or failure. Ticket 30 proves the command semantics;
       this ticket owns operational scheduling and retention.
+- [ ] The scheduler removes activation-token tombstones only after their signed maximum age has elapsed, in bounded
+      primary-database batches ordered by issue time. Ticket 32 owns the nullable account reference, immutable
+      subject, retention index, and classification semantics; this ticket owns operational scheduling and evidence.
 - [ ] A periodic task that overruns its interval does not stack up unboundedly.
 - [ ] Scheduler logs reach the log store, and a missed or failed run is visible.
 - [ ] The schedule state persists across a restart without re-firing tasks that already ran.
