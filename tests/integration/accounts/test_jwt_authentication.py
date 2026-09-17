@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from http import HTTPStatus
 from importlib import import_module
-from threading import Barrier
+from threading import Barrier, Event
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
@@ -32,11 +32,14 @@ from django.contrib.auth.hashers import (
 from django.core.management import call_command
 from django.db import DatabaseError, connections
 from django.db.migrations.recorder import MigrationRecorder
+from django.db.models import QuerySet
 from django.test import Client as DjangoClient
 from django.test import RequestFactory, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.urls import include, path
 from django.utils import timezone
 from freezegun import freeze_time
+from rest_framework.authtoken.models import Token as DRFToken
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -166,10 +169,15 @@ TIMING_WARMUP_REQUESTS = 5
 TIMING_MEASURED_REQUESTS = 30
 TIMING_RELATIVE_LIMIT = 0.20
 TIMING_ABSOLUTE_LIMIT_SECONDS = 0.010
+CONCURRENT_TIMING_BATCH_SIZE = 4
+CONCURRENT_TIMING_WARMUP_BATCHES = 1
+CONCURRENT_TIMING_MEASURED_BATCHES = 7
+TOKEN_LIFETIME_CLOCK_TOLERANCE_SECONDS = 1
 SUPPORTED_HASHER_ALGORITHMS = tuple(hasher.algorithm for hasher in get_hashers())
 timing_logger = logging.getLogger("localforge.tests.jwt_timing")
 LOW_ADDRESS_RATE = "1/minute"
 HIGH_LOGIN_RATE = "1000/minute"
+RACE_WAIT_SECONDS = 45
 pytestmark = pytest.mark.xdist_group(name="jwt-authentication")
 
 
@@ -340,6 +348,65 @@ def test_active_account_can_create_access_and_refresh_tokens(
 @pytest.mark.integration
 @pytest.mark.services("postgres")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
+def test_jwt_create_locks_revalidated_account_before_outstanding_token(
+    client: Client,
+    django_user_model: type[User],
+) -> None:
+    """Lock the authenticated account only inside JWT issuance.
+
+    Captures a successful public exchange and proves the lock-free account read precedes the
+    issuance transaction, whose account lock precedes the outstanding-token insert.
+
+    Arguments:
+        client: Django test client issuing JWT create.
+        django_user_model: Configured custom user model class.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If verification locks the account or issuance touches token state first.
+    """
+    username = f"jwt-create-lock-order-{uuid.uuid4().hex}"
+    django_user_model.objects.create_user(
+        username,
+        f"{username}@localforge.invalid",
+        PASSWORD,
+        is_active=True,
+    )
+
+    with (
+        override_settings(**_unlimited_login_settings()),
+        CaptureQueriesContext(connections["default"]) as captured,
+    ):
+        response = _post_credentials(
+            client,
+            username,
+            PASSWORD,
+            remote_address=f"2001:db8::{uuid.uuid4().int & 0xFFFF:x}",
+        )
+
+    statements = [query["sql"] for query in captured.captured_queries]
+    account_reads = [
+        index
+        for index, statement in enumerate(statements)
+        if '"accounts_user"' in statement and "SELECT" in statement
+    ]
+    account_lock = next(index for index in account_reads if "FOR UPDATE" in statements[index])
+    outstanding_insert = next(
+        index
+        for index, statement in enumerate(statements)
+        if '"token_blacklist_outstandingtoken"' in statement and "INSERT" in statement
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert any("FOR UPDATE" not in statements[index] for index in account_reads[:account_lock])
+    assert account_lock < outstanding_insert
+
+
+@pytest.mark.integration
+@pytest.mark.services("postgres")
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_refresh_rotates_blacklists_and_verify_discloses_no_claims(
     client: Client,
     django_user_model: type[User],
@@ -397,11 +464,31 @@ def test_refresh_rotates_blacklists_and_verify_discloses_no_claims(
         content_type="application/json",
     )
 
-    assert set(access.payload) == {"token_type", "exp", "iat", "jti", "user_id"}
-    assert set(refresh.payload) == {"token_type", "exp", "iat", "jti", "user_id"}
+    assert set(access.payload) == {
+        "token_type",
+        "exp",
+        "iat",
+        "jti",
+        "user_id",
+        "hash_password",
+    }
+    assert set(refresh.payload) == {
+        "token_type",
+        "exp",
+        "iat",
+        "jti",
+        "user_id",
+        "hash_password",
+    }
     assert access["user_id"] == refresh["user_id"] == str(account.pk)
-    assert access["exp"] - access["iat"] == settings.JWT_ACCESS_TOKEN_LIFETIME_SECONDS
-    assert refresh["exp"] - refresh["iat"] == settings.JWT_REFRESH_TOKEN_LIFETIME_SECONDS
+    assert (
+        abs(access["exp"] - access["iat"] - settings.JWT_ACCESS_TOKEN_LIFETIME_SECONDS)
+        <= TOKEN_LIFETIME_CLOCK_TOLERANCE_SECONDS
+    )
+    assert (
+        abs(refresh["exp"] - refresh["iat"] - settings.JWT_REFRESH_TOKEN_LIFETIME_SECONDS)
+        <= TOKEN_LIFETIME_CLOCK_TOLERANCE_SECONDS
+    )
     assert rotated.status_code == HTTPStatus.OK
     assert set(rotated_pair) == {"access", "refresh"}
     assert rotated_pair["refresh"] != pair["refresh"]
@@ -660,6 +747,194 @@ def test_concurrent_refresh_replay_has_exactly_one_winner(
         statuses = sorted(executor.map(lambda _index: rotate(), range(2)))
 
     assert statuses == [HTTPStatus.OK, HTTPStatus.UNAUTHORIZED]
+
+
+@pytest.mark.integration
+@pytest.mark.services("postgres")
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
+def test_refresh_locks_account_before_outstanding_token(
+    client: Client,
+    django_user_model: type[User],
+) -> None:
+    """Acquire the account row before the refresh credential row.
+
+    Captures one successful rotation and verifies its two row locks follow the same account-first
+    order as password replacement, preventing opposite-order deadlocks.
+
+    Arguments:
+        client: Django test client issuing JWT requests.
+        django_user_model: Configured custom account model.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If rotation locks outstanding state before its account.
+    """
+    username = f"jwt-lock-order-{uuid.uuid4().hex}"
+    account = django_user_model.objects.create_user(
+        username,
+        f"{username}@localforge.invalid",
+        PASSWORD,
+        is_active=True,
+    )
+    refresh = jwt_authentication_module.PrimaryRefreshToken.for_user(account)
+
+    with CaptureQueriesContext(connections["default"]) as captured:
+        response = client.post(
+            "/api/v1/jwt/refresh/",
+            {"refresh": str(refresh)},
+            content_type="application/json",
+        )
+
+    lock_statements = [
+        query["sql"] for query in captured.captured_queries if "FOR UPDATE" in query["sql"]
+    ]
+
+    assert response.status_code == HTTPStatus.OK
+    assert '"accounts_user"' in lock_statements[0]
+    assert '"token_blacklist_outstandingtoken"' in lock_statements[1]
+
+
+@pytest.mark.integration
+@pytest.mark.services("postgres")
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
+@pytest.mark.timeout(90)
+def test_concurrent_refresh_and_password_change_leave_no_surviving_old_identity(
+    django_user_model: type[User],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rotate and replace a password without deadlock or surviving credentials.
+
+    Pauses refresh after its account-then-outstanding lock sequence, starts password replacement on
+    another connection, then resumes both operations and proves account-first locking lets rotation
+    finish before replacement revokes both the original and replacement credentials.
+
+    Arguments:
+        django_user_model: Configured custom account model.
+        monkeypatch: Fixture pausing the outstanding-token lock boundary.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If opposite lock order deadlocks or leaves a credential usable.
+    """
+    current_password = "Concurrent-Refresh-Password-33"  # noqa: S105
+    new_password = "Concurrent-Refresh-Password-34"  # noqa: S105
+    suffix = uuid.uuid4().hex
+    account = django_user_model.objects.create_user(
+        f"jwt-password-race-{suffix}",
+        f"jwt-password-race-{suffix}@localforge.invalid",
+        current_password,
+        is_active=True,
+    )
+    authorization = DRFToken.objects.using("default").create(user=account)
+    original_refresh = jwt_authentication_module.PrimaryRefreshToken.for_user(account)
+    outstanding_locked = Event()
+    release_refresh = Event()
+    original_get = QuerySet.get
+
+    def pause_outstanding_lock(queryset: QuerySet[Any], *args: object, **kwargs: object) -> object:
+        """Pause after refresh has locked the account and refresh credential rows.
+
+        Preserves every other queryset lookup and holds the selected rows while the competing
+        password transaction waits for the account lock before credential revocation.
+
+        Arguments:
+            queryset: Model queryset performing the lookup.
+            *args: Positional lookup arguments.
+            **kwargs: Keyword lookup arguments.
+
+        Returns:
+            Real selected model instance.
+
+        Raises:
+            AssertionError: If the test does not release rotation.
+        """
+        result = original_get(queryset, *args, **kwargs)
+        if queryset.model is OutstandingToken and queryset.query.select_for_update:
+            outstanding_locked.set()
+            assert release_refresh.wait(timeout=RACE_WAIT_SECONDS)
+        return result
+
+    monkeypatch.setattr(QuerySet, "get", pause_outstanding_lock)
+
+    def refresh() -> tuple[int, dict[str, str]]:
+        """Rotate the original refresh credential on an independent connection.
+
+        Returns the public status and replacement pair after the lock pause resumes.
+        Keeps thread-local database state isolated from the competing password request.
+
+        Arguments:
+            None.
+
+        Returns:
+            Rotation status and decoded body.
+        """
+        connections.close_all()
+        try:
+            response = DjangoClient().post(
+                "/api/v1/jwt/refresh/",
+                {"refresh": str(original_refresh)},
+                content_type="application/json",
+            )
+            return response.status_code, cast("dict[str, str]", response.json())
+        finally:
+            connections.close_all()
+
+    def change_password() -> int:
+        """Replace the password on an independent connection.
+
+        Uses the public authenticated route so account locking and complete credential revocation
+        match production behavior.
+
+        Arguments:
+            None.
+
+        Returns:
+            Password-change response status.
+        """
+        connections.close_all()
+        try:
+            response = DjangoClient().post(
+                "/api/v1/users/set_password/",
+                {
+                    "current_password": current_password,
+                    "new_password": new_password,
+                    "new_password_confirm": new_password,
+                },
+                content_type="application/json",
+                headers={"authorization": f"Token {authorization.key}"},
+            )
+            return response.status_code
+        finally:
+            connections.close_all()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        refresh_future = executor.submit(refresh)
+        assert outstanding_locked.wait(timeout=RACE_WAIT_SECONDS)
+        password_future = executor.submit(change_password)
+        time.sleep(0.5)
+        release_refresh.set()
+        refresh_status, pair = refresh_future.result(timeout=RACE_WAIT_SECONDS)
+        password_status = password_future.result(timeout=RACE_WAIT_SECONDS)
+
+    replacement_probe = DjangoClient().post(
+        "/api/v1/jwt/refresh/",
+        {"refresh": pair.get("refresh", "")},
+        content_type="application/json",
+    )
+    access_probe = DjangoClient().post(
+        "/api/v1/jwt/verify/",
+        {"token": pair.get("access", "")},
+        content_type="application/json",
+    )
+
+    assert refresh_status == HTTPStatus.OK
+    assert password_status == HTTPStatus.NO_CONTENT
+    assert replacement_probe.status_code == HTTPStatus.UNAUTHORIZED
+    assert access_probe.status_code == HTTPStatus.UNAUTHORIZED
 
 
 @pytest.mark.integration
@@ -1554,7 +1829,7 @@ def test_token_operations_map_primary_account_outages_to_service_unavailable(
     pair = cast("dict[str, str]", created.json())
     credential = pair["refresh"] if field == "refresh" else pair["access"]
 
-    def fail_account_lookup(_token: object) -> None:
+    def fail_account_lookup(_token: object, *, for_update: bool = False) -> None:
         """Raise the primary database failure under test.
 
         Preserves token parsing and blacklist reads while replacing only current account-state
@@ -1562,6 +1837,7 @@ def test_token_operations_map_primary_account_outages_to_service_unavailable(
 
         Arguments:
             _token: Validated token whose owner would be resolved.
+            for_update: Whether the caller requested a locked account read.
 
         Returns:
             Never returns.
@@ -1569,6 +1845,7 @@ def test_token_operations_map_primary_account_outages_to_service_unavailable(
         Raises:
             DatabaseError: Always, representing primary database loss.
         """
+        del for_update
         raise DatabaseError
 
     monkeypatch.setattr(jwt_authentication_module, "active_token_user", fail_account_lookup)
@@ -1923,6 +2200,135 @@ def test_jwt_create_wrong_and_unknown_credentials_meet_the_timing_criterion(
 @pytest.mark.integration
 @pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
+@pytest.mark.timeout(180)
+@pytest.mark.security_timing
+def test_concurrent_wrong_and_unknown_jwt_batches_meet_the_timing_criterion(
+    django_user_model: type[User],
+) -> None:
+    """Keep concurrent existing and unknown JWT rejection batches within the approved bound.
+
+    Releases four same-identity requests together, alternates seven measured batches per outcome,
+    and compares median wall durations using the established twenty-percent or ten-millisecond
+    criterion so account row locks cannot serialize password hash work.
+
+    Arguments:
+        django_user_model: Configured custom user model class.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If an existing-account batch reveals row-lock serialization.
+    """
+    username = f"jwt-concurrent-timing-{uuid.uuid4().hex}"
+    unknown_username = f"jwt-concurrent-unknown-{uuid.uuid4().hex}"
+    django_user_model.objects.create_user(
+        username,
+        f"{username}@localforge.invalid",
+        PASSWORD,
+        is_active=True,
+    )
+
+    def measure_batch(candidate: str, batch_index: int) -> float:
+        """Measure one synchronized rejected JWT credential batch.
+
+        Releases one batch through independent HTTP clients and includes their complete request
+        lifetimes in the wall duration used for the public timing comparison.
+
+        Arguments:
+            candidate: Existing or unknown username shared by the batch.
+            batch_index: Stable address namespace for this measured batch.
+
+        Returns:
+            Batch wall duration in seconds.
+
+        Raises:
+            AssertionError: If any request reaches another public response.
+        """
+        barrier = Barrier(CONCURRENT_TIMING_BATCH_SIZE)
+
+        def reject(request_index: int) -> int:
+            """Submit one synchronized rejection on a thread-local connection.
+
+            Opens and closes thread-local database state around one public request so connection
+            sharing cannot hide or introduce credential-path serialization.
+
+            Arguments:
+                request_index: Unique client-address suffix inside the batch.
+
+            Returns:
+                Public response status.
+            """
+            connections.close_all()
+            try:
+                barrier.wait()
+                response = _post_credentials(
+                    DjangoClient(),
+                    candidate,
+                    f"{PASSWORD}-wrong",
+                    remote_address=f"198.19.{batch_index}.{request_index + 1}",
+                )
+                return response.status_code
+            finally:
+                connections.close_all()
+
+        started = time.perf_counter()
+        with ThreadPoolExecutor(max_workers=CONCURRENT_TIMING_BATCH_SIZE) as executor:
+            statuses = list(executor.map(reject, range(CONCURRENT_TIMING_BATCH_SIZE)))
+        elapsed = time.perf_counter() - started
+        assert statuses == [HTTPStatus.UNAUTHORIZED] * CONCURRENT_TIMING_BATCH_SIZE
+        return elapsed
+
+    with override_settings(**_unlimited_login_settings()):
+        for warmup in range(CONCURRENT_TIMING_WARMUP_BATCHES):
+            measure_batch(username, warmup * 2)
+            measure_batch(unknown_username, warmup * 2 + 1)
+
+        wrong_samples: list[float] = []
+        unknown_samples: list[float] = []
+        for attempt in range(CONCURRENT_TIMING_MEASURED_BATCHES):
+            first, second = (
+                (username, unknown_username) if attempt % 2 == 0 else (unknown_username, username)
+            )
+            first_elapsed = measure_batch(first, 10 + attempt * 2)
+            second_elapsed = measure_batch(second, 11 + attempt * 2)
+            if first == username:
+                wrong_samples.append(first_elapsed)
+                unknown_samples.append(second_elapsed)
+            else:
+                unknown_samples.append(first_elapsed)
+                wrong_samples.append(second_elapsed)
+
+    wrong_median = statistics.median(wrong_samples)
+    unknown_median = statistics.median(unknown_samples)
+    median_delta = abs(wrong_median - unknown_median)
+    allowed_delta = max(
+        max(wrong_median, unknown_median) * TIMING_RELATIVE_LIMIT,
+        TIMING_ABSOLUTE_LIMIT_SECONDS,
+    )
+    timing_logger.info(
+        (
+            "jwt concurrent credential timing batch=%d samples=%d wrong=%.6fs "
+            "unknown=%.6fs delta=%.6fs allowed=%.6fs"
+        ),
+        CONCURRENT_TIMING_BATCH_SIZE,
+        CONCURRENT_TIMING_MEASURED_BATCHES,
+        wrong_median,
+        unknown_median,
+        median_delta,
+        allowed_delta,
+    )
+
+    assert median_delta <= allowed_delta, (
+        f"batch={CONCURRENT_TIMING_BATCH_SIZE} wrong={wrong_median:.6f}s "
+        f"unknown={unknown_median:.6f}s delta={median_delta:.6f}s "
+        f"allowed={allowed_delta:.6f}s"
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.services("postgres", "valkey-cache")
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_json_web_tokens_never_leave_their_success_response_or_request_body(
     client: Client,
     django_user_model: type[User],
@@ -2255,12 +2661,17 @@ def test_jwt_routes_document_every_reachable_response_with_examples() -> None:
         "dict[str, Any]",
         paths["/api/v1/jwt/refresh/"]["post"]["responses"],
     )
+    refresh_operation = cast(
+        "dict[str, Any]",
+        paths["/api/v1/jwt/refresh/"]["post"],
+    )
     verify_responses = cast(
         "dict[str, Any]",
         paths["/api/v1/jwt/verify/"]["post"]["responses"],
     )
 
     assert "token-persistence" in create_responses["503"]["description"]
+    assert "account is locked before outstanding-token state" in refresh_operation["description"]
     assert "invalid protocol claims" in refresh_responses["401"]["description"]
     assert "outstanding-token" in refresh_responses["503"]["description"]
     assert "invalid protocol claims" in verify_responses["401"]["description"]

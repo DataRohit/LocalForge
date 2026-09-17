@@ -51,6 +51,11 @@ account from a mismatched one. A consumed token retains an immutable subject aft
 continues to return `activation_token_used`; an unissued, mismatched, or unused orphan remains
 `activation_token_foreign`.
 
+Ticket 33 adds the parallel password-recovery codes `password_reset_token_expired`,
+`password_reset_token_foreign`, `password_reset_token_malformed`, and `password_reset_token_used`. Used
+classification survives account deletion through the immutable subject tombstone. A missing record, missing live
+account, changed email, mismatched account, or otherwise invalid current account binding is foreign.
+
 Three that are easy to miss: **406 and 415** come from content negotiation, **413** is rejected before Django
 constructs the request or a parser reads the body, and **403 from CSRF** is middleware or session authentication,
 not a permission class. A route documented only with the codes its own code raises is incomplete.
@@ -84,6 +89,16 @@ margin without imposing a multi-second public delay.
 
 This is a deliberate divergence from "return the most semantically precise code", and it is recorded here so a
 future reviewer does not "fix" it.
+
+Password-reset request uses the same `0.200`-second monotonic floor and the same approved statistical criterion:
+five warmups followed by thirty measured known and unknown requests, with median delta no larger than the greater
+of twenty percent or ten milliseconds. Validation, throttling, token confirmation, and infrastructure failures do
+not wait on the floor.
+
+Password-reset token-record insertion alone is not an infrastructure failure visible at the public boundary. The
+active-account savepoint rolls back any partial record, publishes the same dummy task shape used by inactive and
+unknown outcomes, waits on the same floor, and returns the same `202` body. Common account lookup and admission loss
+remain `503` because the service cannot establish the shared outcome safely.
 
 Token login also treats stored password encodings outside the accepted verification profiles as reset-required.
 The login request does not verify those encodings: it runs the same fixed current-cost dummy schedule used for an

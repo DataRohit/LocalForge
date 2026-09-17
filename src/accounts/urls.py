@@ -1,12 +1,17 @@
 """Versioned account API routes.
 
-Maps the fixed authentication, registration, and self-profile endpoints built through Ticket 31,
-leaving every later activation, password, and username route absent until its owning ticket.
+Maps fixed authentication, registration, activation, self-profile, password-change, and
+password-recovery endpoints while leaving username-management routes absent until their ticket.
 """
 
 from django.urls import path
 
 from accounts.jwt_authentication import JWTCreateView, JWTRefreshView, JWTVerifyView
+from accounts.password_management import (
+    PasswordChangeView,
+    PasswordResetConfirmView,
+    PasswordResetRequestView,
+)
 from accounts.token_authentication import TokenLoginView, TokenLogoutView
 from accounts.user_profiles import ActivationResendView, UserProfileView, UserRegistrationView
 
@@ -19,6 +24,17 @@ urlpatterns = [
         "users/resend_activation/",
         ActivationResendView.as_view(),
         name="activation-resend",
+    ),
+    path("users/set_password/", PasswordChangeView.as_view(), name="password-change"),
+    path(
+        "users/reset_password/",
+        PasswordResetRequestView.as_view(),
+        name="password-reset",
+    ),
+    path(
+        "users/reset_password_confirm/",
+        PasswordResetConfirmView.as_view(),
+        name="password-reset-confirm",
     ),
     path("jwt/create/", JWTCreateView.as_view(), name="jwt-create"),
     path("jwt/refresh/", JWTRefreshView.as_view(), name="jwt-refresh"),

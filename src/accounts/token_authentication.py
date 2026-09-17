@@ -7,9 +7,12 @@ routes owned by Ticket 29.
 
 # mypy: disable-error-code=misc
 
+from __future__ import annotations
+
 import secrets
 from base64 import b64decode
 from collections.abc import Mapping
+from dataclasses import dataclass
 from enum import StrEnum
 from functools import cache
 from hashlib import sha256
@@ -28,7 +31,7 @@ from django.contrib.auth.hashers import (
     identify_hasher,
     make_password,
 )
-from django.db import DatabaseError, connections
+from django.db import DatabaseError, connections, transaction
 from django.db.models import Value
 from django.db.models.functions import Lower
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
@@ -61,6 +64,8 @@ from config.api_errors import (
 from config.logs import REQUEST_ID_META_KEY
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from argon2 import Parameters
     from rest_framework.request import Request
 
@@ -86,6 +91,29 @@ class PasswordHashDisposition(StrEnum):
     CURRENT = "current"
     RECOGNIZED_LOWER = "recognized-lower"
     RESET_REQUIRED = "reset-required"
+
+
+@dataclass(frozen=True, slots=True)
+class AuthenticatedCredentialSnapshot:
+    """Capture account security state established by credential verification.
+
+    Stores immutable identity and exact password encoding outside any row lock, together with an
+    optional precomputed preferred encoding that issuance may persist after locked revalidation.
+
+    Attributes:
+        account_id: Immutable primary account identifier.
+        encoded_password: Exact password encoding that authenticated the request.
+        is_active: Active state that authenticated the request.
+        replacement_encoded_password: Precomputed preferred encoding, or None when current.
+
+    Members:
+        None.
+    """
+
+    account_id: UUID
+    encoded_password: str
+    is_active: bool
+    replacement_encoded_password: str | None
 
 
 def _has_valid_base64(value: str, expected_length: int) -> bool:
@@ -649,19 +677,19 @@ class TokenLoginSerializer(Serializer):
     password = CharField(trim_whitespace=False, write_only=True)
 
 
-def verify_login_credentials(username: str, password: str) -> User:
+def verify_login_credentials(username: str, password: str) -> AuthenticatedCredentialSnapshot:
     """Verify token-login credentials without revealing account state.
 
-    Reads the primary so activation and password changes are immediately visible. Accepted profiles
-    replace their matching dummy, while reset-required profiles run only the unknown-account
-    schedule and cannot mutate the account.
+    Performs the complete bounded hash schedule without a row lock. Accepted profiles replace
+    their matching dummy, reset-required profiles run only the unknown-account schedule, and a
+    successful active match returns immutable state for issuance-time locked revalidation.
 
     Arguments:
         username: Submitted account username.
         password: Submitted raw password.
 
     Returns:
-        Active account whose password matched.
+        Immutable authenticated account and password-security snapshot.
 
     Raises:
         AuthenticationFailed: If the account is unknown, inactive, or has another password.
@@ -720,8 +748,47 @@ def verify_login_credentials(username: str, password: str) -> User:
     if account is None or not password_matches or not account.is_active:
         raise AuthenticationFailed
 
-    if account_requires_upgrade:
-        account.set_password(password)
+    replacement_encoded_password = make_password(password) if account_requires_upgrade else None
+
+    return AuthenticatedCredentialSnapshot(
+        account_id=account.pk,
+        encoded_password=account.password,
+        is_active=account.is_active,
+        replacement_encoded_password=replacement_encoded_password,
+    )
+
+
+def lock_authenticated_account(snapshot: AuthenticatedCredentialSnapshot) -> User:
+    """Lock and revalidate account state immediately before credential issuance.
+
+    Resolves the authenticated identity on the primary, compares active and password state exactly
+    with the lock-free snapshot, and persists only a precomputed preferred encoding before callers
+    issue credentials in the same transaction.
+
+    Arguments:
+        snapshot: Immutable state returned by complete credential verification.
+
+    Returns:
+        Locked active account whose security state still matches.
+
+    Raises:
+        AuthenticationFailed: If the account disappeared or its security state changed.
+        TransactionManagementError: If the caller has not opened a primary transaction.
+    """
+    try:
+        account = User.objects.using("default").select_for_update().get(pk=snapshot.account_id)
+    except User.DoesNotExist as error:
+        raise AuthenticationFailed from error
+
+    if (
+        account.is_active != snapshot.is_active
+        or not account.is_active
+        or account.password != snapshot.encoded_password
+    ):
+        raise AuthenticationFailed
+
+    if snapshot.replacement_encoded_password is not None:
+        account.password = snapshot.replacement_encoded_password
         account.save(using="default", update_fields=["password"])
 
     return account
@@ -839,7 +906,8 @@ class TokenLoginView(APIView):
                 INTERNAL_SERVER_ERROR,
             ),
             HTTPStatus.SERVICE_UNAVAILABLE: error_response(
-                "Authoritative shared login-throttle state is unavailable.",
+                "Authoritative account, login-admission, or token-persistence state is "
+                "unavailable.",
                 "Service unavailable",
                 SERVICE_UNAVAILABLE,
             ),
@@ -859,16 +927,21 @@ class TokenLoginView(APIView):
 
         Raises:
             AuthenticationFailed: If the submitted credentials cannot authenticate.
-            DatabaseError: If authoritative account or token persistence is unavailable.
+            ServiceUnavailable: If authoritative account or token persistence is unavailable.
             ValidationError: If the submitted fields are invalid.
         """
         serializer = TokenLoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        account = verify_login_credentials(
-            cast("str", serializer.validated_data["username"]),
-            cast("str", serializer.validated_data["password"]),
-        )
-        token, _created = Token.objects.using("default").get_or_create(user=account)
+        try:
+            snapshot = verify_login_credentials(
+                cast("str", serializer.validated_data["username"]),
+                cast("str", serializer.validated_data["password"]),
+            )
+            with transaction.atomic(using="default"):
+                account = lock_authenticated_account(snapshot)
+                token, _created = Token.objects.using("default").get_or_create(user=account)
+        except DatabaseError as error:
+            raise ServiceUnavailable from error
 
         return Response({"token": token.key}, status=HTTPStatus.OK)
 

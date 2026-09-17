@@ -19,6 +19,7 @@ from rest_framework_simplejwt.exceptions import (
     AuthenticationFailed as SimpleJWTAuthenticationFailed,
 )
 from rest_framework_simplejwt.settings import api_settings
+from rest_framework_simplejwt.utils import get_md5_hash_password
 
 from accounts.models import User
 from config.api_errors import ServiceUnavailable
@@ -28,7 +29,7 @@ if TYPE_CHECKING:
     from rest_framework_simplejwt.tokens import Token as JWTToken
 
 
-def active_token_user(validated_token: JWTToken) -> User:
+def active_token_user(validated_token: JWTToken, *, for_update: bool = False) -> User:
     """Resolve an active token owner through a parsed protocol identity.
 
     Parses the signed identity as the UUID this protocol issues before querying the authoritative
@@ -37,6 +38,7 @@ def active_token_user(validated_token: JWTToken) -> User:
 
     Arguments:
         validated_token: Validated token carrying the configured account identity claim.
+        for_update: Whether to lock the primary account row until transaction completion.
 
     Returns:
         Active account named by the token.
@@ -54,12 +56,19 @@ def active_token_user(validated_token: JWTToken) -> User:
     except ValueError as error:
         raise AuthenticationFailed from error
 
+    accounts = User.objects.using("default")
+    if for_update:
+        accounts = accounts.select_for_update()
     try:
-        user = User.objects.using("default").get(**{api_settings.USER_ID_FIELD: parsed_user_id})
+        user = accounts.get(**{api_settings.USER_ID_FIELD: parsed_user_id})
     except User.DoesNotExist as error:
         raise AuthenticationFailed from error
 
     if not user.is_active:
+        raise AuthenticationFailed
+    if validated_token.payload.get(api_settings.REVOKE_TOKEN_CLAIM) != get_md5_hash_password(
+        user.password
+    ):
         raise AuthenticationFailed
 
     return user

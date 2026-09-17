@@ -10,6 +10,7 @@ import socket
 import subprocess
 import sys
 import tomllib
+from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -30,12 +31,22 @@ JWT_AUTHENTICATION_TEST = (
 REGISTRATION_TIMING_TEST = (
     REPOSITORY_ROOT / "tests" / "integration" / "accounts" / "test_registration_timing.py"
 )
+PASSWORD_MANAGEMENT_TEST = (
+    REPOSITORY_ROOT / "tests" / "integration" / "accounts" / "test_password_management.py"
+)
 SECURITY_TIMING_TESTS = (
     TOKEN_AUTHENTICATION_TEST,
     JWT_AUTHENTICATION_TEST,
     REGISTRATION_TIMING_TEST,
+    PASSWORD_MANAGEMENT_TEST,
 )
-SECURITY_TIMING_CASES = 19
+SECURITY_TIMING_CASES_BY_TEST = {
+    TOKEN_AUTHENTICATION_TEST: 14,
+    JWT_AUTHENTICATION_TEST: 5,
+    REGISTRATION_TIMING_TEST: 2,
+    PASSWORD_MANAGEMENT_TEST: 1,
+}
+SECURITY_TIMING_CASES = 22
 UNDECLARED_INTEGRATION_TEST = '''"""Probe module for the collection guard.
 
 Holds one integration test that names no service, so a real collection can be observed rejecting
@@ -84,15 +95,20 @@ def _configured_tasks() -> dict[str, Any]:
     return cast("dict[str, Any]", manifest["tool"]["poe"]["tasks"])
 
 
-def _collected_security_timing_cases(marker_expression: str | None = None) -> set[str]:
-    """Collect every security-timing module through pytest's command interface.
+def _collected_security_timing_cases(
+    marker_expression: str | None = None,
+    *,
+    paths: tuple[Path, ...] = SECURITY_TIMING_TESTS,
+) -> set[str]:
+    """Collect security-timing cases through pytest's command interface.
 
     Runs collection without the suite's execution defaults and returns the node identifiers pytest
-    exposes, allowing the complete marker partition to be compared without executing service-backed
-    tests.
+    exposes, allowing either the declared timing modules or the global suite partition to be
+    compared without executing service-backed tests.
 
     Arguments:
         marker_expression: Optional pytest marker expression selecting one partition.
+        paths: Files or directories whose collected cases form the comparison population.
 
     Returns:
         Collected security-timing node identifiers.
@@ -113,7 +129,7 @@ def _collected_security_timing_cases(marker_expression: str | None = None) -> se
     ]
     if marker_expression is not None:
         command.extend(["-m", marker_expression])
-    command.extend(str(path) for path in SECURITY_TIMING_TESTS)
+    command.extend(str(path) for path in paths)
     completed = subprocess.run(
         command,
         capture_output=True,
@@ -128,7 +144,7 @@ def _collected_security_timing_cases(marker_expression: str | None = None) -> se
     return {
         line.strip()
         for line in completed.stdout.splitlines()
-        if line.startswith("tests/integration/accounts/test_") and "::" in line
+        if line.startswith("tests/") and "::" in line
     }
 
 
@@ -504,10 +520,10 @@ def test_focused_integration_task_excludes_security_timing_by_default() -> None:
 
 @pytest.mark.unit
 def test_security_timing_marker_partitions_every_statistical_case_exactly_once() -> None:
-    """Partition statistical timing cases from deterministic core coverage.
+    """Partition global statistical timing cases from deterministic core coverage.
 
-    Collects every timing module through pytest and proves the timing and core selections are
-    disjoint, exhaustive, and contain the approved nineteen independently distributable cases.
+    Collects the whole suite through pytest and proves the timing and core selections are disjoint,
+    exhaustive, and contain exactly the approved twenty-two cases in their declared modules.
 
     Arguments:
         None.
@@ -518,10 +534,15 @@ def test_security_timing_marker_partitions_every_statistical_case_exactly_once()
     Raises:
         AssertionError: If a case is missing, duplicated, or assigned to the wrong stage.
     """
-    all_cases = _collected_security_timing_cases()
-    timing_cases = _collected_security_timing_cases("security_timing")
-    core_cases = _collected_security_timing_cases("not security_timing")
+    global_paths = (REPOSITORY_ROOT / "tests",)
+    all_cases = _collected_security_timing_cases(paths=global_paths)
+    timing_cases = _collected_security_timing_cases("security_timing", paths=global_paths)
+    core_cases = _collected_security_timing_cases("not security_timing", paths=global_paths)
+    cases_by_test = Counter(
+        REPOSITORY_ROOT / nodeid.split("::", maxsplit=1)[0] for nodeid in timing_cases
+    )
 
     assert len(timing_cases) == SECURITY_TIMING_CASES
+    assert cases_by_test == Counter(SECURITY_TIMING_CASES_BY_TEST)
     assert timing_cases.isdisjoint(core_cases)
     assert timing_cases | core_cases == all_cases

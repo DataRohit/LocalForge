@@ -323,12 +323,14 @@ That interface hides two stages:
 1. `test-core` selects `not security_timing` and runs `pytest -n auto --dist loadgroup` with 100% branch coverage.
 2. `test-security-timing` selects `security_timing` and runs `pytest -n 4 --dist load --no-cov`.
 
-The timing stage contains only the nineteen statistical credential wall-clock cases: the thirteen secondary-token
-cases, four JSON web token create cases, and two registration cases covering normal and isolated activation-token
-store operation. Each still performs five warmups and thirty measured requests per path and enforces a median delta
-no larger than the greater of twenty percent or ten milliseconds. The deterministic equivalent-work, schedule, and
-policy tests remain in the covered core stage. Timing cases carry no `serial` marker, and `--dist load` deliberately
-ignores the modules' load-group affinity so independent parameter cases can occupy the bounded four-worker pool.
+The timing stage contains exactly 22 credential wall-clock cases: 14 secondary-token cases, five JSON web token
+cases, two registration cases covering normal and isolated activation-token store operation, and one password-reset
+case. Twenty cases perform five warmups and thirty measured requests per path. The remaining secondary-token and
+JSON web token cases each warm one four-request batch per outcome, then measure seven alternating four-request
+batches per outcome to detect lock serialization under concurrency. Every case enforces a median delta no larger
+than the greater of twenty percent or ten milliseconds. The deterministic equivalent-work, schedule, and policy
+tests remain in the covered core stage. Timing cases carry no `serial` marker, and `--dist load` deliberately ignores
+the modules' load-group affinity so independent parameter cases can occupy the bounded four-worker pool.
 
 `test`, `test-fresh`, and `test-parallel` all compose both stages and stop with failure if either fails.
 `test-security-timing` is the focused timing interface. `test-integration` excludes timing cases by default so an

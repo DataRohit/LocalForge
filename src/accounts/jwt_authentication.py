@@ -20,7 +20,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 from rest_framework_simplejwt.tokens import RefreshToken, Token, UntypedToken
-from rest_framework_simplejwt.utils import datetime_from_epoch
+from rest_framework_simplejwt.utils import datetime_from_epoch, get_md5_hash_password
 
 from accounts.authentication import active_token_user
 from accounts.token_authentication import (
@@ -29,6 +29,7 @@ from accounts.token_authentication import (
     TokenLoginThrottle,
     error_example,
     error_response,
+    lock_authenticated_account,
     verify_login_credentials,
 )
 from config.api_errors import (
@@ -165,8 +166,9 @@ class PrimaryRefreshToken(RefreshToken):
     ) -> PrimaryRefreshToken:
         """Issue a refresh token and record it on the primary.
 
-        Adds only the configured identity claim to protocol metadata and persists the outstanding
-        credential before returning it, making subsequent rotation authoritative immediately.
+        Adds the configured identity and password-revocation security claims, then persists the
+        outstanding credential before returning it so subsequent rotation is authoritative
+        immediately.
 
         Arguments:
             user: Active account receiving the credential.
@@ -180,6 +182,7 @@ class PrimaryRefreshToken(RefreshToken):
         account = cast("User", user)
         token = cls()
         token[api_settings.USER_ID_CLAIM] = str(getattr(user, api_settings.USER_ID_FIELD))
+        token[api_settings.REVOKE_TOKEN_CLAIM] = get_md5_hash_password(user.password)
         OutstandingToken.objects.using("default").create(
             user=account,
             jti=token[api_settings.JTI_CLAIM],
@@ -194,8 +197,9 @@ class PrimaryRefreshToken(RefreshToken):
 def rotate_refresh_token(encoded: str) -> dict[str, str]:
     """Rotate one refresh token atomically on the primary.
 
-    Locks the outstanding credential before checking revocation, then blacklists it and persists
-    its replacement in the same transaction so concurrent replay has one winner.
+    Locks the account before its outstanding credential, checks revocation, then blacklists the
+    original and persists its replacement in the same transaction so concurrent replay has one
+    winner without opposing password-replacement lock order.
 
     Arguments:
         encoded: Refresh token supplied by the client.
@@ -213,15 +217,18 @@ def rotate_refresh_token(encoded: str) -> dict[str, str]:
                 refresh = PrimaryRefreshToken(cast("Token", encoded))
             except (TypeError, OverflowError, OSError) as error:
                 raise AuthenticationFailed from error
+            user = active_token_user(refresh, for_update=True)
             outstanding = (
                 OutstandingToken.objects.using("default")
                 .select_for_update()
-                .get(jti=refresh[api_settings.JTI_CLAIM])
+                .get(
+                    jti=refresh[api_settings.JTI_CLAIM],
+                    user=user,
+                )
             )
             if BlacklistedToken.objects.using("default").filter(token=outstanding).exists():
                 raise AuthenticationFailed
 
-            user = active_token_user(refresh)
             access = str(refresh.access_token)
             BlacklistedToken.objects.using("default").create(token=outstanding)
             replacement = PrimaryRefreshToken.for_user(user)
@@ -401,11 +408,13 @@ class JWTCreateView(APIView):
         serializer = TokenLoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
-            account = verify_login_credentials(
+            snapshot = verify_login_credentials(
                 cast("str", serializer.validated_data["username"]),
                 cast("str", serializer.validated_data["password"]),
             )
-            refresh = PrimaryRefreshToken.for_user(account)
+            with transaction.atomic(using="default"):
+                account = lock_authenticated_account(snapshot)
+                refresh = PrimaryRefreshToken.for_user(account)
         except DatabaseError as error:
             raise ServiceUnavailable from error
 
@@ -455,7 +464,8 @@ class JWTRefreshView(APIView):
         summary="Rotate a JSON web refresh token",
         description=(
             "Exchanges one valid refresh token for new access and refresh credentials. The "
-            "supplied refresh token is blacklisted atomically and cannot be replayed."
+            "account is locked before outstanding-token state, and the supplied refresh token is "
+            "blacklisted atomically before its replacement is persisted."
         ),
         request=JWTRefreshRequestSerializer,
         auth=[],

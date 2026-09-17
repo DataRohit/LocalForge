@@ -55,6 +55,10 @@ class ErrorCode(StrEnum):
         ACTIVATION_TOKEN_FOREIGN: Activation token does not belong to the submitted account.
         ACTIVATION_TOKEN_MALFORMED: Activation token cannot be decoded or authenticated.
         ACTIVATION_TOKEN_USED: Activation token has already completed activation.
+        PASSWORD_RESET_TOKEN_EXPIRED: Password-reset token exceeded its configured lifetime.
+        PASSWORD_RESET_TOKEN_FOREIGN: Password-reset token does not belong to the submitted account.
+        PASSWORD_RESET_TOKEN_MALFORMED: Password-reset token cannot be decoded.
+        PASSWORD_RESET_TOKEN_USED: Password-reset token has already changed a password.
 
     Members:
         None beyond those inherited from ``StrEnum``.
@@ -79,6 +83,10 @@ class ErrorCode(StrEnum):
     ACTIVATION_TOKEN_FOREIGN = "activation_token_foreign"  # noqa: S105
     ACTIVATION_TOKEN_MALFORMED = "activation_token_malformed"  # noqa: S105
     ACTIVATION_TOKEN_USED = "activation_token_used"  # noqa: S105
+    PASSWORD_RESET_TOKEN_EXPIRED = "password_reset_token_expired"  # noqa: S105
+    PASSWORD_RESET_TOKEN_FOREIGN = "password_reset_token_foreign"  # noqa: S105
+    PASSWORD_RESET_TOKEN_MALFORMED = "password_reset_token_malformed"  # noqa: S105
+    PASSWORD_RESET_TOKEN_USED = "password_reset_token_used"  # noqa: S105
 
 
 class ServiceUnavailable(APIException):
@@ -181,6 +189,86 @@ class ActivationTokenUsed(APIException):
     default_detail = "The activation token has already been used."
 
 
+class PasswordResetTokenExpired(APIException):
+    """Represent a password-reset token beyond its allowed lifetime.
+
+    Inherits from DRF's ``APIException`` and fixes the public status and code while exposing no
+    timestamp or account state.
+
+    Attributes:
+        status_code: HTTP bad-request status.
+        default_code: Stable framework-facing exception code.
+        default_detail: Safe framework-facing exception detail.
+
+    Members:
+        None.
+    """
+
+    status_code = HTTPStatus.BAD_REQUEST
+    default_code = ErrorCode.PASSWORD_RESET_TOKEN_EXPIRED
+    default_detail = "The password reset token has expired."
+
+
+class PasswordResetTokenForeign(APIException):
+    """Represent a reset token not bound to the submitted account.
+
+    Inherits from DRF's ``APIException`` and covers missing accounts, missing records, changed
+    addresses, and mismatched account state without distinguishing them.
+
+    Attributes:
+        status_code: HTTP bad-request status.
+        default_code: Stable framework-facing exception code.
+        default_detail: Safe framework-facing exception detail.
+
+    Members:
+        None.
+    """
+
+    status_code = HTTPStatus.BAD_REQUEST
+    default_code = ErrorCode.PASSWORD_RESET_TOKEN_FOREIGN
+    default_detail = "The password reset token does not match the account."
+
+
+class PasswordResetTokenMalformed(APIException):
+    """Represent a reset token whose public structure is invalid.
+
+    Inherits from DRF's ``APIException`` and exposes no parsing detail through the shared error
+    envelope.
+
+    Attributes:
+        status_code: HTTP bad-request status.
+        default_code: Stable framework-facing exception code.
+        default_detail: Safe framework-facing exception detail.
+
+    Members:
+        None.
+    """
+
+    status_code = HTTPStatus.BAD_REQUEST
+    default_code = ErrorCode.PASSWORD_RESET_TOKEN_MALFORMED
+    default_detail = "The password reset token is malformed."
+
+
+class PasswordResetTokenUsed(APIException):
+    """Represent a password-reset token consumed by a prior password change.
+
+    Inherits from DRF's ``APIException`` and preserves replay classification after account deletion
+    through the token record's immutable subject tombstone.
+
+    Attributes:
+        status_code: HTTP bad-request status.
+        default_code: Stable framework-facing exception code.
+        default_detail: Safe framework-facing exception detail.
+
+    Members:
+        None.
+    """
+
+    status_code = HTTPStatus.BAD_REQUEST
+    default_code = ErrorCode.PASSWORD_RESET_TOKEN_USED
+    default_detail = "The password reset token has already been used."
+
+
 @dataclass(frozen=True, slots=True)
 class ErrorDefinition:
     """Pair a stable error code with its safe human-readable message.
@@ -276,6 +364,22 @@ ACTIVATION_TOKEN_USED = ErrorDefinition(
     ErrorCode.ACTIVATION_TOKEN_USED,
     "The activation token has already been used.",
 )
+PASSWORD_RESET_TOKEN_EXPIRED = ErrorDefinition(
+    ErrorCode.PASSWORD_RESET_TOKEN_EXPIRED,
+    "The password reset token has expired.",
+)
+PASSWORD_RESET_TOKEN_FOREIGN = ErrorDefinition(
+    ErrorCode.PASSWORD_RESET_TOKEN_FOREIGN,
+    "The password reset token does not match the account.",
+)
+PASSWORD_RESET_TOKEN_MALFORMED = ErrorDefinition(
+    ErrorCode.PASSWORD_RESET_TOKEN_MALFORMED,
+    "The password reset token is malformed.",
+)
+PASSWORD_RESET_TOKEN_USED = ErrorDefinition(
+    ErrorCode.PASSWORD_RESET_TOKEN_USED,
+    "The password reset token has already been used.",
+)
 
 STATUS_DEFINITIONS: dict[int, ErrorDefinition] = {
     HTTPStatus.BAD_REQUEST: BAD_REQUEST,
@@ -300,6 +404,10 @@ ERROR_STATUS_REGISTRY = MappingProxyType(
                 ErrorCode.ACTIVATION_TOKEN_FOREIGN,
                 ErrorCode.ACTIVATION_TOKEN_MALFORMED,
                 ErrorCode.ACTIVATION_TOKEN_USED,
+                ErrorCode.PASSWORD_RESET_TOKEN_EXPIRED,
+                ErrorCode.PASSWORD_RESET_TOKEN_FOREIGN,
+                ErrorCode.PASSWORD_RESET_TOKEN_MALFORMED,
+                ErrorCode.PASSWORD_RESET_TOKEN_USED,
                 ErrorCode.PARSE_ERROR,
                 ErrorCode.VALIDATION_ERROR,
             }
@@ -350,5 +458,9 @@ EXCEPTION_DEFINITIONS: dict[type[Exception], ErrorDefinition] = {
     ActivationTokenForeign: ACTIVATION_TOKEN_FOREIGN,
     ActivationTokenMalformed: ACTIVATION_TOKEN_MALFORMED,
     ActivationTokenUsed: ACTIVATION_TOKEN_USED,
+    PasswordResetTokenExpired: PASSWORD_RESET_TOKEN_EXPIRED,
+    PasswordResetTokenForeign: PASSWORD_RESET_TOKEN_FOREIGN,
+    PasswordResetTokenMalformed: PASSWORD_RESET_TOKEN_MALFORMED,
+    PasswordResetTokenUsed: PASSWORD_RESET_TOKEN_USED,
     APIException: API_ERROR,
 }

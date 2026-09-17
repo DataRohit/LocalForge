@@ -151,6 +151,60 @@ land on the endpoints rather than on the model:
   does **not** check it, so ticket 30 and the WebSocket middleware in ticket 39 must not mint tokens through that
   path without checking `is_active` themselves.
 
+## Ticket 33 password replacement and recovery contract
+
+Recorded 2026-09-17. `POST /users/set_password/` accepts exactly `current_password`, `new_password`, and
+`new_password_confirm`. It locks the authenticated primary account, refuses stored password profiles outside the
+bounded login verification policy, requires the current password, requires a different replacement, and runs every
+configured Django password validator with the account attributes available.
+
+`POST /users/reset_password/` accepts exactly `{email}` and always returns `202` with the same body for active,
+inactive, and unknown addresses. Every accepted outcome observes the configured monotonic response floor. A real
+reset token is issued only for an active account; other outcomes perform the same Django token-generation and
+task-publication shape with no authoritative digest record or recipient. Failure limited to inserting the reset
+record takes that same accepted dummy-publication path inside a savepoint, rolling back any partial active-account
+record. Account lookup and admission loss remain dependency failures because no common outcome can be established.
+
+The emailed bearer combines Django's `PasswordResetTokenGenerator` value with a random per-issuance nonce and is
+stored only as a SHA-256 digest. The generator binds account id, password hash, last login, email, timestamp, and
+the project signing secret; the digest record makes each complete bearer independently single-use and permits
+stable malformed, foreign, expired, and used classifications. `POST /users/reset_password_confirm/` accepts exactly
+`account`, `token`, `new_password`, and `new_password_confirm`.
+
+Both reset routes validate their exact bodies before charging quota. Request admission atomically charges client
+address, stable PostgreSQL-normalized email, and optional immutable account dimensions. Confirmation admission
+charges client address and submitted immutable account dimensions. Both use the primary-backed rolling-window store
+and fail closed with `503`. Confirmation applies exact-shape and account-independent validators before admission.
+Only after it locks and authenticates the account and token does it run the complete validator set against real
+account attributes. Consequently account-independent invalid bodies consume no quota, while account-sensitive
+policy failures occur after and consume one admitted attempt.
+
+Issuance, delivery, confirmation, account deletion, email changes, and authenticated password changes use
+account-before-token lock order. Delivery commits one durable claim before its sole SMTP attempt, carries broker
+expiry equal to the confirmation lifetime remaining, and revalidates account activity, email, password, expiry,
+digest, and use state while holding both rows through SMTP. SMTP failure recovers through another reset request.
+
+A password replacement deletes the account's DRF token, blacklists every outstanding refresh token, and changes the
+password hash embedded in every newly issued JWT. JWT authentication, refresh, and verification compare that claim
+to the current primary password hash, so access and refresh credentials issued before the change fail immediately.
+Django's session authentication hash provides the same behavior for cached sessions. The caller receives no
+exception: the credential or session used for the change is invalid after the `204` response and the client must
+authenticate again.
+
+DRF token login and JWT create complete bounded password verification without an account row lock, then begin
+issuance with an immutable account ID and exact password-security snapshot. The issuance transaction locks the
+account, rejects changed or inactive state generically, and only then persists credentials. Password replacement and
+recovery retain account-first locking, so an old password cannot mint a credential that survives either ordering.
+JWT refresh uses the same account-before-outstanding-token order,
+then rechecks blacklist state and atomically blacklists and rotates the credential.
+
+Successful recovery consumes every outstanding reset record in the password transaction and sends a credential-free
+password-change notification after commit. A consumed record retains its immutable subject after account deletion,
+so replay remains `password_reset_token_used`; an unused orphan or a token invalidated by email change is foreign.
+Confirmation checks used state first after locking, then rechecks expiry before account binding. A bearer that ages
+out while waiting for locks therefore returns `password_reset_token_expired`, while a concurrently consumed bearer
+retains used precedence. Ticket 43 owns bounded primary cleanup after the configured maximum age.
+
 ## Considered options
 
 **Adopt Djoser and pin it exactly.** The lowest-code path. Rejected on the combination above: untested on our

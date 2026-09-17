@@ -36,8 +36,15 @@ from django.contrib.auth.hashers import (
     make_password,
 )
 from django.core.cache import caches
-from django.db import OperationalError, close_old_connections, connection, connections
+from django.db import (
+    DatabaseError,
+    OperationalError,
+    close_old_connections,
+    connection,
+    connections,
+)
 from django.db.migrations.recorder import MigrationRecorder
+from django.db.models import QuerySet
 from django.test import Client as DjangoClient
 from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
@@ -170,6 +177,9 @@ TIMING_WARMUP_REQUESTS = 5
 TIMING_MEASURED_REQUESTS = 30
 TIMING_RELATIVE_LIMIT = 0.20
 TIMING_ABSOLUTE_LIMIT_SECONDS = 0.010
+CONCURRENT_TIMING_BATCH_SIZE = 4
+CONCURRENT_TIMING_WARMUP_BATCHES = 1
+CONCURRENT_TIMING_MEASURED_BATCHES = 7
 EXPECTED_HASH_VERIFICATIONS = 2
 timing_logger = logging.getLogger("localforge.tests.token_timing")
 SUPPORTED_HASHER_ALGORITHMS = tuple(hasher.algorithm for hasher in get_hashers())
@@ -2333,6 +2343,135 @@ def test_wrong_and_unknown_credentials_meet_the_timing_criterion(
 
 
 @pytest.mark.integration
+@pytest.mark.services("postgres", "valkey-cache")
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
+@pytest.mark.timeout(180)
+@pytest.mark.security_timing
+def test_concurrent_wrong_and_unknown_token_batches_meet_the_timing_criterion(
+    django_user_model: type[User],
+) -> None:
+    """Keep concurrent existing and unknown rejection batches within the approved bound.
+
+    Releases four same-identity requests together, alternates seven measured batches per outcome,
+    and compares median wall durations using the established twenty-percent or ten-millisecond
+    criterion so account row locks cannot serialize password hash work.
+
+    Arguments:
+        django_user_model: Configured custom user model class.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If an existing-account batch reveals row-lock serialization.
+    """
+    username = f"token-concurrent-timing-{uuid.uuid4().hex}"
+    unknown_username = f"token-concurrent-unknown-{uuid.uuid4().hex}"
+    django_user_model.objects.create_user(
+        username,
+        f"{username}@localforge.invalid",
+        PASSWORD,
+        is_active=True,
+    )
+
+    def measure_batch(candidate: str, batch_index: int) -> float:
+        """Measure one synchronized rejected credential batch.
+
+        Releases one batch through independent HTTP clients and includes their complete request
+        lifetimes in the wall duration used for the public timing comparison.
+
+        Arguments:
+            candidate: Existing or unknown username shared by the batch.
+            batch_index: Stable address namespace for this measured batch.
+
+        Returns:
+            Batch wall duration in seconds.
+
+        Raises:
+            AssertionError: If any request reaches another public response.
+        """
+        barrier = Barrier(CONCURRENT_TIMING_BATCH_SIZE)
+
+        def reject(request_index: int) -> int:
+            """Submit one synchronized rejection on a thread-local connection.
+
+            Opens and closes thread-local database state around one public request so connection
+            sharing cannot hide or introduce credential-path serialization.
+
+            Arguments:
+                request_index: Unique client-address suffix inside the batch.
+
+            Returns:
+                Public response status.
+            """
+            close_old_connections()
+            try:
+                barrier.wait()
+                response = _post_credentials(
+                    DjangoClient(),
+                    candidate,
+                    f"{PASSWORD}-wrong",
+                    remote_address=f"198.18.{batch_index}.{request_index + 1}",
+                )
+                return response.status_code
+            finally:
+                close_old_connections()
+
+        started = time.perf_counter()
+        with ThreadPoolExecutor(max_workers=CONCURRENT_TIMING_BATCH_SIZE) as executor:
+            statuses = list(executor.map(reject, range(CONCURRENT_TIMING_BATCH_SIZE)))
+        elapsed = time.perf_counter() - started
+        assert statuses == [HTTPStatus.UNAUTHORIZED] * CONCURRENT_TIMING_BATCH_SIZE
+        return elapsed
+
+    with override_settings(**_unlimited_login_settings()):
+        for warmup in range(CONCURRENT_TIMING_WARMUP_BATCHES):
+            measure_batch(username, warmup * 2)
+            measure_batch(unknown_username, warmup * 2 + 1)
+
+        wrong_samples: list[float] = []
+        unknown_samples: list[float] = []
+        for attempt in range(CONCURRENT_TIMING_MEASURED_BATCHES):
+            first, second = (
+                (username, unknown_username) if attempt % 2 == 0 else (unknown_username, username)
+            )
+            first_elapsed = measure_batch(first, 10 + attempt * 2)
+            second_elapsed = measure_batch(second, 11 + attempt * 2)
+            if first == username:
+                wrong_samples.append(first_elapsed)
+                unknown_samples.append(second_elapsed)
+            else:
+                unknown_samples.append(first_elapsed)
+                wrong_samples.append(second_elapsed)
+
+    wrong_median = statistics.median(wrong_samples)
+    unknown_median = statistics.median(unknown_samples)
+    median_delta = abs(wrong_median - unknown_median)
+    allowed_delta = max(
+        max(wrong_median, unknown_median) * TIMING_RELATIVE_LIMIT,
+        TIMING_ABSOLUTE_LIMIT_SECONDS,
+    )
+    timing_logger.info(
+        (
+            "token concurrent credential timing batch=%d samples=%d wrong=%.6fs "
+            "unknown=%.6fs delta=%.6fs allowed=%.6fs"
+        ),
+        CONCURRENT_TIMING_BATCH_SIZE,
+        CONCURRENT_TIMING_MEASURED_BATCHES,
+        wrong_median,
+        unknown_median,
+        median_delta,
+        allowed_delta,
+    )
+
+    assert median_delta <= allowed_delta, (
+        f"batch={CONCURRENT_TIMING_BATCH_SIZE} wrong={wrong_median:.6f}s "
+        f"unknown={unknown_median:.6f}s delta={median_delta:.6f}s "
+        f"allowed={allowed_delta:.6f}s"
+    )
+
+
+@pytest.mark.integration
 @pytest.mark.services("postgres")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.timeout(360)
@@ -3249,6 +3388,135 @@ def test_token_reissuance_bypasses_replica_routing_after_immediate_revocation(
 
 
 @pytest.mark.integration
+@pytest.mark.services("postgres")
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
+def test_token_login_locks_account_before_token_issuance(
+    client: Client,
+    django_user_model: type[User],
+) -> None:
+    """Acquire the account row before reading or writing its DRF token.
+
+    Captures a successful public login and verifies the credential transaction locks the account
+    before the first token-table operation, matching every password-replacement revocation path.
+
+    Arguments:
+        client: Django test client issuing token login.
+        django_user_model: Configured custom user model class.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If token state is touched before the account lock.
+    """
+    username = f"token-lock-order-{uuid.uuid4().hex}"
+    django_user_model.objects.create_user(
+        username,
+        f"{username}@localforge.invalid",
+        PASSWORD,
+        is_active=True,
+    )
+
+    with (
+        override_settings(**_unlimited_login_settings()),
+        CaptureQueriesContext(connections["default"]) as captured,
+    ):
+        response = _post_credentials(
+            client,
+            username,
+            PASSWORD,
+            remote_address=f"2001:db8::{uuid.uuid4().int & 0xFFFF:x}",
+        )
+
+    statements = [query["sql"] for query in captured.captured_queries]
+    account_lock = next(
+        index
+        for index, statement in enumerate(statements)
+        if '"accounts_user"' in statement and "FOR UPDATE" in statement
+    )
+    token_access = next(
+        index for index, statement in enumerate(statements) if '"authtoken_token"' in statement
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert account_lock < token_access
+
+
+@pytest.mark.integration
+@pytest.mark.services("postgres")
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
+def test_token_login_persistence_loss_returns_service_unavailable(
+    client: Client,
+    django_user_model: type[User],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Contain DRF token persistence loss inside the dependency envelope.
+
+    Authenticates an active account, fails only token retrieval or insertion inside the locked
+    transaction, and proves no partial credential survives.
+
+    Arguments:
+        client: Django test client issuing token login.
+        django_user_model: Configured custom user model class.
+        monkeypatch: Fixture failing the token persistence boundary.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If persistence loss escapes or leaves a token.
+    """
+    username = f"token-persistence-outage-{uuid.uuid4().hex}"
+    account = django_user_model.objects.create_user(
+        username,
+        f"{username}@localforge.invalid",
+        PASSWORD,
+        is_active=True,
+    )
+    original_get_or_create = QuerySet.get_or_create
+
+    def fail_token_persistence(
+        queryset: QuerySet[Any],
+        defaults: dict[str, object] | None = None,
+        **kwargs: object,
+    ) -> tuple[object, bool]:
+        """Fail only the DRF token persistence query.
+
+        Preserves every other queryset operation while raising the database failure handled by the
+        public login transaction.
+
+        Arguments:
+            queryset: Model queryset retrieving or creating a row.
+            defaults: Optional Django creation defaults.
+            **kwargs: Lookup values supplied by the caller.
+
+        Returns:
+            Real object and creation flag for models outside token persistence.
+
+        Raises:
+            DatabaseError: For the DRF token model.
+        """
+        if queryset.model is Token:
+            raise DatabaseError
+        return cast(
+            "tuple[object, bool]",
+            original_get_or_create(queryset, defaults=defaults, **kwargs),
+        )
+
+    monkeypatch.setattr(QuerySet, "get_or_create", fail_token_persistence)
+    response = _post_credentials(
+        client,
+        username,
+        PASSWORD,
+        remote_address=f"2001:db8::{uuid.uuid4().int & 0xFFFF:x}",
+    )
+
+    assert response.status_code == HTTPStatus.SERVICE_UNAVAILABLE
+    assert cast("dict[str, Any]", response.json())["code"] == ErrorCode.SERVICE_UNAVAILABLE
+    assert not Token.objects.using("default").filter(user=account).exists()
+
+
+@pytest.mark.integration
 @pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_authtoken_migrations_are_applied(client: Client) -> None:
@@ -3313,6 +3581,7 @@ def test_token_routes_document_every_reachable_response() -> None:
         "503",
     }
     assert set(logout_responses) == {"204", "401", "405", "406", "413", "500"}
+    assert "token-persistence" in login_responses["503"]["description"]
 
     for status, response in {**login_responses, **logout_responses}.items():
         if status == "204":
