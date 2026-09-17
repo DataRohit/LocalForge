@@ -205,6 +205,10 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `DJANGO_PASSWORD_RESET_MINIMUM_RESPONSE_DURATION_SECONDS` | `django-uv5n2` | monotonic response floor for accepted known and unknown reset requests | `0.200` | no | yes |
 | `DJANGO_PASSWORD_RESET_ADDRESS_THROTTLE_RATE` | `django-uv5n2` | strict atomic password-reset admissions per client address on each reset route | `30/hour` | no | yes |
 | `DJANGO_PASSWORD_RESET_ACCOUNT_THROTTLE_RATE` | `django-uv5n2` | strict atomic reset rate for request email/account and confirmation account dimensions | `3/hour` | no | yes |
+| `DJANGO_USERNAME_RESET_TOKEN_LIFETIME_SECONDS` | `django-uv5n2` | maximum age of one account-bound username-reset token | `86400` | no | yes |
+| `DJANGO_USERNAME_RESET_MINIMUM_RESPONSE_DURATION_SECONDS` | `django-uv5n2` | monotonic response floor for accepted known and unknown username-reset requests | `0.200` | no | yes |
+| `DJANGO_USERNAME_RESET_ADDRESS_THROTTLE_RATE` | `django-uv5n2` | strict atomic username-reset admissions per client address on each reset route | `30/hour` | no | yes |
+| `DJANGO_USERNAME_RESET_ACCOUNT_THROTTLE_RATE` | `django-uv5n2` | strict atomic username-reset rate for request email/account and confirmation account dimensions | `3/hour` | no | yes |
 | `DJANGO_LOG_LEVEL` | `django-uv5n2` | root log level | `INFO` | no | no |
 | `DJANGO_TIME_ZONE` | `django-uv5n2` | application timezone, stored datetimes stay UTC-aware | `UTC` | no | no |
 | `LOCALFORGE_WAIT_SERVICES` | `django-uv5n2` | services the entrypoint waits for before migrating, space-separated. Deliberately outside a vendor prefix, like the backup schedules | `postgres valkey-cache` | no | no |
@@ -317,6 +321,14 @@ validates its exact four-field shape, matching confirmation, and account-indepen
 account-sensitive policy runs after bearer authentication and locking. Malformed or pre-admission-invalid bodies
 record nothing. The limits are `30/hour` per route-specific address dimension and `3/hour` per recipient or account
 dimension. PostgreSQL loss fails closed with the shared correlated `503`.
+
+Username reset uses another set of opaque prefixes in the same store. Reset request charges address, stable
+normalized email, and optional immutable account dimensions; reset confirmation charges address and the submitted
+immutable account. Reset request validates exact `{email}` shape and normalized address before admission. Reset
+confirmation validates exact `{account, token, new_username}` shape and account-independent username format before
+admission; PostgreSQL case-insensitive availability runs after bearer authentication and account locking. Malformed
+or pre-admission-invalid bodies record nothing. The limits are `30/hour` per route-specific address dimension and
+`3/hour` per recipient or account dimension. PostgreSQL loss fails closed with the shared correlated `503`.
 
 Testing overrides, present only in `.env.testing`:
 

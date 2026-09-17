@@ -56,6 +56,12 @@ Ticket 33 adds the parallel password-recovery codes `password_reset_token_expire
 classification survives account deletion through the immutable subject tombstone. A missing record, missing live
 account, changed email, mismatched account, or otherwise invalid current account binding is foreign.
 
+Ticket 34 adds `username_reset_token_expired`, `username_reset_token_foreign`,
+`username_reset_token_malformed`, and `username_reset_token_used`. Used classification survives account deletion
+through the immutable subject tombstone. Missing records or live accounts, changed account-bound state, and
+mismatched account identifiers are foreign; PostgreSQL case-insensitive username conflicts remain the ordinary
+`validation_error` with a neutral `new_username` detail.
+
 Three that are easy to miss: **406 and 415** come from content negotiation, **413** is rejected before Django
 constructs the request or a parser reads the body, and **403 from CSRF** is middleware or session authentication,
 not a permission class. A route documented only with the codes its own code raises is incomplete.
@@ -99,6 +105,11 @@ Password-reset token-record insertion alone is not an infrastructure failure vis
 active-account savepoint rolls back any partial record, publishes the same dummy task shape used by inactive and
 unknown outcomes, waits on the same floor, and returns the same `202` body. Common account lookup and admission loss
 remain `503` because the service cannot establish the shared outcome safely.
+
+Username-reset request uses the same approved `0.200`-second floor and statistical criterion as password reset.
+Active, inactive, unknown, and active token-store-failure outcomes return the same `202` body and publish the same
+account-and-bearer task shape, while only an active account with an authoritative digest record can receive mail.
+Common lookup and admission loss remain correlated `503` responses.
 
 Token login also treats stored password encodings outside the accepted verification profiles as reset-required.
 The login request does not verify those encodings: it runs the same fixed current-cost dummy schedule used for an

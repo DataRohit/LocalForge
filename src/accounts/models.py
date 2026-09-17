@@ -375,3 +375,81 @@ class PasswordResetToken(models.Model):
             None.
         """
         return f"{self.subject_id}:{self.pk}"
+
+
+class UsernameResetToken(models.Model):
+    """One issued username-reset token.
+
+    Inherits from ``Model`` and retains a digest, immutable account subject, nullable live account,
+    use state, and durable delivery state without persisting the bearer value.
+
+    Attributes:
+        id: Database-generated token record identifier.
+        account: Live account the token can rename, or null after account deletion.
+        subject_id: Immutable account identifier retained independently of the live account.
+        digest: SHA-256 digest of the reset token.
+        issued_at: Time the token record was created.
+        used_at: Time a username change invalidated the token.
+        delivery_claimed_at: Time one worker claimed the sole SMTP attempt.
+        delivered_at: Time SMTP accepted the claimed message.
+
+    Members:
+        __str__: Render safe record identifiers without token material.
+    """
+
+    account = models.ForeignKey(
+        User,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="username_reset_tokens",
+    )
+    subject_id = models.UUIDField()
+    digest = models.CharField(max_length=64, unique=True)
+    issued_at = models.DateTimeField(auto_now_add=True)
+    used_at = models.DateTimeField(null=True)
+    delivery_claimed_at = models.DateTimeField(null=True)
+    delivered_at = models.DateTimeField(null=True)
+
+    class Meta:
+        """Database rules for username-reset token records.
+
+        Orders records newest first and indexes immutable subject state plus issue time for
+        classification and the scheduler-owned bounded-retention cleanup.
+
+        Attributes:
+            ordering: Newest token records first.
+            indexes: Subject use-state and chronological retention lookup paths.
+
+        Members:
+            None.
+        """
+
+        ordering = ("-issued_at", "-id")
+        indexes = (
+            models.Index(
+                fields=("subject_id", "used_at"),
+                name="accounts_username_subject_used",
+            ),
+            models.Index(
+                fields=("issued_at", "id"),
+                name="accounts_username_issued_id",
+            ),
+        )
+
+    @override
+    def __str__(self) -> str:
+        """Render the record without exposing its token digest.
+
+        Returns the immutable subject and row keys used for administration while keeping bearer and
+        digest material out of displays and logs.
+
+        Arguments:
+            None.
+
+        Returns:
+            Safe username-reset token record description.
+
+        Raises:
+            None.
+        """
+        return f"{self.subject_id}:{self.pk}"

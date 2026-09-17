@@ -1,7 +1,7 @@
 """Versioned account API routes.
 
-Maps fixed authentication, registration, activation, self-profile, password-change, and
-password-recovery endpoints while leaving username-management routes absent until their ticket.
+Maps fixed authentication, registration, activation, self-profile, password, and username
+management endpoints without adding any route outside the closed application surface.
 """
 
 from django.urls import path
@@ -14,6 +14,11 @@ from accounts.password_management import (
 )
 from accounts.token_authentication import TokenLoginView, TokenLogoutView
 from accounts.user_profiles import ActivationResendView, UserProfileView, UserRegistrationView
+from accounts.username_management import (
+    UsernameChangeView,
+    UsernameResetConfirmView,
+    UsernameResetRequestView,
+)
 
 app_name = "accounts"
 
@@ -35,6 +40,17 @@ urlpatterns = [
         "users/reset_password_confirm/",
         PasswordResetConfirmView.as_view(),
         name="password-reset-confirm",
+    ),
+    path("users/set_username/", UsernameChangeView.as_view(), name="username-change"),
+    path(
+        "users/reset_username/",
+        UsernameResetRequestView.as_view(),
+        name="username-reset",
+    ),
+    path(
+        "users/reset_username_confirm/",
+        UsernameResetConfirmView.as_view(),
+        name="username-reset-confirm",
     ),
     path("jwt/create/", JWTCreateView.as_view(), name="jwt-create"),
     path("jwt/refresh/", JWTRefreshView.as_view(), name="jwt-refresh"),

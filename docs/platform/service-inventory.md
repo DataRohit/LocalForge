@@ -24,7 +24,7 @@ would otherwise have surfaced as a mysterious failure at build time.
 | `valkey-channels-vh8dm` | Channels layer | `6380` | 6379 | `app-net-na6hy`, `access-net-ha4mz` |
 | `rabbitmq-rq4sx` | Celery broker | `5672` AMQP, `15672` management | 5672, 15672, 15692 | `app-net-na6hy`, `access-net-ha4mz` |
 | `celery-worker-cw8rt` | task worker | none | — | `app-net-na6hy`, `data-net-nd9pc` |
-| `celery-beat-cb4hq` | periodic task scheduler, including daily JWT token cleanup | none | — | `app-net-na6hy`, `data-net-nd9pc` |
+| `celery-beat-cb4hq` | periodic task scheduler, including daily credential cleanup | none | — | `app-net-na6hy`, `data-net-nd9pc` |
 | `flower-fl9zd` | Celery dashboard | `5555` | 5555 | `app-net-na6hy`, `access-net-ha4mz` |
 | `mailpit-mp6gb` | SMTP capture | `1025` SMTP, `8025` web | 1025, 8025 | `app-net-na6hy`, `access-net-ha4mz` |
 | `seaweedfs-sw9cr` | S3 storage, all-in-one | `9333` master, `8082` volume, `8888` filer, `8333` S3 | 9333, 8080, 8888, 8333 | `app-net-na6hy`, `access-net-ha4mz` |
@@ -129,7 +129,8 @@ command to the entrypoint, which waits for dependencies and then hands over.
 Ticket 43 makes `celery-beat-cb4hq` operationally responsible for running SimpleJWT's upstream
 `flushexpiredtokens` command once daily. The command's delete is routed to `default`, the authoritative primary;
 Ticket 30 proves expired outstanding and cascaded blacklist rows are removed without touching unexpired rows, but
-does not start the future scheduler early.
+does not start the future scheduler early. The same ticket owns bounded primary cleanup of expired activation,
+password-reset, and username-reset tombstones after each protocol's configured maximum age.
 
 **Tier 3's wait covers the tier-1 services that have a probe.** `loki-lk3ny` has none — Section 2.1 records why — so
 nothing can depend on it with `service_healthy`, and the application does not depend on it at all: a log store that
@@ -323,14 +324,15 @@ That interface hides two stages:
 1. `test-core` selects `not security_timing` and runs `pytest -n auto --dist loadgroup` with 100% branch coverage.
 2. `test-security-timing` selects `security_timing` and runs `pytest -n 4 --dist load --no-cov`.
 
-The timing stage contains exactly 22 credential wall-clock cases: 14 secondary-token cases, five JSON web token
-cases, two registration cases covering normal and isolated activation-token store operation, and one password-reset
-case. Twenty cases perform five warmups and thirty measured requests per path. The remaining secondary-token and
-JSON web token cases each warm one four-request batch per outcome, then measure seven alternating four-request
-batches per outcome to detect lock serialization under concurrency. Every case enforces a median delta no larger
-than the greater of twenty percent or ten milliseconds. The deterministic equivalent-work, schedule, and policy
-tests remain in the covered core stage. Timing cases carry no `serial` marker, and `--dist load` deliberately ignores
-the modules' load-group affinity so independent parameter cases can occupy the bounded four-worker pool.
+The timing stage contains exactly 23 credential wall-clock cases: 14 secondary-token cases, five JSON web token
+cases, two registration cases covering normal and isolated activation-token store operation, one password-reset
+case, and one username-reset case. Twenty-one cases perform five warmups and thirty measured requests per path. The
+remaining secondary-token and JSON web token cases each warm one four-request batch per outcome, then measure seven
+alternating four-request batches per outcome to detect lock serialization under concurrency. Every case enforces a
+median delta no larger than the greater of twenty percent or ten milliseconds. The deterministic equivalent-work,
+schedule, and policy tests remain in the covered core stage. Timing cases carry no `serial` marker, and
+`--dist load` deliberately ignores the modules' load-group affinity so independent parameter cases can occupy the
+bounded four-worker pool.
 
 `test`, `test-fresh`, and `test-parallel` all compose both stages and stop with failure if either fails.
 `test-security-timing` is the focused timing interface. `test-integration` excludes timing cases by default so an

@@ -205,6 +205,45 @@ Confirmation checks used state first after locking, then rechecks expiry before 
 out while waiting for locks therefore returns `password_reset_token_expired`, while a concurrently consumed bearer
 retains used precedence. Ticket 43 owns bounded primary cleanup after the configured maximum age.
 
+## Ticket 34 username replacement and recovery contract
+
+Recorded 2026-09-17. `POST /users/set_username/` accepts exactly `current_password` and `new_username`. It locks the
+authenticated primary account, applies the bounded current-password verification policy, validates Django's standard
+username character contract, and checks availability with PostgreSQL `LOWER` expressions matching the functional
+constraint. A conflict, including a concurrent constraint winner, returns only
+`{"new_username": ["That username is not available."]}` inside the standard validation envelope.
+
+`POST /users/reset_username/` accepts exactly `{email}` and returns the same timed `202` response for active,
+inactive, and unknown addresses. Request admission atomically charges route-specific client address, stable
+PostgreSQL-normalized email, and optional immutable account dimensions. A real account-bound digest record is issued
+only for an active account; every other outcome performs equivalent token generation and task publication. Failure
+limited to token insertion rolls back partial state and takes the same accepted dummy path.
+
+The emailed bearer uses a dedicated-salt subclass of Django's `PasswordResetTokenGenerator` plus a random
+per-issuance nonce. It binds immutable account id, password hash, last login, email, timestamp, and the project
+signing secret while persistence retains only its SHA-256 digest. Its HMAC, account-state, and age validation use
+the independent username-reset lifetime, not Django's password-reset timeout. Confirmation accepts exactly
+`{account, token, new_username}` and charges route-specific client address plus submitted immutable account only
+after exact-shape and account-independent username-format validation. Availability runs after admission and bearer
+authentication against the locked live account.
+
+Issuance, delivery, confirmation, authenticated change, and account deletion use account-before-token lock order.
+Delivery commits a durable claim before its sole SMTP attempt, carries broker expiry equal to the signed lifetime
+remaining, and revalidates account activity, email, password, expiry, digest, and use state while holding both rows
+through SMTP. Failure recovers through another request. A successful change consumes every outstanding
+username-reset record and sends a notification containing no old username, new username, account identifier, or
+credential.
+
+Malformed, foreign, expired, and used bearers have distinct stable codes. Used state takes precedence after locking
+and survives account deletion through the immutable subject tombstone; unused deletion, email or password change,
+record loss, and mismatched account state are foreign. Ticket 43 owns bounded primary cleanup after the configured
+maximum age.
+
+Unlike password replacement, username replacement changes neither the password hash nor any credential record.
+Existing DRF tokens, JSON web access and refresh tokens, and Django sessions therefore remain valid and resolve the
+same immutable account after the change. Old username-and-password login stops matching; new username-and-password
+login begins matching.
+
 ## Considered options
 
 **Adopt Djoser and pin it exactly.** The lowest-code path. Rejected on the combination above: untested on our

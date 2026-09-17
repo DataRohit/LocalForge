@@ -23,6 +23,9 @@ admin rather than hardcoded, and exactly one instance running so nothing double-
 - [ ] The same bounded primary cleanup removes password-reset tombstones only after their configured maximum age.
       Ticket 33 owns their nullable account reference, immutable subject, issue-time index, and used/foreign
       classification; this ticket owns operational scheduling and evidence.
+- [ ] The same bounded primary cleanup removes username-reset tombstones only after their configured maximum age.
+      Ticket 34 owns their nullable account reference, immutable subject, issue-time index, and used/foreign
+      classification; this ticket owns operational scheduling and evidence.
 - [ ] A periodic task that overruns its interval does not stack up unboundedly.
 - [ ] Scheduler logs reach the log store, and a missed or failed run is visible.
 - [ ] The schedule state persists across a restart without re-firing tasks that already ran.

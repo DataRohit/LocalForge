@@ -34,19 +34,24 @@ REGISTRATION_TIMING_TEST = (
 PASSWORD_MANAGEMENT_TEST = (
     REPOSITORY_ROOT / "tests" / "integration" / "accounts" / "test_password_management.py"
 )
+USERNAME_MANAGEMENT_TEST = (
+    REPOSITORY_ROOT / "tests" / "integration" / "accounts" / "test_username_management.py"
+)
 SECURITY_TIMING_TESTS = (
     TOKEN_AUTHENTICATION_TEST,
     JWT_AUTHENTICATION_TEST,
     REGISTRATION_TIMING_TEST,
     PASSWORD_MANAGEMENT_TEST,
+    USERNAME_MANAGEMENT_TEST,
 )
 SECURITY_TIMING_CASES_BY_TEST = {
     TOKEN_AUTHENTICATION_TEST: 14,
     JWT_AUTHENTICATION_TEST: 5,
     REGISTRATION_TIMING_TEST: 2,
     PASSWORD_MANAGEMENT_TEST: 1,
+    USERNAME_MANAGEMENT_TEST: 1,
 }
-SECURITY_TIMING_CASES = 22
+SECURITY_TIMING_CASES = 23
 UNDECLARED_INTEGRATION_TEST = '''"""Probe module for the collection guard.
 
 Holds one integration test that names no service, so a real collection can be observed rejecting
@@ -523,7 +528,7 @@ def test_security_timing_marker_partitions_every_statistical_case_exactly_once()
     """Partition global statistical timing cases from deterministic core coverage.
 
     Collects the whole suite through pytest and proves the timing and core selections are disjoint,
-    exhaustive, and contain exactly the approved twenty-two cases in their declared modules.
+    exhaustive, and contain exactly the approved twenty-three cases in their declared modules.
 
     Arguments:
         None.

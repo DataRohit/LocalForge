@@ -59,6 +59,10 @@ class ErrorCode(StrEnum):
         PASSWORD_RESET_TOKEN_FOREIGN: Password-reset token does not belong to the submitted account.
         PASSWORD_RESET_TOKEN_MALFORMED: Password-reset token cannot be decoded.
         PASSWORD_RESET_TOKEN_USED: Password-reset token has already changed a password.
+        USERNAME_RESET_TOKEN_EXPIRED: Username-reset token exceeded its configured lifetime.
+        USERNAME_RESET_TOKEN_FOREIGN: Username-reset token does not belong to the submitted account.
+        USERNAME_RESET_TOKEN_MALFORMED: Username-reset token cannot be decoded.
+        USERNAME_RESET_TOKEN_USED: Username-reset token has already changed a username.
 
     Members:
         None beyond those inherited from ``StrEnum``.
@@ -87,6 +91,10 @@ class ErrorCode(StrEnum):
     PASSWORD_RESET_TOKEN_FOREIGN = "password_reset_token_foreign"  # noqa: S105
     PASSWORD_RESET_TOKEN_MALFORMED = "password_reset_token_malformed"  # noqa: S105
     PASSWORD_RESET_TOKEN_USED = "password_reset_token_used"  # noqa: S105
+    USERNAME_RESET_TOKEN_EXPIRED = "username_reset_token_expired"  # noqa: S105
+    USERNAME_RESET_TOKEN_FOREIGN = "username_reset_token_foreign"  # noqa: S105
+    USERNAME_RESET_TOKEN_MALFORMED = "username_reset_token_malformed"  # noqa: S105
+    USERNAME_RESET_TOKEN_USED = "username_reset_token_used"  # noqa: S105
 
 
 class ServiceUnavailable(APIException):
@@ -269,6 +277,86 @@ class PasswordResetTokenUsed(APIException):
     default_detail = "The password reset token has already been used."
 
 
+class UsernameResetTokenExpired(APIException):
+    """Represent a username-reset token beyond its allowed lifetime.
+
+    Inherits from ``APIException`` and fixes the public status and code while exposing no
+    timestamp or account state.
+
+    Attributes:
+        status_code: HTTP bad-request status.
+        default_code: Stable framework-facing exception code.
+        default_detail: Safe framework-facing exception detail.
+
+    Members:
+        None.
+    """
+
+    status_code = HTTPStatus.BAD_REQUEST
+    default_code = ErrorCode.USERNAME_RESET_TOKEN_EXPIRED
+    default_detail = "The username reset token has expired."
+
+
+class UsernameResetTokenForeign(APIException):
+    """Represent a username-reset token not bound to the submitted account.
+
+    Inherits from ``APIException`` and covers missing accounts, missing records, changed account
+    state, and mismatched identities without distinguishing them.
+
+    Attributes:
+        status_code: HTTP bad-request status.
+        default_code: Stable framework-facing exception code.
+        default_detail: Safe framework-facing exception detail.
+
+    Members:
+        None.
+    """
+
+    status_code = HTTPStatus.BAD_REQUEST
+    default_code = ErrorCode.USERNAME_RESET_TOKEN_FOREIGN
+    default_detail = "The username reset token does not match the account."
+
+
+class UsernameResetTokenMalformed(APIException):
+    """Represent a username-reset token whose public structure is invalid.
+
+    Inherits from ``APIException`` and exposes no parsing detail through the shared error
+    envelope.
+
+    Attributes:
+        status_code: HTTP bad-request status.
+        default_code: Stable framework-facing exception code.
+        default_detail: Safe framework-facing exception detail.
+
+    Members:
+        None.
+    """
+
+    status_code = HTTPStatus.BAD_REQUEST
+    default_code = ErrorCode.USERNAME_RESET_TOKEN_MALFORMED
+    default_detail = "The username reset token is malformed."
+
+
+class UsernameResetTokenUsed(APIException):
+    """Represent a username-reset token consumed by a prior username change.
+
+    Inherits from ``APIException`` and preserves replay classification after account deletion
+    through the token record's immutable subject tombstone.
+
+    Attributes:
+        status_code: HTTP bad-request status.
+        default_code: Stable framework-facing exception code.
+        default_detail: Safe framework-facing exception detail.
+
+    Members:
+        None.
+    """
+
+    status_code = HTTPStatus.BAD_REQUEST
+    default_code = ErrorCode.USERNAME_RESET_TOKEN_USED
+    default_detail = "The username reset token has already been used."
+
+
 @dataclass(frozen=True, slots=True)
 class ErrorDefinition:
     """Pair a stable error code with its safe human-readable message.
@@ -380,6 +468,22 @@ PASSWORD_RESET_TOKEN_USED = ErrorDefinition(
     ErrorCode.PASSWORD_RESET_TOKEN_USED,
     "The password reset token has already been used.",
 )
+USERNAME_RESET_TOKEN_EXPIRED = ErrorDefinition(
+    ErrorCode.USERNAME_RESET_TOKEN_EXPIRED,
+    "The username reset token has expired.",
+)
+USERNAME_RESET_TOKEN_FOREIGN = ErrorDefinition(
+    ErrorCode.USERNAME_RESET_TOKEN_FOREIGN,
+    "The username reset token does not match the account.",
+)
+USERNAME_RESET_TOKEN_MALFORMED = ErrorDefinition(
+    ErrorCode.USERNAME_RESET_TOKEN_MALFORMED,
+    "The username reset token is malformed.",
+)
+USERNAME_RESET_TOKEN_USED = ErrorDefinition(
+    ErrorCode.USERNAME_RESET_TOKEN_USED,
+    "The username reset token has already been used.",
+)
 
 STATUS_DEFINITIONS: dict[int, ErrorDefinition] = {
     HTTPStatus.BAD_REQUEST: BAD_REQUEST,
@@ -408,6 +512,10 @@ ERROR_STATUS_REGISTRY = MappingProxyType(
                 ErrorCode.PASSWORD_RESET_TOKEN_FOREIGN,
                 ErrorCode.PASSWORD_RESET_TOKEN_MALFORMED,
                 ErrorCode.PASSWORD_RESET_TOKEN_USED,
+                ErrorCode.USERNAME_RESET_TOKEN_EXPIRED,
+                ErrorCode.USERNAME_RESET_TOKEN_FOREIGN,
+                ErrorCode.USERNAME_RESET_TOKEN_MALFORMED,
+                ErrorCode.USERNAME_RESET_TOKEN_USED,
                 ErrorCode.PARSE_ERROR,
                 ErrorCode.VALIDATION_ERROR,
             }
@@ -462,5 +570,9 @@ EXCEPTION_DEFINITIONS: dict[type[Exception], ErrorDefinition] = {
     PasswordResetTokenForeign: PASSWORD_RESET_TOKEN_FOREIGN,
     PasswordResetTokenMalformed: PASSWORD_RESET_TOKEN_MALFORMED,
     PasswordResetTokenUsed: PASSWORD_RESET_TOKEN_USED,
+    UsernameResetTokenExpired: USERNAME_RESET_TOKEN_EXPIRED,
+    UsernameResetTokenForeign: USERNAME_RESET_TOKEN_FOREIGN,
+    UsernameResetTokenMalformed: USERNAME_RESET_TOKEN_MALFORMED,
+    UsernameResetTokenUsed: USERNAME_RESET_TOKEN_USED,
     APIException: API_ERROR,
 }

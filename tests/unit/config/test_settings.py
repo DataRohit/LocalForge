@@ -49,6 +49,10 @@ REQUIRED_ENVIRONMENT = {
     "DJANGO_PASSWORD_RESET_MINIMUM_RESPONSE_DURATION_SECONDS": "0.200",
     "DJANGO_PASSWORD_RESET_ADDRESS_THROTTLE_RATE": "30/hour",
     "DJANGO_PASSWORD_RESET_ACCOUNT_THROTTLE_RATE": "3/hour",
+    "DJANGO_USERNAME_RESET_TOKEN_LIFETIME_SECONDS": "86400",
+    "DJANGO_USERNAME_RESET_MINIMUM_RESPONSE_DURATION_SECONDS": "0.200",
+    "DJANGO_USERNAME_RESET_ADDRESS_THROTTLE_RATE": "30/hour",
+    "DJANGO_USERNAME_RESET_ACCOUNT_THROTTLE_RATE": "3/hour",
     "POSTGRES_DB": "localforge",
     "POSTGRES_USER": "localforge_app",
     "POSTGRES_PASSWORD": secrets.token_urlsafe(16),
@@ -574,6 +578,22 @@ def test_shared_rest_framework_defaults_close_new_routes() -> None:
         REQUIRED_ENVIRONMENT["DJANGO_PASSWORD_RESET_ACCOUNT_THROTTLE_RATE"]
         == configured_settings.PASSWORD_RESET_ACCOUNT_THROTTLE_RATE
     )
+    assert (
+        float(REQUIRED_ENVIRONMENT["DJANGO_USERNAME_RESET_MINIMUM_RESPONSE_DURATION_SECONDS"])
+        == configured_settings.USERNAME_RESET_MINIMUM_RESPONSE_DURATION_SECONDS
+    )
+    assert (
+        int(REQUIRED_ENVIRONMENT["DJANGO_USERNAME_RESET_TOKEN_LIFETIME_SECONDS"])
+        == configured_settings.USERNAME_RESET_TIMEOUT
+    )
+    assert (
+        REQUIRED_ENVIRONMENT["DJANGO_USERNAME_RESET_ADDRESS_THROTTLE_RATE"]
+        == configured_settings.USERNAME_RESET_ADDRESS_THROTTLE_RATE
+    )
+    assert (
+        REQUIRED_ENVIRONMENT["DJANGO_USERNAME_RESET_ACCOUNT_THROTTLE_RATE"]
+        == configured_settings.USERNAME_RESET_ACCOUNT_THROTTLE_RATE
+    )
     assert configured_settings.LOGIN_THROTTLE_DATABASE_ALIAS == "default"
     assert set(configured_settings.CACHES) == {"default", "sessions"}
 
@@ -712,6 +732,28 @@ def test_password_reset_lifetime_must_be_positive() -> None:
 
 
 @pytest.mark.unit
+def test_username_reset_lifetime_must_be_positive() -> None:
+    """Reject a nonpositive username-reset lifetime.
+
+    Executes shared settings with an unsafe value and verifies startup fails before a process can
+    issue recovery credentials with immediate or undefined expiry.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If an unsafe reset lifetime loads successfully.
+    """
+    unsafe = REQUIRED_ENVIRONMENT | {"DJANGO_USERNAME_RESET_TOKEN_LIFETIME_SECONDS": "0"}
+
+    with pytest.raises(ImproperlyConfigured, match="USERNAME_RESET_TOKEN_LIFETIME"):
+        _execute_module_in_isolation("base", unsafe)
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "configured_value",
     [
@@ -775,6 +817,41 @@ def test_password_reset_response_floor_must_be_finite_and_positive(
     """
     unsafe = REQUIRED_ENVIRONMENT | {
         "DJANGO_PASSWORD_RESET_MINIMUM_RESPONSE_DURATION_SECONDS": configured_value
+    }
+
+    with pytest.raises(ImproperlyConfigured, match="must be finite and positive"):
+        _execute_module_in_isolation("base", unsafe)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "configured_value",
+    [
+        pytest.param("0", id="zero"),
+        pytest.param("nan", id="nan"),
+        pytest.param("+inf", id="positive-infinity"),
+        pytest.param("-inf", id="negative-infinity"),
+    ],
+)
+def test_username_reset_response_floor_must_be_finite_and_positive(
+    configured_value: str,
+) -> None:
+    """Reject a non-finite or nonpositive public username-reset response floor.
+
+    Executes shared settings with disabled or unbounded timing protection and verifies startup
+    fails before a worker can expose account state or attempt an invalid sleep.
+
+    Arguments:
+        configured_value: Unsafe duration text supplied through the environment.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If an unsafe reset response floor loads successfully.
+    """
+    unsafe = REQUIRED_ENVIRONMENT | {
+        "DJANGO_USERNAME_RESET_MINIMUM_RESPONSE_DURATION_SECONDS": configured_value
     }
 
     with pytest.raises(ImproperlyConfigured, match="must be finite and positive"):

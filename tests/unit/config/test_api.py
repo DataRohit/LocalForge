@@ -676,6 +676,10 @@ def test_error_codes_are_declared_in_one_enumeration() -> None:
         "service_unavailable",
         "throttled",
         "unsupported_media_type",
+        "username_reset_token_expired",
+        "username_reset_token_foreign",
+        "username_reset_token_malformed",
+        "username_reset_token_used",
         "validation_error",
     }
 
@@ -709,6 +713,10 @@ def test_error_status_registry_exposes_the_complete_governing_matrix() -> None:
                 ErrorCode.PASSWORD_RESET_TOKEN_FOREIGN,
                 ErrorCode.PASSWORD_RESET_TOKEN_MALFORMED,
                 ErrorCode.PASSWORD_RESET_TOKEN_USED,
+                ErrorCode.USERNAME_RESET_TOKEN_EXPIRED,
+                ErrorCode.USERNAME_RESET_TOKEN_FOREIGN,
+                ErrorCode.USERNAME_RESET_TOKEN_MALFORMED,
+                ErrorCode.USERNAME_RESET_TOKEN_USED,
                 ErrorCode.VALIDATION_ERROR,
             }
         ),
