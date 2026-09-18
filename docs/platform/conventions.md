@@ -193,6 +193,7 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | `django-uv5n2` | CSRF origins behind Traefik | `http://localhost:8080,http://localforge.localhost:8080` | no | yes |
 | `DJANGO_CORS_ALLOWED_ORIGINS` | `django-uv5n2` | exact browser origins allowed to read credentialed cross-origin responses | `http://localhost:8080,http://localforge.localhost:8080` | no | yes |
 | `DJANGO_CORS_ALLOW_CREDENTIALS` | `django-uv5n2` | permit credentials only with exact configured origins; wildcard origins are rejected at startup | `true` | no | yes |
+| `DJANGO_API_DOCUMENTATION_ENABLED` | `django-uv5n2` | expose the OpenAPI schema, Swagger UI, and ReDoc routes at process startup | `true` development, `false` testing | no | yes |
 | `DJANGO_TRUSTED_PROXY_NETWORKS` | `django-uv5n2` | immediate-peer networks allowed to supply forwarded client addresses | `10.89.2.0/24` development, `none` testing | no | yes |
 | `DJANGO_API_REQUEST_BODY_MAX_BYTES` | `django-uv5n2` | versioned API body ceiling and request spool memory limit | `1048576` | no | yes |
 | `DJANGO_API_AUTHENTICATION_THROTTLE_RATE` | `django-uv5n2` | shared cache-backed aggregate scope for authentication, recovery, and account-security operations | `30/minute` | no | yes |
@@ -401,6 +402,7 @@ Testing overrides, present only in `.env.testing`:
 | `DJANGO_DEBUG` | `false` | tests must not depend on debug behaviour |
 | `DJANGO_ALLOWED_HOSTS` | replaces `django-uv5n2` with `django-test-dt5qx` | the test runner's own container name; the development app does not run here |
 | `DJANGO_CORS_ALLOWED_ORIGINS` | `http://localhost:8080` | testing permits only its single local browser origin |
+| `DJANGO_API_DOCUMENTATION_ENABLED` | `false` | testing is headless; schema contract tests invoke the generator directly |
 | `DJANGO_TRUSTED_PROXY_NETWORKS` | `none` | testing has no proxy; direct requests use `REMOTE_ADDR` |
 | `POSTGRES_HOST`, `POSTGRES_REPLICA_HOST` | `postgres-tp8vn` | single node; the replica alias points at it |
 | `VALKEY_CACHE_HOST` | `valkey-cache-tv4kq` | the testing cache container |

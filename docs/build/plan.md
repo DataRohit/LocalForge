@@ -68,6 +68,7 @@ Listed so scope creep is recognisable. None exists.
 | `src/config/db_router.py` | Primary/replica router |
 | `src/config/email.py` | Multipart application email rendering and failure-safe delivery |
 | `src/config/templates/email/` | Plain-text and HTML application email templates |
+| `src/config/templates/drf_spectacular/redoc.html` | Offline ReDoc shell without remote font requests |
 | `src/config/health.py` | Health view executor that preserves request correlation |
 | `src/config/metrics_asgi.py`, `src/config/metrics_urls.py` | Observability-only metrics listener |
 | `src/config/api.py`, `src/config/api_errors.py` | Versioned API routing and the shared error boundary and vocabulary |
@@ -163,8 +164,12 @@ Two corrections to that table, made 2026-09-14 when the split was performed:
 **4c.** Rewrite `src/config/asgi.py` as a `ProtocolTypeRouter` with an HTTP branch and an empty WebSocket branch.
 
 **4d.** Add `src/config/api.py` with the schema, Swagger UI, and ReDoc routes. Configure `drf-spectacular-sidecar`
-(`INSTALLED_APPS` entry plus the three `'SIDECAR'` keys) or both UIs render blank offline. The application surface
-those UIs document is built later, in ticket phase 4; at this stage the schema is near-empty and that is correct.
+(`INSTALLED_APPS` entry plus the three `'SIDECAR'` keys) or both UIs render blank offline. Remove the remote font
+links from the bundled ReDoc HTML shell, and gate all three routes behind the environment-controlled documentation
+flag: enabled in development and disabled by default in headless testing. The deployed ASGI entry point serves the
+local sidecar finder assets only under that same flag, outside API accounting, and the schema finalizer excludes the
+three infrastructure paths from direct generation. The application surface those UIs document is built later, in
+ticket phase 4; at this stage the schema is near-empty and that is correct.
 
 **4e.** Add `db_router.py`, `celery.py`, `routing.py`.
 

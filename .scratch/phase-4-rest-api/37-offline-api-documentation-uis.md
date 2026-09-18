@@ -5,16 +5,19 @@ so a developer can read and exercise the API from a browser on an air-gapped mac
 
 **Blocked by:** 36.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The schema endpoint, Swagger UI, and ReDoc are the only three routes added, and they document an API whose
-      application surface is exactly the documented one.
-- [ ] Static assets for both UIs are served from the local sidecar package, not a content delivery network.
-      Verified by loading both pages with the machine offline: they render fully.
-- [ ] The sidecar package is listed in the installed applications, without which the assets are not collected.
-- [ ] Both UIs are reachable at the paths in `docs/platform/service-inventory.md`.
-- [ ] Swagger UI can authenticate with both schemes and successfully call an authenticated endpoint.
-- [ ] The UIs are available in development and excluded from the testing environment, which runs headless.
-- [ ] Exposure of the schema and UIs is controlled by an environment flag, so they can be turned off without a code
-      change.
-- [ ] A test asserts the schema endpoint returns a valid document and that both UI routes return success.
+- [x] The schema endpoint, Swagger UI, and ReDoc are the only three routes added, and they document an API whose
+      application surface is exactly the documented one. Sidecar `/static/` URLs are ASGI-served infrastructure
+      resources, not additions to the Django application route table.
+- [x] Static assets for both UIs are served from the local sidecar package, not a content delivery network.
+      Verified through the deployed `uvicorn config.asgi:application --app-dir src` path with all five assets,
+      content types, conditional caching, unknown resources, and path traversal exercised over loopback.
+- [x] The sidecar package is listed in the installed applications, without which the assets are not collected.
+- [x] Both UIs are reachable at the paths in `docs/platform/service-inventory.md`.
+- [x] Swagger UI can authenticate with both schemes and successfully call an authenticated endpoint.
+- [x] The UIs are available in development and excluded from the testing environment, which runs headless.
+- [x] Exposure of the schema and UIs is controlled by an environment flag, so they can be turned off without a code
+      change; the same flag disables ASGI static interception.
+- [x] Tests assert the schema endpoint returns a valid document, both UI routes return success, direct generation is
+      warning-free with documentation enabled, and the committed fixed-contract artifact remains deterministic.

@@ -166,6 +166,7 @@ CSRF_TRUSTED_ORIGINS = env.list("DJANGO_CSRF_TRUSTED_ORIGINS")
 
 CORS_ALLOWED_ORIGINS = tuple(env.list("DJANGO_CORS_ALLOWED_ORIGINS"))
 CORS_ALLOW_CREDENTIALS = env.bool("DJANGO_CORS_ALLOW_CREDENTIALS")
+API_DOCUMENTATION_ENABLED = env.bool("DJANGO_API_DOCUMENTATION_ENABLED")
 
 if "*" in CORS_ALLOWED_ORIGINS:
     message = "DJANGO_CORS_ALLOWED_ORIGINS must not contain a wildcard"
@@ -200,6 +201,7 @@ INSTALLED_APPS = [
     "rest_framework.authtoken",
     "rest_framework_simplejwt.token_blacklist",
     "drf_spectacular",
+    "drf_spectacular_sidecar",
     "storages",
 ]
 
@@ -335,6 +337,9 @@ SPECTACULAR_SETTINGS = {
         "config.api.add_throttle_response_headers",
         "config.api.finalize_openapi_contract",
     ],
+    "SWAGGER_UI_DIST": "SIDECAR",
+    "SWAGGER_UI_FAVICON_HREF": "SIDECAR",
+    "REDOC_DIST": "SIDECAR",
 }
 
 ROOT_URLCONF = "config.urls"

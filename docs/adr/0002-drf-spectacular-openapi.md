@@ -34,6 +34,31 @@ SPECTACULAR_SETTINGS = {
 Verified against the drf-spectacular documentation on 2026-09-13. Omitting the sidecar is the single most likely way
 to end this phase with two dashboards that load but display nothing.
 
+The three documentation routes share the required `DJANGO_API_DOCUMENTATION_ENABLED` flag. Development sets it to
+`true`; generated testing configuration sets it to `false`, keeping the headless environment free of both browser
+UIs, the network-exposed schema, and static interception. Contract tests do not need that route: they invoke the
+schema generator directly. The finalizer removes optional documentation infrastructure paths before completing the
+fixed application contract, so direct generation is identical whether the flag is on or off. An operator can
+therefore remove the complete documentation surface at process startup without changing code.
+
+drf-spectacular's bundled ReDoc template still references Google Fonts even when `REDOC_DIST` is `SIDECAR`.
+LocalForge overrides only that HTML shell, retaining the sidecar JavaScript while removing both remote font links.
+The rendered Swagger UI and ReDoc pages must contain no external HTTP asset URL.
+
+Uvicorn serves development HTTP through `config.asgi:application`, not `runserver`, so that entry point conditionally
+wraps the existing HTTP stack in Django's `ASGIStaticFilesHandler`. Django labels this handler as development-only;
+that is accepted here because LocalForge has no production environment, the flag enables it only in the local
+development environment, and the normal entry point still runs `collectstatic` into the registered static volume.
+The handler resolves only installed static-finder resources, preserves Django's content types, `Last-Modified` and
+conditional `304` behavior, and maps unsafe finder paths to `404`. LocalForge reapplies its browser hardening headers
+to intercepted responses.
+
+Static interception is outside request logging, Prometheus, API throttling, and API body limiting, whose existing
+order remains unchanged for application traffic. Documentation assets therefore cannot consume API admission or
+metrics. Their `/static/` URLs are infrastructure resources rather than Django URL patterns or application routes;
+the fixed application route table remains unchanged. The existing Traefik router forwards them to the same
+`django-uv5n2` ASGI service, so no additional router, container, dependency, or externally exposed port is required.
+
 ## The pinned DRF version is 3.18.0, not 3.18.1
 
 The first draft of this decision named 3.18.1 (2026-09-07). Measured 2026-09-14 while resolving the dependency

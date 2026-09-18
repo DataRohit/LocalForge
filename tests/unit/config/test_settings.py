@@ -38,6 +38,7 @@ REQUIRED_ENVIRONMENT = {
     "DJANGO_CSRF_TRUSTED_ORIGINS": ("http://localhost:8080,http://localforge.localhost:8080"),
     "DJANGO_CORS_ALLOWED_ORIGINS": ("http://localhost:8080,http://localforge.localhost:8080"),
     "DJANGO_CORS_ALLOW_CREDENTIALS": "true",
+    "DJANGO_API_DOCUMENTATION_ENABLED": "true",
     "DJANGO_TRUSTED_PROXY_NETWORKS": "10.89.2.0/24",
     "DJANGO_API_REQUEST_BODY_MAX_BYTES": "1048576",
     "DJANGO_API_AUTHENTICATION_THROTTLE_RATE": "30/minute",
@@ -1133,6 +1134,36 @@ def test_browsable_rendering_is_development_only() -> None:
     assert testing.REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"] == [
         "rest_framework.renderers.JSONRenderer",
     ]
+
+
+@pytest.mark.unit
+def test_offline_api_documentation_settings_follow_the_environment() -> None:
+    """Configure local documentation assets and environment-controlled exposure.
+
+    Executes both settings modules with explicit flag values and verifies the sidecar application
+    and distributions are shared while route exposure remains a deploy-time choice.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If assets use a remote distribution or the exposure flag is ignored.
+    """
+    development = _execute_module_in_isolation("development", REQUIRED_ENVIRONMENT)
+    testing = _execute_module_in_isolation(
+        "testing",
+        REQUIRED_ENVIRONMENT | {"DJANGO_API_DOCUMENTATION_ENABLED": "false"},
+    )
+
+    assert "drf_spectacular_sidecar" in development.INSTALLED_APPS
+    assert development.SPECTACULAR_SETTINGS["SWAGGER_UI_DIST"] == "SIDECAR"
+    assert development.SPECTACULAR_SETTINGS["SWAGGER_UI_FAVICON_HREF"] == "SIDECAR"
+    assert development.SPECTACULAR_SETTINGS["REDOC_DIST"] == "SIDECAR"
+    assert development.API_DOCUMENTATION_ENABLED is True
+    assert testing.API_DOCUMENTATION_ENABLED is False
 
 
 @pytest.mark.unit

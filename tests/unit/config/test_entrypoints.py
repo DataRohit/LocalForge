@@ -8,6 +8,7 @@ import importlib
 import os
 import subprocess
 import sys
+from http import HTTPStatus
 from pathlib import Path
 from unittest.mock import patch
 
@@ -15,6 +16,8 @@ import pytest
 from channels.routing import ProtocolTypeRouter
 from django.core.handlers.asgi import ASGIHandler
 from django.core.handlers.wsgi import WSGIHandler
+from django.http import Http404
+from django.test import RequestFactory, override_settings
 
 from config import asgi, routing, wsgi
 
@@ -107,6 +110,89 @@ def test_the_asgi_application_dispatches_both_protocols() -> None:
     assert set(asgi.application.application_mapping) == {"http", "websocket"}
     assert isinstance(asgi.django_application, ASGIHandler)
     assert asgi.application.application_mapping["http"] is asgi.http_application
+
+
+@pytest.mark.unit
+def test_documentation_flag_wraps_the_existing_http_stack_for_static_files() -> None:
+    """Add static interception outside the established application wrappers.
+
+    Reloads the entry point with documentation enabled and verifies the static handler delegates
+    non-static traffic to the already composed logging, throttle, body-limit, and Django stack.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If static interception is absent or replaces the HTTP application.
+    """
+    try:
+        with override_settings(API_DOCUMENTATION_ENABLED=True):
+            reloaded = importlib.reload(asgi)
+
+            assert isinstance(reloaded.http_application, asgi.DocumentationStaticFilesHandler)
+            assert reloaded.http_application.application is not reloaded.django_application
+    finally:
+        importlib.reload(asgi)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_documentation_static_handler_applies_browser_security() -> None:
+    """Serve one sidecar resource with static and browser response semantics.
+
+    Requests an installed asset directly from the handler and observes its content type,
+    conditional-cache metadata, and project-owned security headers.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the handler omits static metadata or browser hardening.
+    """
+    handler = asgi.DocumentationStaticFilesHandler(asgi.django_application)
+    request = RequestFactory().get("/static/drf_spectacular_sidecar/swagger-ui-dist/swagger-ui.css")
+
+    response = await handler.get_response_async(request)
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.headers["Content-Type"] == "text/css"
+    assert "Last-Modified" in response.headers
+    assert response.headers["Content-Security-Policy"] == (
+        "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; "
+        "form-action 'self'"
+    )
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    response.close()
+
+
+@pytest.mark.unit
+def test_documentation_static_handler_hides_unsafe_finder_paths() -> None:
+    """Return not found for a traversal attempt beneath the static prefix.
+
+    Sends an unsafe relative finder path through the same handler method Uvicorn reaches and
+    verifies it cannot escape the installed static resource roots or become an internal error.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If an unsafe path resolves or raises a non-HTTP exception.
+    """
+    handler = asgi.DocumentationStaticFilesHandler(asgi.django_application)
+    request = RequestFactory().get("/static/../manage.py")
+
+    with pytest.raises(Http404):
+        handler.serve(request)
 
 
 @pytest.mark.unit

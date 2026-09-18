@@ -183,6 +183,7 @@ Every service either exposes a native UI or is given a companion.
 | --- | --- | --- | --- | --- |
 | `traefik-tk2jp` | Traefik dashboard | `http://localhost:8081/dashboard/` | native | basic auth, `TRAEFIK_DASHBOARD_AUTH` |
 | `django-uv5n2` | Django admin | `http://localhost:8000/admin/` | native | Django superuser |
+| `django-uv5n2` | OpenAPI schema | `http://localhost:8000/api/schema/` | native, drf-spectacular | none locally |
 | `django-uv5n2` | Swagger UI | `http://localhost:8000/api/schema/swagger-ui/` | native, drf-spectacular | none locally; assets from the sidecar |
 | `django-uv5n2` | ReDoc | `http://localhost:8000/api/schema/redoc/` | native, drf-spectacular | none locally |
 | `django-uv5n2` | JSON readiness | `http://localhost:8000/health/` | first-party API | public stable states; authenticated staff receive bounded details |
@@ -203,6 +204,12 @@ Every service either exposes a native UI or is given a companion.
 | `postgres-exporter-pe4rk` | metrics page | `http://localhost:9187/metrics` | native, minimal | none locally |
 | `valkey-cache-exporter-ve7ts` | metrics page | `http://localhost:9121/metrics` | native, minimal | none locally |
 | `valkey-channels-exporter-vx4nq` | metrics page | `http://localhost:9122/metrics` | native, minimal | none locally |
+
+The schema, Swagger UI, and ReDoc entries are three optional infrastructure routes on the existing Django service.
+Their `/static/drf_spectacular_sidecar/` browser dependencies are static resources intercepted by the development
+ASGI entry point, not application routes, and do not expand the fixed route table. The same flag removes all three
+routes and static interception in headless testing. Traefik forwards both pages and assets through its existing
+`localforge` router; there is no separate static router or service.
 
 ### 3.1 Dashboard configuration that is easy to get wrong
 

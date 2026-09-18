@@ -64,6 +64,13 @@ if TYPE_CHECKING:
 API_VERSION = "v1"
 API_PREFIX = f"api/{API_VERSION}/"
 HEALTH_PATH = "/health/"
+DOCUMENTATION_INFRASTRUCTURE_PATHS = frozenset(
+    {
+        "/api/schema/",
+        "/api/schema/redoc/",
+        "/api/schema/swagger-ui/",
+    }
+)
 API_BOUNDARY_ADMISSION_WORKERS = 5
 BOUNDARY_ADMISSION_SIGNAL_INTERVAL_SECONDS = 60.0
 BOUNDARY_ADMISSION_SATURATED = (
@@ -1079,8 +1086,8 @@ def finalize_openapi_contract(
 ) -> dict[str, Any]:
     """Complete metadata that cannot be expressed by per-view annotations.
 
-    Marks every public operation explicitly, gives bodyless successes a status-bound example, and
-    records observed routing and CSRF envelopes that have no matching OpenAPI operation object.
+    Removes optional documentation infrastructure, marks every application operation explicitly,
+    gives bodyless successes a status-bound example, and records boundary-only response contracts.
 
     Arguments:
         result: Generated OpenAPI document.
@@ -1094,6 +1101,8 @@ def finalize_openapi_contract(
     del generator, request, public
     paths = cast("dict[str, dict[str, Any]]", result["paths"])
     components = cast("dict[str, object]", result["components"])
+    for infrastructure_path in DOCUMENTATION_INFRASTRUCTURE_PATHS:
+        paths.pop(infrastructure_path, None)
     _add_implicit_head_operations(paths)
     _add_invalid_host_responses(paths)
     _add_profile_delete_request_body(paths)
