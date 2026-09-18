@@ -2149,6 +2149,28 @@ def test_the_edge_zone_has_the_trusted_proxy_subnet() -> None:
 
 
 @pytest.mark.unit
+def test_the_proxy_replaces_untrusted_forwarded_address_metadata() -> None:
+    """Keep client address forwarding owned by the edge proxy.
+
+    Verifies the public entrypoint refuses insecure trust of caller-supplied forwarding metadata,
+    while Traefik continues to synthesize its standard forwarded address for Django.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the proxy starts trusting arbitrary forwarded headers.
+    """
+    web = load(PROXY_CONFIG)["entryPoints"]["web"]
+
+    assert web["forwardedHeaders"] == {"insecure": False}
+    assert web["http"]["aliasHeadersStrategy"] == "delete"
+
+
+@pytest.mark.unit
 def test_the_proxy_routes_the_registered_application_host() -> None:
     """Route the public development host to Django by Docker labels.
 

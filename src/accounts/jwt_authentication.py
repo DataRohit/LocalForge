@@ -22,9 +22,14 @@ from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, Ou
 from rest_framework_simplejwt.tokens import RefreshToken, Token, UntypedToken
 from rest_framework_simplejwt.utils import datetime_from_epoch, get_md5_hash_password
 
+from accounts.api_throttling import (
+    AnonymousApiThrottle,
+    AuthenticationRecoveryThrottle,
+)
 from accounts.authentication import active_token_user
 from accounts.token_authentication import (
     ErrorEnvelopeSerializer,
+    StrictRequestSerializer,
     TokenLoginSerializer,
     TokenLoginThrottle,
     error_example,
@@ -71,11 +76,11 @@ class JWTCreateResponseSerializer(Serializer):
     refresh = CharField(read_only=True)
 
 
-class JWTRefreshRequestSerializer(Serializer):
+class JWTRefreshRequestSerializer(StrictRequestSerializer):
     """Validate a refresh-token exchange request.
 
-    Inherits from DRF's ``Serializer`` and accepts only the credential being rotated, keeping the
-    original value write-only so it cannot enter a rendered success response.
+    Inherits from ``StrictRequestSerializer`` and accepts only the credential being rotated,
+    keeping the original value write-only so it cannot enter a rendered success response.
 
     Attributes:
         refresh: Refresh credential supplied by the client.
@@ -105,11 +110,11 @@ class JWTRefreshResponseSerializer(Serializer):
     refresh = CharField(read_only=True)
 
 
-class JWTVerifyRequestSerializer(Serializer):
+class JWTVerifyRequestSerializer(StrictRequestSerializer):
     """Validate a token verification request.
 
-    Inherits from DRF's ``Serializer`` and accepts one credential without ever serializing it back
-    to the caller.
+    Inherits from ``StrictRequestSerializer`` and accepts one credential without ever serializing
+    it back to the caller.
 
     Attributes:
         token: Access or refresh credential whose validity is being checked.
@@ -283,7 +288,8 @@ class JWTCreateView(APIView):
     Attributes:
         authentication_classes: Empty because callers exchange credentials for their first token.
         permission_classes: Public access required for credential exchange.
-        throttle_classes: Shared strict login admission policy.
+        throttle_classes: Strict PostgreSQL login admission plus shared anonymous and authentication
+            scopes.
 
     Members:
         get_authenticate_header: Preserve the bearer challenge on credential failure.
@@ -292,7 +298,11 @@ class JWTCreateView(APIView):
 
     authentication_classes: tuple[type, ...] = ()
     permission_classes = (AllowAny,)
-    throttle_classes = (TokenLoginThrottle,)
+    throttle_classes = (
+        TokenLoginThrottle,
+        AnonymousApiThrottle,
+        AuthenticationRecoveryThrottle,
+    )
 
     @override
     def get_authenticate_header(self, request: Request) -> str:
@@ -433,6 +443,7 @@ class JWTRefreshView(APIView):
     Attributes:
         authentication_classes: Empty because the refresh credential is carried in the body.
         permission_classes: Public access required for refresh exchange.
+        throttle_classes: Shared anonymous and authentication scopes.
 
     Members:
         get_authenticate_header: Preserve the bearer challenge on token failure.
@@ -441,6 +452,8 @@ class JWTRefreshView(APIView):
 
     authentication_classes: tuple[type, ...] = ()
     permission_classes = (AllowAny,)
+    throttle_classes = (AnonymousApiThrottle, AuthenticationRecoveryThrottle)
+    signed_subject_throttle_field = "refresh"
 
     @override
     def get_authenticate_header(self, request: Request) -> str:
@@ -519,6 +532,11 @@ class JWTRefreshView(APIView):
                 "Unsupported media type",
                 UNSUPPORTED_MEDIA_TYPE,
             ),
+            HTTPStatus.TOO_MANY_REQUESTS: error_response(
+                "The client address or token account exceeded the authentication scope.",
+                "Too many requests",
+                THROTTLED,
+            ),
             HTTPStatus.INTERNAL_SERVER_ERROR: error_response(
                 "An unexpected server failure was contained.",
                 "Internal server error",
@@ -566,6 +584,7 @@ class JWTVerifyView(APIView):
     Attributes:
         authentication_classes: Empty because the inspected credential is carried in the body.
         permission_classes: Public access required for standalone token verification.
+        throttle_classes: Shared anonymous and authentication scopes.
 
     Members:
         get_authenticate_header: Preserve the bearer challenge on token failure.
@@ -574,6 +593,8 @@ class JWTVerifyView(APIView):
 
     authentication_classes: tuple[type, ...] = ()
     permission_classes = (AllowAny,)
+    throttle_classes = (AnonymousApiThrottle, AuthenticationRecoveryThrottle)
+    signed_subject_throttle_field = "token"
 
     @override
     def get_authenticate_header(self, request: Request) -> str:
@@ -654,6 +675,11 @@ class JWTVerifyView(APIView):
                 "The submitted request representation is unsupported.",
                 "Unsupported media type",
                 UNSUPPORTED_MEDIA_TYPE,
+            ),
+            HTTPStatus.TOO_MANY_REQUESTS: error_response(
+                "The client address or token account exceeded the authentication scope.",
+                "Too many requests",
+                THROTTLED,
             ),
             HTTPStatus.INTERNAL_SERVER_ERROR: error_response(
                 "An unexpected server failure was contained.",

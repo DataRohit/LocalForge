@@ -30,12 +30,17 @@ from rest_framework.serializers import CharField, EmailField, UUIDField
 from rest_framework.throttling import BaseThrottle
 from rest_framework.views import APIView
 
+from accounts.api_throttling import (
+    AnonymousApiThrottle,
+    AuthenticationRecoveryThrottle,
+)
 from accounts.login_throttle import PostgresLoginThrottleStore, RollingWindowRule
 from accounts.models import User, UsernameResetToken
 from accounts.registration_timing import (
     monotonic_now,
     wait_for_minimum_registration_duration,
 )
+from accounts.request_throttling import parse_throttle_rate, trusted_client_address
 from accounts.tasks import send_username_reset_email
 from accounts.token_authentication import (
     ErrorEnvelopeSerializer,
@@ -43,8 +48,6 @@ from accounts.token_authentication import (
     classify_password_hash,
     error_example,
     error_response,
-    parse_throttle_rate,
-    trusted_client_address,
     verify_encoded_password,
 )
 from accounts.user_profiles import StrictFieldsSerializer, normalise_valid_email
@@ -468,7 +471,8 @@ class UsernameResetRequestView(APIView):
     Attributes:
         authentication_classes: Empty because callers may not know the login identifier.
         permission_classes: Public access required for recovery.
-        throttle_classes: Authoritative address and recipient admission.
+        throttle_classes: Authoritative recovery admission plus shared anonymous and authentication
+            scopes.
 
     Members:
         initial: Capture the earliest DRF timing boundary.
@@ -477,7 +481,11 @@ class UsernameResetRequestView(APIView):
 
     authentication_classes: tuple[type, ...] = ()
     permission_classes = (AllowAny,)
-    throttle_classes = (UsernameResetRequestThrottle,)
+    throttle_classes = (
+        UsernameResetRequestThrottle,
+        AnonymousApiThrottle,
+        AuthenticationRecoveryThrottle,
+    )
     _started_at: float
 
     @override
@@ -981,7 +989,8 @@ class UsernameResetConfirmView(APIView):
     Attributes:
         authentication_classes: Empty because recovery callers may not know the login identifier.
         permission_classes: Public access required for recovery.
-        throttle_classes: Authoritative address and account confirmation admission.
+        throttle_classes: Authoritative confirmation admission plus shared anonymous and
+            authentication scopes.
 
     Members:
         post: Validate and apply one username reset.
@@ -989,7 +998,11 @@ class UsernameResetConfirmView(APIView):
 
     authentication_classes: tuple[type, ...] = ()
     permission_classes = (AllowAny,)
-    throttle_classes = (UsernameResetConfirmThrottle,)
+    throttle_classes = (
+        UsernameResetConfirmThrottle,
+        AnonymousApiThrottle,
+        AuthenticationRecoveryThrottle,
+    )
 
     @extend_schema(
         operation_id="user_username_reset_confirm",
@@ -1174,12 +1187,14 @@ class UsernameChangeView(APIView):
 
     Attributes:
         permission_classes: Authenticated callers only.
+        throttle_classes: Shared authentication and account-security scope.
 
     Members:
         post: Validate and replace the caller's username.
     """
 
     permission_classes = (IsAuthenticated,)
+    throttle_classes = (AuthenticationRecoveryThrottle,)
 
     @extend_schema(
         operation_id="user_username_change",
@@ -1257,6 +1272,11 @@ class UsernameChangeView(APIView):
                 "The submitted request representation is unsupported.",
                 "Unsupported media type",
                 UNSUPPORTED_MEDIA_TYPE,
+            ),
+            HTTPStatus.TOO_MANY_REQUESTS: error_response(
+                "The client address or account exceeded the authentication scope.",
+                "Too many requests",
+                THROTTLED,
             ),
             HTTPStatus.INTERNAL_SERVER_ERROR: error_response(
                 "An unexpected server failure was contained.",

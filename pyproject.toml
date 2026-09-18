@@ -154,6 +154,10 @@ module = [
 ]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["accounts.api_throttling"]
+disable_error_code = ["misc"]
+
 [tool.ty.environment]
 python = ".venv"
 python-version = "3.14"
@@ -193,6 +197,8 @@ markers = [
     "unit: isolated unit tests",
     "integration: tests spanning Django components",
     "services(*names): external services an integration test requires",
+    "api_runtime: integration tests dispatching the fixed /api/v1/ application boundary",
+    "api_runtime_exempt: non-API or source-only case in an api_runtime-marked module",
     "serial: tests that must not share a worker pool, justified in the test docstring",
     "security_timing: statistical wall-clock security criteria run in the bounded timing stage",
 ]

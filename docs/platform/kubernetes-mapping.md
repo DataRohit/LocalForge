@@ -14,7 +14,7 @@ executing agent does not write code that would have to be deleted at that point.
 Concretely, the following are forbidden in this platform:
 
 | Forbidden | Why | What to do instead |
-|---|---|---|
+| --- | --- | --- |
 | A `replicas:` count in a Compose service, or `docker compose up --scale` baked into a script | Encodes a scaling decision in the wrong layer | Run one container per service; let the orchestrator decide the count later |
 | Code that asks "am I worker 3 of 5?" | Requires stable ordinal identity that no stateless service should depend on | Have every instance behave identically |
 | A singleton guard implemented by a hostname or container-name check | Breaks the moment the name changes | Use a lease, a broker queue, or a dedicated single-replica Deployment |
@@ -40,14 +40,14 @@ Design consequences already applied to the Compose stack:
 `SS` = StatefulSet, `D` = Deployment, `DS` = DaemonSet, `CJ` = CronJob.
 
 | Compose service | Primitive | Stateful? | Kubernetes Service | Storage | Notes |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | `traefik-tk2jp` | `D` + `IngressClass` | no | `LoadBalancer` | none | Becomes the ingress controller. Docker label routing becomes `Ingress` or `IngressRoute` objects. RBAC for the Kubernetes provider replaces the Docker socket. |
 | `django-uv5n2` | `D` | no | `ClusterIP` behind `Ingress` | none | The scale target. `HorizontalPodAutoscaler` on CPU and on request rate. `PodDisruptionBudget` with `minAvailable: 1`. |
 | `postgres-pg3ka` | `SS`, 1 replica | **yes** | headless `ClusterIP` | `PVC` from `volumeClaimTemplates`, `ReadWriteOnce` | At real scale this is replaced by an operator — CloudNativePG or the Zalando operator — which owns primary election. Do not hand-roll failover. |
 | `postgres-replica-pg6vy` | part of the same `SS` | **yes** | second headless `Service` selecting non-primary pods | `PVC` per pod | In Compose this is a separate container. Under an operator it becomes replica `N` of one cluster resource, and the Django `replica` alias points at the read-only Service. |
 | `pgbackrest-pb2wj` | `CJ` | writes to state | none | `PVC`, `ReadWriteMany` or an object-store repo | The schedule moves from the container's own loop to `spec.schedule`. This is why the backup loop lives in a script and not in application code. |
 | `pgadmin-pa7fe` | `D`, 1 replica | trivial | `ClusterIP` | small `PVC` | Development-only. Not deployed in a real cluster; listed for completeness. |
-| `valkey-cache-vc5tn` | `SS`, 1 replica | semi | headless `ClusterIP` | `PVC` | Cache data is reconstructible. At scale this becomes a Valkey Cluster or a replicated Sentinel setup. |
+| `valkey-cache-vc5tn` | `SS`, 1 replica | semi | headless `ClusterIP` | `PVC` | Cache data is reconstructible. At scale this becomes a Valkey Cluster or a replicated Sentinel setup. Atomic general-throttle keys already carry an opaque account-scoped hash tag, so every multi-key script stays in one cluster slot. |
 | `valkey-channels-vh8dm` | `SS`, 1 replica | semi | headless `ClusterIP` | `PVC` | Must stay a separate workload from the cache. Eviction on the channel layer loses WebSocket messages. |
 | `rabbitmq-rq4sx` | `SS`, 3 replicas at scale | **yes** | headless `ClusterIP` + a client `ClusterIP` | `PVC` per pod | Quorum queues need stable network identity, which is exactly what a StatefulSet provides and a Deployment does not. |
 | `celery-worker-cw8rt` | `D` | no | none | none | Second scale target. `HorizontalPodAutoscaler` driven by queue depth via KEDA, not by CPU. |
@@ -70,7 +70,7 @@ per-job namespace, not a permanent workload.
 ## 3. Stateful versus stateless summary
 
 | Classification | Services | Consequence |
-|---|---|---|
+| --- | --- | --- |
 | Stateless, freely scalable | `django-uv5n2`, `celery-worker-cw8rt`, `traefik-tk2jp` | Deployment + HPA. Any instance can serve any request or task. |
 | Stateless, deliberately pinned to one replica | `celery-beat-cb4hq` | Deployment with `replicas: 1` and `strategy: Recreate`. Correctness, not capacity. |
 | Stateful, needs stable identity and storage | `postgres-pg3ka`, `postgres-replica-pg6vy`, `rabbitmq-rq4sx`, `seaweedfs-sw9cr`, `loki-lk3ny`, `prometheus-pm5db` | StatefulSet or an operator CR. Never a Deployment. |
@@ -82,7 +82,7 @@ per-job namespace, not a permanent workload.
 ## 4. Configuration and secret mapping
 
 | Compose mechanism | Kubernetes equivalent | Migration friction |
-|---|---|---|
+| --- | --- | --- |
 | `env_file: .env.development` | `ConfigMap` via `envFrom` for non-secrets | none, variable names are identical |
 | Secret variables in the same file | `Secret` via `envFrom`, or External Secrets Operator | none, because nothing reads a file path directly |
 | `.env.*.sops` encrypted at rest | SOPS-encrypted manifests with Flux or Argo CD, or Sealed Secrets | none, the same age key model applies |
@@ -99,7 +99,7 @@ as a prefix. This is a naming translation, not a redesign, and it does not affec
 ## 5. What actually changes at scale
 
 | Concern | Compose today | Kubernetes later | Does app code change? |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Web capacity | one `django-uv5n2` container | HPA on the Deployment | no |
 | Worker capacity | one `celery-worker-cw8rt` container | KEDA scaling on RabbitMQ queue depth | no |
 | Database HA | one primary, one standby, no failover | CloudNativePG or similar, automated failover | no — Django keeps two `DATABASES` aliases; the Service behind `replica` changes |
@@ -111,6 +111,11 @@ as a prefix. This is a naming translation, not a redesign, and it does not affec
 | Application maintenance | one database-backed `celery-beat-cb4hq`, including daily expired JWT cleanup | one scheduler Deployment retaining the same schedule | no |
 | Ingress | Traefik reading Docker labels | Traefik reading Ingress objects | no |
 | Secrets | `.env` files | Secrets / External Secrets | no, because names are identical |
+
+The general throttle's cluster contract is
+`api-throttle:{<scope>:<opaque-account-tag>}:<dimension>:<opaque-value>`. The account-derived tag keeps one atomic
+account/composite decision in a single Valkey Cluster slot; leaving the readable dimension outside the braces does
+not affect routing. Single-key anonymous and boundary admissions need no cross-key co-location.
 
 The intended reading of this table: **the "does app code change?" column is `no` on every row.** If a future change
 would make any row `yes`, that change is the wrong shape and should be reconsidered before it is written.

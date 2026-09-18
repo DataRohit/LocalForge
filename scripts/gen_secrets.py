@@ -67,6 +67,7 @@ TESTING_OVERRIDES: Mapping[str, str] = {
     "DJANGO_DEBUG": "false",
     "DJANGO_ALLOWED_HOSTS": "localhost,127.0.0.1,django-test-dt5qx",
     "DJANGO_CSRF_TRUSTED_ORIGINS": "http://localhost:8080",
+    "DJANGO_CORS_ALLOWED_ORIGINS": "http://localhost:8080",
     "DJANGO_TRUSTED_PROXY_NETWORKS": "none",
     "POSTGRES_HOST": "postgres-tp8vn",
     "POSTGRES_REPLICA_HOST": "postgres-tp8vn",
@@ -173,6 +174,21 @@ def generate_secret_key() -> str:
     return secrets.token_urlsafe(SECRET_KEY_BYTES)
 
 
+def generate_hmac_key() -> str:
+    """Generate the throttle identity HMAC key.
+
+    Encodes independent random bytes with the unpadded URL-safe Base64 alphabet accepted by
+    settings, so runtime can recover and use the original bytes as key material.
+
+    Arguments:
+        None.
+
+    Returns:
+        An unpadded URL-safe Base64 token holding the documented number of random bytes.
+    """
+    return secrets.token_urlsafe(SECRET_KEY_BYTES)
+
+
 def generate_password() -> str:
     """Generate a service password.
 
@@ -221,6 +237,7 @@ def generate_plain_auth() -> str:
 SECRET_RECIPES: Mapping[str, Callable[[], str]] = {
     "DJANGO_SECRET_KEY": generate_secret_key,
     "DJANGO_JWT_SIGNING_KEY": generate_secret_key,
+    "DJANGO_API_THROTTLE_IDENTITY_HMAC_KEY": generate_hmac_key,
     "S3_ACCESS_KEY_ID": generate_access_key,
     "S3_SECRET_ACCESS_KEY": generate_access_key,
     "FLOWER_BASIC_AUTH": generate_plain_auth,

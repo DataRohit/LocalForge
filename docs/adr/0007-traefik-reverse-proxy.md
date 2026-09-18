@@ -41,3 +41,10 @@ defaults to **true** and is turned off, along with anonymous usage reporting, be
 Access logging sets `addInternals: true`. Without it Traefik logs nothing for requests served by internal
 services, and the dashboard router forwards to `api@internal` — so every login success and failure on the admin
 surface would go unrecorded, which is the opposite of what the request log exists for.
+
+**Forwarded client addresses stay proxy-owned.** Recorded 2026-09-17 for Ticket 35. The public entrypoint keeps
+`forwardedHeaders.insecure: false`, so caller-supplied forwarding metadata is not trusted, while Traefik synthesizes
+the standard forwarded address it sends to Django. The application accepts that chain only when the immediate peer
+belongs to the explicit `10.89.2.0/24` edge subnet. Requests arriving through the loopback diagnostic publication
+or the proxy-free testing environment use `REMOTE_ADDR`, so adding a spoofed header cannot create a new throttle
+identity.

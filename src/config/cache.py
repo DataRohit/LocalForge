@@ -14,6 +14,41 @@ from redis.exceptions import RedisError
 logger = logging.getLogger(__name__)
 
 UNAVAILABLE = "the cache is unavailable; serving without it"
+ATOMIC_FIXED_WINDOW_SCRIPT = """
+local limit = tonumber(ARGV[1])
+local window_ms = tonumber(ARGV[2])
+local now_ms
+if ARGV[3] ~= "" then
+    now_ms = tonumber(ARGV[3])
+else
+    local server_time = redis.call("TIME")
+    now_ms = server_time[1] * 1000 + math.floor(server_time[2] / 1000)
+end
+local window = math.floor(now_ms / window_ms)
+local retry_ms = window_ms - (now_ms % window_ms)
+local counts = {}
+for index, key in ipairs(KEYS) do
+    local stored = redis.call("GET", key)
+    local count = 0
+    if stored then
+        local separator = string.find(stored, ":")
+        if separator then
+            local stored_window = tonumber(string.sub(stored, 1, separator - 1))
+            if stored_window == window then
+                count = tonumber(string.sub(stored, separator + 1)) or 0
+            end
+        end
+    end
+    counts[index] = count
+    if count >= limit then
+        return {0, math.max(1, math.ceil(retry_ms / 1000))}
+    end
+end
+for index, key in ipairs(KEYS) do
+    redis.call("SET", key, window .. ":" .. (counts[index] + 1), "PX", retry_ms + 1000)
+end
+return {1, 0}
+"""
 
 
 class ResilientRedisCache(RedisCache):
@@ -27,6 +62,7 @@ class ResilientRedisCache(RedisCache):
         None beyond those the base cache defines.
 
     Members:
+        atomic_fixed_window_admit: Decide and record several throttle dimensions atomically.
         get: Read one value, or the default when the cache is unreachable.
         get_many: Read several values, or nothing when the cache is unreachable.
         set: Write one value, ignoring an unreachable cache.
@@ -38,6 +74,49 @@ class ResilientRedisCache(RedisCache):
         incr: Increase a counter, treating an unreachable cache as a miss.
         has_key: Report whether a key is present, or false when unreachable.
     """
+
+    def atomic_fixed_window_admit(
+        self,
+        keys: tuple[str, ...],
+        *,
+        limit: int,
+        window_seconds: int,
+        now_milliseconds: int | None = None,
+    ) -> tuple[bool, int] | None:
+        """Decide and record one multi-dimensional fixed-window admission.
+
+        Executes one Valkey script that obtains production time from the server, checks every
+        dimension before writing any, and increments all dimensions only when all remain below the
+        limit. Cache loss returns no decision so callers can apply the documented fail-open policy.
+
+        Arguments:
+            keys: Distinct logical dimension keys participating in one request.
+            limit: Maximum admitted requests in one fixed window.
+            window_seconds: Positive epoch-aligned window duration.
+            now_milliseconds: Optional coordinated test time; production leaves this unset.
+
+        Returns:
+            Admission and whole-second retry delay, or ``None`` when Valkey is unavailable.
+        """
+        prepared = tuple(self.make_and_validate_key(key) for key in keys)
+        try:
+            client = self._cache.get_client(prepared[0], write=True)
+            raw = client.eval(
+                ATOMIC_FIXED_WINDOW_SCRIPT,
+                len(prepared),
+                *prepared,
+                limit,
+                window_seconds * 1000,
+                "" if now_milliseconds is None else now_milliseconds,
+            )
+        except RedisError:
+            logger.warning(UNAVAILABLE, exc_info=True)
+
+            return None
+
+        values = list(raw)
+
+        return bool(int(values[0])), int(values[1])
 
     @override
     def get(self, key: str, default: Any = None, version: int | None = None) -> Any:

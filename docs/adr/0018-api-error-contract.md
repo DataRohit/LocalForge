@@ -44,6 +44,24 @@ must be reachable in a test and present in the schema.
 | 500 | unhandled exception | must return the envelope, never a traceback or an HTML page |
 | 503 | health, readiness, security admission | a required dependency or authoritative throttle store is down |
 
+Ticket 35 adds cache-backed aggregate throttles without changing the table's error contract. A broad
+`600/minute` address admission runs at the outer ASGI HTTP boundary before declared or streamed 413 handling,
+preflight, content negotiation, parsing, authentication, and permissions; authentication, recovery, and
+account-security operations share `30/minute`; authenticated reads use `120/minute`; anonymous API use uses
+`60/minute`. Every `/api/v1/` request is charged once, while health, administration, and non-API traffic is
+excluded. Every rejection remains the correlated `throttled` envelope with integer `Retry-After` and UUID
+`X-Request-ID` response headers, both declared on every OpenAPI 429 response. The exact PostgreSQL admissions owned
+by Tickets 29, 31, 32, 33, and 34 remain authoritative and fail closed independently; the general evictable scopes
+fail open during cache loss, and their synchronous Valkey decision runs outside the ASGI event loop.
+
+Every Django and early ASGI API response also carries the content-type-options, frame, referrer, and content
+security policy headers. Exact-origin credentialed CORS changes which browser may read a response, not its status or
+envelope, so it adds no status variant. Any supplied origin adds `Vary: Origin` on ordinary, 413, and 429 responses,
+even when denied or duplicated; duplicate or otherwise ambiguous values are never reflected. Allowed preflight is
+bodyless `204` middleware behavior only for resolvable versioned API routes, advertises that resolved operation's
+methods, and remains absent from per-view OpenAPI methods. Unknown, admin, and health OPTIONS requests route
+normally.
+
 Ticket 32 adds four stable `400` codes beneath the same envelope: `activation_token_expired`,
 `activation_token_foreign`, `activation_token_malformed`, and `activation_token_used`. The foreign response also
 covers a correctly signed token whose account or digest record is absent, so it never distinguishes a missing
@@ -64,7 +82,9 @@ mismatched account identifiers are foreign; PostgreSQL case-insensitive username
 
 Three that are easy to miss: **406 and 415** come from content negotiation, **413** is rejected before Django
 constructs the request or a parser reads the body, and **403 from CSRF** is middleware or session authentication,
-not a permission class. A route documented only with the codes its own code raises is incomplete.
+not a permission class. The broad source admission precedes all four framework layers, so malformed JSON, 406,
+415, invalid authentication, and unauthenticated protected requests cannot bypass aggregate source accounting. A
+route documented only with the codes its own code raises is incomplete.
 
 The request-body ceiling is `DJANGO_API_REQUEST_BODY_MAX_BYTES`. The ASGI boundary rejects an oversized valid
 `Content-Length` before receiving body data, then counts every actual `http.request` body chunk so omitted,

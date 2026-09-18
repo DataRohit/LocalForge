@@ -5,13 +5,11 @@ connections to the Channels router, and defaulting to the development settings.
 """
 
 import os
+from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
 from channels.routing import ProtocolTypeRouter, URLRouter
 from django.core.asgi import get_asgi_application
-
-from config.api import api_request_body_limit_asgi
-from config.logs import finalize_streaming_asgi
 
 if TYPE_CHECKING:
     from asgiref.typing import ASGI3Application
@@ -19,15 +17,18 @@ if TYPE_CHECKING:
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.development")
 
 django_application = get_asgi_application()
-http_application = finalize_streaming_asgi(
-    api_request_body_limit_asgi(cast("ASGI3Application", django_application)),
+api_module = import_module("config.api")
+logs_module = import_module("config.logs")
+routing_module = import_module("config.routing")
+http_application = logs_module.finalize_streaming_asgi(
+    api_module.api_boundary_throttle_asgi(
+        api_module.api_request_body_limit_asgi(cast("ASGI3Application", django_application)),
+    ),
 )
-
-from config.routing import websocket_urlpatterns  # noqa: E402
 
 application = ProtocolTypeRouter(
     {
         "http": http_application,
-        "websocket": URLRouter(websocket_urlpatterns),
+        "websocket": URLRouter(routing_module.websocket_urlpatterns),
     }
 )

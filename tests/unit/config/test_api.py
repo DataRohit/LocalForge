@@ -6,7 +6,11 @@ all API failures retain one client-facing shape without exposing implementation-
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
+import threading
+import time
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import AsyncMock
@@ -29,10 +33,16 @@ from rest_framework.exceptions import (
     ValidationError,
 )
 
+from accounts.api_throttling import CacheThrottleDecision
 from config.api import (
+    BOUNDARY_ADMISSION_SATURATED,
     ERROR_STATUS_REGISTRY,
+    BoundaryAdmissionExecutor,
     ErrorCode,
+    OperationalSignal,
+    add_throttle_response_headers,
     api_bad_request,
+    api_boundary_throttle_asgi,
     api_csrf_failure,
     api_error_envelope_middleware,
     api_exception_handler,
@@ -59,6 +69,9 @@ if TYPE_CHECKING:
     from rest_framework.response import Response
 
 REQUEST_IDENTIFIER = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+DELAYED_ADMISSION_SECONDS = 0.25
+UNRELATED_REQUEST_DEADLINE_SECONDS = 0.15
+BOUNDARY_ADMISSION_TIMEOUT_SECONDS = 0.2
 
 MAPPED_EXCEPTIONS = (
     pytest.param(
@@ -166,6 +179,662 @@ MAPPED_EXCEPTIONS = (
         id="generic-api-exception",
     ),
 )
+
+
+@pytest.mark.unit
+def test_boundary_executor_rejects_work_instead_of_queueing() -> None:
+    """Bound admission work to the dedicated worker count.
+
+    Occupies the only boundary worker and proves another submission fails immediately, then
+    releases the worker and verifies later admission can run.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If excess admission work queues or capacity is not released.
+    """
+    release = threading.Event()
+
+    with BoundaryAdmissionExecutor(max_workers=1) as executor:
+        occupied = executor.submit(release.wait, DELAYED_ADMISSION_SECONDS)
+        rejected = executor.submit(lambda: "queued")
+
+        with pytest.raises(RuntimeError, match="capacity exhausted"):
+            rejected.result()
+
+        release.set()
+        assert occupied.result() is True
+        assert executor.submit(lambda: "accepted").result() == "accepted"
+
+
+@pytest.mark.unit
+def test_boundary_executor_rejects_submission_after_shutdown() -> None:
+    """Preserve executor shutdown behavior without leaking admission capacity.
+
+    Shuts down the dedicated executor before submission and verifies the base runtime failure still
+    escapes after the acquired capacity slot is released.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If shutdown submission no longer raises the executor contract.
+    """
+    executor = BoundaryAdmissionExecutor(max_workers=1)
+    executor.shutdown()
+
+    with pytest.raises(RuntimeError, match="shutdown"):
+        executor.submit(lambda: None)
+
+
+@pytest.mark.unit
+def test_operational_signal_requires_a_positive_interval() -> None:
+    """Reject an invalid saturation signal interval.
+
+    Constructs the rate limiter with a non-positive duration and verifies configuration cannot
+    disable its emission bound accidentally.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a non-positive interval is accepted.
+    """
+    with pytest.raises(ValueError, match="interval must be positive"):
+        OperationalSignal(interval_seconds=0)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_saturated_boundary_admission_fails_open_with_bounded_redacted_signal(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Fail open immediately when dedicated admission capacity is saturated.
+
+    Blocks the only worker, sends repeated excess API requests, and proves none queue while the
+    fixed operational signal is emitted once without the source address.
+
+    Arguments:
+        monkeypatch: Fixture replacing the executor and admission operation.
+        caplog: Log capture fixture supplied by the test framework.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If saturation queues, fails closed, or leaks request identity.
+    """
+    entered = threading.Event()
+    release = threading.Event()
+    address = "198.51.100.210"
+    calls = 0
+
+    def blocked_admission(_address: str) -> CacheThrottleDecision:
+        """Block one admission worker until the test releases it.
+
+        Records entry before waiting so saturation requests begin only after the dedicated worker
+        is occupied.
+
+        Arguments:
+            _address: Trusted source address supplied by the boundary.
+
+        Returns:
+            Admitted decision after release.
+        """
+        nonlocal calls
+        calls += 1
+        entered.set()
+        release.wait(DELAYED_ADMISSION_SECONDS)
+
+        return CacheThrottleDecision(admitted=True, retry_after_seconds=0)
+
+    application = AsyncMock()
+    receive = AsyncMock()
+    send = AsyncMock()
+    saturated_request_count = 3
+    scope = cast(
+        "Scope",
+        {
+            "type": "http",
+            "path": "/api/v1/probe/",
+            "headers": [],
+            "client": (address, 50000),
+        },
+    )
+
+    with BoundaryAdmissionExecutor(max_workers=1) as executor:
+        monkeypatch.setattr("config.api.boundary_admission_executor", executor)
+        monkeypatch.setattr(
+            "config.api.boundary_admission_saturation_signal",
+            OperationalSignal(interval_seconds=60.0),
+        )
+        monkeypatch.setattr("config.api.boundary_address_admission", blocked_admission)
+        wrapped = api_boundary_throttle_asgi(cast("ASGI3Application", application))
+        occupied: asyncio.Future[None] = asyncio.ensure_future(wrapped(scope, receive, send))
+        assert await asyncio.to_thread(entered.wait, BOUNDARY_ADMISSION_TIMEOUT_SECONDS)
+
+        with caplog.at_level(logging.WARNING):
+            async with asyncio.timeout(BOUNDARY_ADMISSION_TIMEOUT_SECONDS):
+                await asyncio.gather(
+                    *(wrapped(scope, receive, send) for _ in range(saturated_request_count)),
+                )
+
+        assert calls == 1
+        assert application.await_count == saturated_request_count
+        signals = [
+            record.getMessage()
+            for record in caplog.records
+            if record.getMessage() == BOUNDARY_ADMISSION_SATURATED
+        ]
+        assert signals == [BOUNDARY_ADMISSION_SATURATED]
+        assert address not in caplog.text
+
+        release.set()
+        await occupied
+
+    assert application.await_count == saturated_request_count + 1
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_cancelled_boundary_request_holds_capacity_until_worker_finishes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Release admission capacity only when cancelled worker work has ended.
+
+    Cancels a request after its synchronous admission starts, proves an excess request fails open
+    without oversubscribing the worker, then releases it and verifies a later request is admitted.
+
+    Arguments:
+        monkeypatch: Fixture replacing the executor and admission operation.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If cancellation leaks, prematurely releases, or permanently loses capacity.
+    """
+    entered = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+    calls = 0
+
+    def cancellable_admission(_address: str) -> CacheThrottleDecision:
+        """Hold one worker across request cancellation.
+
+        Records completion in a finally block so the test can distinguish task cancellation from
+        the underlying synchronous operation ending.
+
+        Arguments:
+            _address: Trusted source address supplied by the boundary.
+
+        Returns:
+            Admitted decision after release.
+        """
+        nonlocal calls
+        calls += 1
+        entered.set()
+        try:
+            release.wait(DELAYED_ADMISSION_SECONDS)
+        finally:
+            finished.set()
+
+        return CacheThrottleDecision(admitted=True, retry_after_seconds=0)
+
+    application = AsyncMock()
+    receive = AsyncMock()
+    send = AsyncMock()
+    expected_admission_calls = 2
+    expected_application_calls = 2
+    scope = cast(
+        "Scope",
+        {
+            "type": "http",
+            "path": "/api/v1/probe/",
+            "headers": [],
+            "client": ("198.51.100.211", 50000),
+        },
+    )
+
+    with BoundaryAdmissionExecutor(max_workers=1) as executor:
+        monkeypatch.setattr("config.api.boundary_admission_executor", executor)
+        monkeypatch.setattr("config.api.boundary_address_admission", cancellable_admission)
+        wrapped = api_boundary_throttle_asgi(cast("ASGI3Application", application))
+        cancelled: asyncio.Future[None] = asyncio.ensure_future(wrapped(scope, receive, send))
+        assert await asyncio.to_thread(entered.wait, BOUNDARY_ADMISSION_TIMEOUT_SECONDS)
+        cancelled.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await cancelled
+
+        async with asyncio.timeout(BOUNDARY_ADMISSION_TIMEOUT_SECONDS):
+            await wrapped(scope, receive, send)
+        assert calls == 1
+        assert application.await_count == 1
+
+        release.set()
+        assert await asyncio.to_thread(finished.wait, BOUNDARY_ADMISSION_TIMEOUT_SECONDS)
+        async with asyncio.timeout(BOUNDARY_ADMISSION_TIMEOUT_SECONDS):
+            await wrapped(scope, receive, send)
+
+    assert calls == expected_admission_calls
+    assert application.await_count == expected_application_calls
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_health_remains_responsive_while_boundary_executor_is_saturated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep load-balancer health work independent from blackholed Valkey admission.
+
+    Occupies the dedicated boundary worker and verifies a non-API health request delegates before
+    the blocked cache operation finishes.
+
+    Arguments:
+        monkeypatch: Fixture replacing the executor and admission operation.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If API admission saturation delays the health response.
+    """
+    entered = threading.Event()
+    release = threading.Event()
+
+    def blocked_admission(_address: str) -> CacheThrottleDecision:
+        """Hold one dedicated admission worker.
+
+        Signals that the worker is occupied, then waits for release before admitting the request.
+        The fixed delay bounds cleanup if the assertion path fails before release.
+
+        Arguments:
+            _address: Trusted source address supplied by the boundary.
+
+        Returns:
+            Admitted decision after release.
+        """
+        entered.set()
+        release.wait(DELAYED_ADMISSION_SECONDS)
+
+        return CacheThrottleDecision(admitted=True, retry_after_seconds=0)
+
+    application = AsyncMock()
+    receive = AsyncMock()
+    send = AsyncMock()
+    expected_application_calls = 2
+    api_scope = cast(
+        "Scope",
+        {
+            "type": "http",
+            "path": "/api/v1/probe/",
+            "headers": [],
+            "client": ("198.51.100.212", 50000),
+        },
+    )
+    health_scope = cast(
+        "Scope",
+        {
+            "type": "http",
+            "path": "/health/",
+            "headers": [],
+            "client": ("198.51.100.213", 50000),
+        },
+    )
+
+    with BoundaryAdmissionExecutor(max_workers=1) as executor:
+        monkeypatch.setattr("config.api.boundary_admission_executor", executor)
+        monkeypatch.setattr("config.api.boundary_address_admission", blocked_admission)
+        wrapped = api_boundary_throttle_asgi(cast("ASGI3Application", application))
+        occupied: asyncio.Future[None] = asyncio.ensure_future(wrapped(api_scope, receive, send))
+        assert await asyncio.to_thread(entered.wait, BOUNDARY_ADMISSION_TIMEOUT_SECONDS)
+
+        async with asyncio.timeout(BOUNDARY_ADMISSION_TIMEOUT_SECONDS):
+            await wrapped(health_scope, receive, send)
+
+        assert application.await_count == 1
+        release.set()
+        await occupied
+
+    assert application.await_count == expected_application_calls
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_asgi_boundary_admission_does_not_block_unrelated_http_requests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep synchronous cache admission outside the ASGI event loop.
+
+    Delays one API admission at the external cache seam and starts an unrelated health request
+    behind it, proving the non-API request completes before the delayed source decision returns.
+
+    Arguments:
+        monkeypatch: Fixture replacing the synchronous admission boundary.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If synchronous admission blocks unrelated ASGI request progress.
+    """
+
+    def delayed_admission(_address: str) -> CacheThrottleDecision:
+        """Return one admitted decision after a visible blocking delay.
+
+        Models a slow synchronous Valkey client without coupling the test to Redis internals.
+        The fixed delay is long enough to expose event-loop serialization.
+
+        Arguments:
+            _address: Trusted source address supplied by the ASGI boundary.
+
+        Returns:
+            Admitted cache decision after the delay.
+        """
+        time.sleep(DELAYED_ADMISSION_SECONDS)
+
+        return CacheThrottleDecision(admitted=True, retry_after_seconds=0)
+
+    async def accepted_application(
+        _scope: Scope,
+        _receive: ASGIReceiveCallable,
+        send: ASGISendCallable,
+    ) -> None:
+        """Return one empty successful ASGI response.
+
+        Provides the observable inner-application seam for both delayed API and exempt health
+        requests.
+
+        Arguments:
+            _scope: Incoming HTTP scope.
+            _receive: Unused request receive callable.
+            send: Outbound response callable.
+
+        Returns:
+            None.
+        """
+        await send(
+            cast(
+                "ASGISendEvent",
+                {
+                    "type": "http.response.start",
+                    "status": HTTPStatus.NO_CONTENT,
+                    "headers": [],
+                    "trailers": False,
+                },
+            )
+        )
+        await send(
+            cast(
+                "ASGISendEvent",
+                {
+                    "type": "http.response.body",
+                    "body": b"",
+                    "more_body": False,
+                },
+            )
+        )
+
+    async def receive() -> ASGIReceiveEvent:
+        """Return one empty terminal request event.
+
+        Supplies the complete request body contract for the test applications.
+        No disconnect event is needed because both responses finish immediately.
+
+        Arguments:
+            None.
+
+        Returns:
+            Empty terminal HTTP request event.
+        """
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send_api(message: ASGISendEvent) -> None:
+        """Capture one delayed API response event.
+
+        Retains the event exactly as the wrapped application emits it.
+        The collected start event proves the delayed request eventually completes.
+
+        Arguments:
+            message: Outbound API response event.
+
+        Returns:
+            None.
+        """
+        api_events.append(message)
+
+    async def send_health(message: ASGISendEvent) -> None:
+        """Capture one unrelated health response event.
+
+        Retains the event exactly as the wrapped application emits it.
+        Its completion time is compared with the delayed admission duration.
+
+        Arguments:
+            message: Outbound health response event.
+
+        Returns:
+            None.
+        """
+        health_events.append(message)
+
+    monkeypatch.setattr("config.api.boundary_address_admission", delayed_admission)
+    wrapped = api_boundary_throttle_asgi(cast("ASGI3Application", accepted_application))
+    api_scope = cast(
+        "Scope",
+        {
+            "type": "http",
+            "path": "/api/v1/probe/",
+            "headers": [],
+            "client": ("198.51.100.10", 50000),
+        },
+    )
+    health_scope = cast(
+        "Scope",
+        {
+            "type": "http",
+            "path": "/health/",
+            "headers": [],
+            "client": ("198.51.100.11", 50001),
+        },
+    )
+    api_events: list[ASGISendEvent] = []
+    health_events: list[ASGISendEvent] = []
+    started = time.perf_counter()
+    api_task: asyncio.Future[None] = asyncio.ensure_future(wrapped(api_scope, receive, send_api))
+    health_task: asyncio.Future[None] = asyncio.ensure_future(
+        wrapped(health_scope, receive, send_health)
+    )
+
+    await health_task
+    health_elapsed = time.perf_counter() - started
+    await api_task
+
+    assert health_elapsed < UNRELATED_REQUEST_DEADLINE_SECONDS
+    assert (
+        next(event for event in health_events if event["type"] == "http.response.start")["status"]
+        == HTTPStatus.NO_CONTENT
+    )
+    assert (
+        next(event for event in api_events if event["type"] == "http.response.start")["status"]
+        == HTTPStatus.NO_CONTENT
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["/health/", "/admin/", "/outside-api/"])
+async def test_asgi_boundary_exempts_every_non_api_path(
+    path: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Leave health, administration, and other non-API requests uncharged.
+
+    Installs a sentinel admission function and sends one request from each excluded path class,
+    proving the outer ASGI boundary delegates without consulting the general cache.
+
+    Arguments:
+        path: Non-versioned path under test.
+        monkeypatch: Fixture replacing admission with a sentinel failure.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If an excluded path reaches source admission.
+    """
+
+    def fail_admission(_address: str) -> CacheThrottleDecision:
+        """Fail if a non-API path reaches source admission.
+
+        Makes any cache consultation observable without relying on call-count assertions.
+        Exempt paths must delegate directly to the accepted application.
+
+        Arguments:
+            _address: Unexpected source address.
+
+        Returns:
+            Never returns.
+
+        Raises:
+            AssertionError: Always, because the path must be exempt.
+        """
+        message = "non-API path reached ASGI source admission"
+        raise AssertionError(message)
+
+    async def accepted_application(
+        _scope: Scope,
+        _receive: ASGIReceiveCallable,
+        send: ASGISendCallable,
+    ) -> None:
+        """Return one delegated successful response.
+
+        Emits the smallest complete response proving the outer wrapper delegated.
+        No route-specific framework behavior is involved.
+
+        Arguments:
+            _scope: Incoming excluded request scope.
+            _receive: Unused receive callable.
+            send: Outbound response callable.
+
+        Returns:
+            None.
+        """
+        await send(
+            cast(
+                "ASGISendEvent",
+                {
+                    "type": "http.response.start",
+                    "status": HTTPStatus.NO_CONTENT,
+                    "headers": [],
+                    "trailers": False,
+                },
+            )
+        )
+        await send(
+            cast(
+                "ASGISendEvent",
+                {
+                    "type": "http.response.body",
+                    "body": b"",
+                    "more_body": False,
+                },
+            )
+        )
+
+    async def receive() -> ASGIReceiveEvent:
+        """Return one empty request event.
+
+        Supplies a complete body if the delegated application chooses to receive it.
+        The accepted application currently needs no request data.
+
+        Arguments:
+            None.
+
+        Returns:
+            Empty terminal request event.
+        """
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    events: list[ASGISendEvent] = []
+
+    async def send(message: ASGISendEvent) -> None:
+        """Capture one delegated response event.
+
+        Preserves transport output so the test can assert public response status.
+        No response event is transformed.
+
+        Arguments:
+            message: Outbound response event.
+
+        Returns:
+            None.
+        """
+        events.append(message)
+
+    monkeypatch.setattr("config.api.boundary_address_admission", fail_admission)
+    wrapped = api_boundary_throttle_asgi(cast("ASGI3Application", accepted_application))
+    scope = cast(
+        "Scope",
+        {
+            "type": "http",
+            "path": path,
+            "headers": [],
+            "client": ("198.51.100.12", 50000),
+        },
+    )
+
+    await wrapped(scope, receive, send)
+
+    assert (
+        next(event for event in events if event["type"] == "http.response.start")["status"]
+        == HTTPStatus.NO_CONTENT
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "document",
+    [
+        {"paths": []},
+        {"paths": {"/probe/": []}},
+        {"paths": {"/probe/": {"get": []}}},
+        {"paths": {"/probe/": {"get": {"responses": []}}}},
+    ],
+)
+def test_throttle_header_hook_ignores_incomplete_schema_shapes(
+    document: dict[str, Any],
+) -> None:
+    """Leave incomplete schema structures unchanged.
+
+    Supplies each defensive non-mapping shape accepted by the post-processing hook and verifies it
+    returns the same document rather than failing schema generation.
+
+    Arguments:
+        document: Incomplete generated schema shape under test.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a defensive branch mutates or rejects the document.
+    """
+    before = json.dumps(document, sort_keys=True)
+
+    observed = add_throttle_response_headers(document, object(), object(), object())
+
+    assert observed is document
+    assert json.dumps(observed, sort_keys=True) == before
 
 
 @pytest.mark.unit

@@ -33,6 +33,10 @@ from rest_framework.throttling import BaseThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 
+from accounts.api_throttling import (
+    AnonymousApiThrottle,
+    AuthenticationRecoveryThrottle,
+)
 from accounts.login_throttle import PostgresLoginThrottleStore, RollingWindowRule
 from accounts.models import PasswordResetToken, User
 from accounts.password_tokens import (
@@ -46,6 +50,7 @@ from accounts.registration_timing import (
     monotonic_now,
     wait_for_minimum_registration_duration,
 )
+from accounts.request_throttling import parse_throttle_rate, trusted_client_address
 from accounts.tasks import send_password_reset_email
 from accounts.token_authentication import (
     ErrorEnvelopeSerializer,
@@ -53,8 +58,6 @@ from accounts.token_authentication import (
     classify_password_hash,
     error_example,
     error_response,
-    parse_throttle_rate,
-    trusted_client_address,
     verify_encoded_password,
 )
 from accounts.user_profiles import StrictFieldsSerializer, normalise_valid_email
@@ -469,7 +472,8 @@ class PasswordResetRequestView(APIView):
     Attributes:
         authentication_classes: Empty because locked-out callers hold no credential.
         permission_classes: Public access required for recovery.
-        throttle_classes: Authoritative address and recipient admission.
+        throttle_classes: Authoritative recovery admission plus shared anonymous and authentication
+            scopes.
 
     Members:
         initial: Capture the earliest DRF timing boundary.
@@ -478,7 +482,11 @@ class PasswordResetRequestView(APIView):
 
     authentication_classes: tuple[type, ...] = ()
     permission_classes = (AllowAny,)
-    throttle_classes = (PasswordResetRequestThrottle,)
+    throttle_classes = (
+        PasswordResetRequestThrottle,
+        AnonymousApiThrottle,
+        AuthenticationRecoveryThrottle,
+    )
     _started_at: float
 
     @override
@@ -943,7 +951,8 @@ class PasswordResetConfirmView(APIView):
     Attributes:
         authentication_classes: Empty because recovery callers hold no credential.
         permission_classes: Public access required for recovery.
-        throttle_classes: Authoritative address and account confirmation admission.
+        throttle_classes: Authoritative confirmation admission plus shared anonymous and
+            authentication scopes.
 
     Members:
         post: Validate and apply one password reset.
@@ -951,7 +960,11 @@ class PasswordResetConfirmView(APIView):
 
     authentication_classes: tuple[type, ...] = ()
     permission_classes = (AllowAny,)
-    throttle_classes = (PasswordResetConfirmThrottle,)
+    throttle_classes = (
+        PasswordResetConfirmThrottle,
+        AnonymousApiThrottle,
+        AuthenticationRecoveryThrottle,
+    )
 
     @extend_schema(
         operation_id="user_password_reset_confirm",
@@ -1190,12 +1203,14 @@ class PasswordChangeView(APIView):
 
     Attributes:
         permission_classes: Authenticated callers only.
+        throttle_classes: Shared authentication and account-security scope.
 
     Members:
         post: Validate, replace, and revoke the caller's credentials.
     """
 
     permission_classes = (IsAuthenticated,)
+    throttle_classes = (AuthenticationRecoveryThrottle,)
 
     @extend_schema(
         operation_id="user_password_change",
@@ -1276,6 +1291,11 @@ class PasswordChangeView(APIView):
                 "The submitted request representation is unsupported.",
                 "Unsupported media type",
                 UNSUPPORTED_MEDIA_TYPE,
+            ),
+            HTTPStatus.TOO_MANY_REQUESTS: error_response(
+                "The client address or account exceeded the authentication scope.",
+                "Too many requests",
+                THROTTLED,
             ),
             HTTPStatus.INTERNAL_SERVER_ERROR: error_response(
                 "An unexpected server failure was contained.",

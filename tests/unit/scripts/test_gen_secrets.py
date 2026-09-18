@@ -5,6 +5,7 @@ exit code, and the guarantee that no secret is ever printed, using a temporary r
 touches the real environment files.
 """
 
+import base64
 import re
 import runpy
 import shutil
@@ -38,6 +39,7 @@ SHIPPED_BCRYPT_ROUNDS = gen_secrets.BCRYPT_ROUNDS
 SECRET_VARIABLES = (
     "DJANGO_SECRET_KEY",
     "DJANGO_JWT_SIGNING_KEY",
+    "DJANGO_API_THROTTLE_IDENTITY_HMAC_KEY",
     "POSTGRES_PASSWORD",
     "POSTGRES_REPLICATION_PASSWORD",
     "PGADMIN_DEFAULT_PASSWORD",
@@ -1145,10 +1147,10 @@ def test_the_file_is_written_with_line_feed_endings(repository: Path) -> None:
 
 @pytest.mark.unit
 def test_each_generator_produces_a_distinct_value_of_the_right_shape() -> None:
-    """Produce unpredictable values of the documented form.
+    """Produce independent generated values of the documented form.
 
-    Confirms each generator yields a different value on every call and the object storage key is
-    hexadecimal, which some clients require.
+    Confirms consecutive outputs differ, signing-key recipes decode to the documented secure-source
+    byte length, and the object storage key is hexadecimal as required by some clients.
 
     Arguments:
         None.
@@ -1157,10 +1159,30 @@ def test_each_generator_produces_a_distinct_value_of_the_right_shape() -> None:
         None.
 
     Raises:
-        AssertionError: If a generator repeats itself or produces the wrong alphabet.
+        AssertionError: If a generator repeats, has the wrong decoded length, or uses the wrong
+            alphabet.
     """
-    assert gen_secrets.generate_secret_key() != gen_secrets.generate_secret_key()
+    first_secret_key = gen_secrets.generate_secret_key()
+    second_secret_key = gen_secrets.generate_secret_key()
+
+    assert first_secret_key != second_secret_key
+    for key in (first_secret_key, second_secret_key):
+        decoded = base64.urlsafe_b64decode(key + "=" * (-len(key) % 4))
+
+        assert len(decoded) == gen_secrets.SECRET_KEY_BYTES
+
     assert gen_secrets.generate_password() != gen_secrets.generate_password()
+    assert (
+        gen_secrets.SECRET_RECIPES["DJANGO_API_THROTTLE_IDENTITY_HMAC_KEY"]
+        is gen_secrets.generate_hmac_key
+    )
+    hmac_key = gen_secrets.generate_hmac_key()
+
+    assert re.fullmatch(r"[A-Za-z0-9_-]+", hmac_key)
+    assert "=" not in hmac_key
+    assert len(base64.urlsafe_b64decode(hmac_key + "=" * (-len(hmac_key) % 4))) == (
+        gen_secrets.SECRET_KEY_BYTES
+    )
 
     key = gen_secrets.generate_access_key()
 

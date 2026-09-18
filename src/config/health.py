@@ -951,12 +951,15 @@ ReadinessView = cast(
             "__doc__": (
                 "Report process liveness and dependency readiness.\n\n"
                 "Inherits from DRF's APIView with JSON-only rendering, public access, optional "
-                "staff detail, and explicit schema responses for load-balancer outcomes."
+                "staff detail, and explicit schema responses. Public access is required and "
+                "load-balancer probes remain unthrottled so readiness polling cannot lock itself "
+                "out."
             ),
             "authentication_classes": [SessionAuthentication],
             "permission_classes": [AllowAny],
             "renderer_classes": [JSONRenderer],
             "schema": AutoSchema(),
+            "throttle_classes": [],
             "get": readiness_get,
         },
     ),

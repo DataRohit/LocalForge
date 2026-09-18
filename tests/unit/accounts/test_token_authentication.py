@@ -21,7 +21,10 @@ from accounts.authentication import (
     JWTAuthenticationScheme,
     PrimaryTokenAuthenticationScheme,
 )
-from accounts.token_authentication import trusted_client_address
+from accounts.request_throttling import (
+    trusted_client_address,
+    trusted_client_address_from_scope,
+)
 from config.celery import redact_published_arguments
 from config.logs import StructuredFormatter
 
@@ -184,11 +187,19 @@ def test_client_address_resolution_fails_safe(
         )
     )
     request = Request(django_request)
+    scope_headers = [] if forwarded is None else [(b"x-forwarded-for", forwarded.encode("latin-1"))]
+    scope = {
+        "type": "http",
+        "headers": scope_headers,
+        "client": (remote_address, 50000),
+    }
 
     with override_settings(TRUSTED_PROXY_NETWORKS=(ip_network("10.89.2.0/24"),)):
         resolved = trusted_client_address(request)
+        asgi_resolved = trusted_client_address_from_scope(scope)
 
     assert resolved == expected
+    assert asgi_resolved == expected
 
 
 @pytest.mark.unit

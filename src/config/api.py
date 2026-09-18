@@ -6,9 +6,15 @@ Django handlers that keep failures outside REST framework in the same correlated
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from collections.abc import Mapping
+from concurrent.futures import Future, ThreadPoolExecutor
+from contextvars import copy_context
 from http import HTTPStatus
-from typing import TYPE_CHECKING, Any, cast, override
+from threading import BoundedSemaphore, Lock
+from time import monotonic
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar, cast, override
 
 from django.conf import settings
 from django.http import JsonResponse
@@ -19,6 +25,8 @@ from django.views import csrf, defaults
 from rest_framework.exceptions import ValidationError
 from rest_framework.views import exception_handler as drf_exception_handler
 
+from accounts.api_throttling import boundary_address_admission
+from accounts.request_throttling import trusted_client_address_from_scope
 from config.api_errors import (
     API_ERROR,
     BAD_REQUEST,
@@ -28,11 +36,13 @@ from config.api_errors import (
     PERMISSION_DENIED,
     REQUEST_TOO_LARGE,
     STATUS_DEFINITIONS,
+    THROTTLED,
     ErrorDefinition,
 )
 from config.api_errors import ERROR_STATUS_REGISTRY as _ERROR_STATUS_REGISTRY
 from config.api_errors import ErrorCode as _ErrorCode
 from config.logs import REQUEST_ID_META_KEY, request_identifier
+from config.security import RequestOrigin, apply_response_security, request_origin_from_scope
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -52,15 +62,174 @@ if TYPE_CHECKING:
 
 API_VERSION = "v1"
 API_PREFIX = f"api/{API_VERSION}/"
+API_BOUNDARY_ADMISSION_WORKERS = 5
+BOUNDARY_ADMISSION_SIGNAL_INTERVAL_SECONDS = 60.0
+BOUNDARY_ADMISSION_SATURATED = (
+    "general API admission capacity exhausted; serving without cache admission"
+)
 NON_FIELD_ERRORS = "non_field_errors"
 ERROR_ENVELOPE_ATTRIBUTE = "localforge_error_envelope"
 ERROR_STATUS_REGISTRY = _ERROR_STATUS_REGISTRY
 ErrorCode = _ErrorCode
+Arguments = ParamSpec("Arguments")
+Result = TypeVar("Result")
+logger = logging.getLogger(__name__)
 
 app_name = "api"
 urlpatterns: list[URLPattern | URLResolver] = [
     path("", include("accounts.urls")),
 ]
+
+
+class BoundaryAdmissionCapacityError(RuntimeError):
+    """Report exhausted general-admission execution capacity.
+
+    Inherits from ``RuntimeError`` and marks the bounded fail-open condition separately from cache
+    errors returned by the admission operation itself.
+
+    Attributes:
+        None beyond those the base exception defines.
+
+    Members:
+        None.
+    """
+
+
+class BoundaryAdmissionExecutor(ThreadPoolExecutor):
+    """Run synchronous general admission with bounded dedicated capacity.
+
+    Inherits from ``ThreadPoolExecutor`` and admits at most one submitted operation per worker,
+    preventing slow Valkey calls from creating an executor queue or occupying unrelated workers.
+
+    Attributes:
+        None beyond those the base executor defines.
+
+    Members:
+        submit: Schedule one context-preserving admission operation without blocking for capacity.
+    """
+
+    def __init__(self, *, max_workers: int) -> None:
+        """Create an executor with equal worker and admission limits.
+
+        Uses one semaphore slot per worker so accepting a submission guarantees bounded executor
+        occupancy without waiting for capacity.
+
+        Arguments:
+            max_workers: Positive maximum concurrent admission operations.
+
+        Returns:
+            None.
+
+        Raises:
+            ValueError: If the worker count is not positive.
+        """
+        super().__init__(max_workers=max_workers)
+        self._admission = BoundedSemaphore(max_workers)
+
+    @override
+    def submit(
+        self,
+        fn: Callable[Arguments, Result],
+        /,
+        *args: Arguments.args,
+        **kwargs: Arguments.kwargs,
+    ) -> Future[Result]:
+        """Submit one operation only when a worker slot is available.
+
+        Captures the caller's context for correlated cache diagnostics and returns an already-failed
+        future on saturation so the asynchronous boundary can apply fail-open behavior immediately.
+
+        Arguments:
+            fn: Callable to execute.
+            *args: Positional arguments for the callable.
+            **kwargs: Keyword arguments for the callable.
+
+        Returns:
+            Future representing submitted work or immediate capacity exhaustion.
+
+        Raises:
+            RuntimeError: If the executor has already shut down.
+        """
+        if not self._admission.acquire(blocking=False):
+            failed: Future[Result] = Future()
+            failed.set_exception(
+                BoundaryAdmissionCapacityError("boundary admission capacity exhausted")
+            )
+
+            return failed
+
+        context = copy_context()
+        try:
+            future = super().submit(lambda: context.run(fn, *args, **kwargs))
+        except RuntimeError:
+            self._admission.release()
+            raise
+        future.add_done_callback(lambda _future: self._admission.release())
+
+        return future
+
+
+class OperationalSignal:
+    """Rate-limit one fixed operational warning.
+
+    Stores no request data and serializes emission so concurrent saturation can produce at most one
+    fixed warning per interval without enlarging the admission queue.
+
+    Attributes:
+        interval_seconds: Minimum duration between emitted warnings.
+
+    Members:
+        emit: Log one fixed warning when the interval has elapsed.
+    """
+
+    def __init__(self, *, interval_seconds: float) -> None:
+        """Initialize one rate-limited signal.
+
+        Starts with no prior emission and uses a lock to serialize concurrent interval checks.
+        The signal stores no request-derived values.
+
+        Arguments:
+            interval_seconds: Positive minimum duration between warnings.
+
+        Returns:
+            None.
+
+        Raises:
+            ValueError: If the interval is not positive.
+        """
+        if interval_seconds <= 0:
+            message = "operational signal interval must be positive"
+            raise ValueError(message)
+
+        self.interval_seconds = interval_seconds
+        self._last_emitted = float("-inf")
+        self._lock = Lock()
+
+    def emit(self, message: str) -> None:
+        """Emit one fixed warning when its interval permits.
+
+        Suppresses calls inside the configured interval and logs only the supplied constant after
+        the interval has elapsed.
+
+        Arguments:
+            message: Constant redacted operational message.
+
+        Returns:
+            None.
+        """
+        now = monotonic()
+        with self._lock:
+            if now - self._last_emitted < self.interval_seconds:
+                return
+            self._last_emitted = now
+
+        logger.warning(message)
+
+
+boundary_admission_executor = BoundaryAdmissionExecutor(max_workers=API_BOUNDARY_ADMISSION_WORKERS)
+boundary_admission_saturation_signal = OperationalSignal(
+    interval_seconds=BOUNDARY_ADMISSION_SIGNAL_INTERVAL_SECONDS
+)
 
 
 class ApiCommonMiddleware(CommonMiddleware):
@@ -131,6 +300,57 @@ def _is_api_request(request: HttpRequest) -> bool:
         None.
     """
     return request.path.startswith(f"/{API_PREFIX}")
+
+
+def add_throttle_response_headers(
+    result: dict[str, Any],
+    generator: object,
+    request: object,
+    public: object,
+) -> dict[str, Any]:
+    """Attach exact protocol headers to every documented throttle response.
+
+    Walks generated operations centrally so every current and future route that documents 429 also
+    declares the retry delay and correlated request identifier clients receive at runtime.
+
+    Arguments:
+        result: Generated OpenAPI document.
+        generator: Schema generator invoking the post-processing hook.
+        request: Optional schema-generation request.
+        public: Whether the schema was generated without request-specific filtering.
+
+    Returns:
+        Generated document with exact 429 response headers.
+    """
+    del generator, request, public
+    retry_headers = {
+        "Retry-After": {
+            "description": "Whole seconds until the fixed or rolling admission window recovers.",
+            "schema": {"type": "integer", "minimum": 1},
+        },
+        "X-Request-ID": {
+            "description": "Request correlation identifier echoed by the error envelope.",
+            "schema": {"type": "string", "format": "uuid"},
+        },
+    }
+    paths = result.get("paths", {})
+    if not isinstance(paths, Mapping):
+        return result
+
+    for path_item in paths.values():
+        if not isinstance(path_item, Mapping):
+            continue
+        for operation in path_item.values():
+            if not isinstance(operation, dict):
+                continue
+            responses = operation.get("responses")
+            if not isinstance(responses, dict):
+                continue
+            throttled = responses.get("429")
+            if isinstance(throttled, dict):
+                throttled["headers"] = retry_headers
+
+    return result
 
 
 def _request_content_length(request: HttpRequest) -> int | None:
@@ -417,7 +637,7 @@ def api_request_body_limit_asgi(application: ASGI3Application) -> ASGI3Applicati
         declared_length = _scope_content_length(scope)
 
         if declared_length is not None and declared_length > limit:
-            await _send_asgi_request_too_large(send)
+            await _send_asgi_request_too_large(send, request_origin_from_scope(scope))
             return
 
         accepted_scope = _scope_without_invalid_content_length(scope, declared_length)
@@ -453,12 +673,15 @@ def api_request_body_limit_asgi(application: ASGI3Application) -> ASGI3Applicati
         await application(accepted_scope, count_bytes, send)
 
         if limit_exceeded:
-            await _send_asgi_request_too_large(send)
+            await _send_asgi_request_too_large(send, request_origin_from_scope(scope))
 
     return enforce_limit
 
 
-async def _send_asgi_request_too_large(send: ASGISendCallable) -> None:
+async def _send_asgi_request_too_large(
+    send: ASGISendCallable,
+    origin: RequestOrigin,
+) -> None:
     """Send a correlated request-too-large envelope from the ASGI boundary.
 
     Serializes through Django's JSON response implementation so transport-level rejection matches
@@ -466,6 +689,7 @@ async def _send_asgi_request_too_large(send: ASGISendCallable) -> None:
 
     Arguments:
         send: Callable accepting outbound ASGI events.
+        origin: Parsed Origin presence and optional safe reflection value.
 
     Returns:
         None.
@@ -477,6 +701,7 @@ async def _send_asgi_request_too_large(send: ASGISendCallable) -> None:
         _error_payload(request_identifier.get(), REQUEST_TOO_LARGE),
         status=HTTPStatus.CONTENT_TOO_LARGE,
     )
+    apply_response_security(response, origin)
     headers = [
         (name.lower().encode("latin-1"), value.encode("latin-1"))
         for name, value in response.items()
@@ -502,6 +727,95 @@ async def _send_asgi_request_too_large(send: ASGISendCallable) -> None:
             },
         )
     )
+
+
+def api_boundary_throttle_asgi(application: ASGI3Application) -> ASGI3Application:
+    """Build the outer ASGI source-admission boundary.
+
+    Charges every versioned API HTTP request before body-size enforcement and Django processing,
+    while running the synchronous Valkey client in a dedicated bounded worker pool.
+
+    Arguments:
+        application: Body-limit and Django application receiving admitted requests.
+
+    Returns:
+        ASGI application enforcing broad address admission.
+    """
+
+    async def admit_source(
+        scope: Scope,
+        receive: ASGIReceiveCallable,
+        send: ASGISendCallable,
+    ) -> None:
+        """Admit one versioned API request before every later HTTP boundary.
+
+        Exempts non-HTTP and non-API scopes, resolves the trusted source directly from transport
+        metadata, and emits a secured correlated rejection without entering Django.
+
+        Arguments:
+            scope: Incoming ASGI connection scope.
+            receive: Callable yielding inbound ASGI events.
+            send: Callable accepting outbound ASGI events.
+
+        Returns:
+            None.
+
+        Raises:
+            BaseException: Any accepted application or transport failure.
+        """
+        if scope["type"] != "http" or not scope.get("path", "").startswith(f"/{API_PREFIX}"):
+            await application(scope, receive, send)
+            return
+
+        address = trusted_client_address_from_scope(scope)
+        loop = asyncio.get_running_loop()
+        try:
+            decision = await loop.run_in_executor(
+                boundary_admission_executor,
+                boundary_address_admission,
+                address,
+            )
+        except BoundaryAdmissionCapacityError:
+            boundary_admission_saturation_signal.emit(BOUNDARY_ADMISSION_SATURATED)
+            await application(scope, receive, send)
+            return
+        if decision.admitted:
+            await application(scope, receive, send)
+            return
+
+        response = JsonResponse(
+            _error_payload(request_identifier.get(), THROTTLED),
+            status=HTTPStatus.TOO_MANY_REQUESTS,
+        )
+        response.headers["Retry-After"] = str(decision.retry_after_seconds)
+        apply_response_security(response, request_origin_from_scope(scope))
+        headers = [
+            (name.lower().encode("latin-1"), value.encode("latin-1"))
+            for name, value in response.items()
+        ]
+        await send(
+            cast(
+                "ASGISendEvent",
+                {
+                    "type": "http.response.start",
+                    "status": response.status_code,
+                    "headers": headers,
+                    "trailers": False,
+                },
+            )
+        )
+        await send(
+            cast(
+                "ASGISendEvent",
+                {
+                    "type": "http.response.body",
+                    "body": response.content,
+                    "more_body": False,
+                },
+            )
+        )
+
+    return admit_source
 
 
 @async_only_middleware

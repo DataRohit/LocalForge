@@ -36,8 +36,8 @@ from accounts.activation_tokens import (
 from accounts.login_throttle import PostgresLoginThrottleStore, RollingWindowRule
 from accounts.models import ActivationToken, User
 from accounts.normalisation import normalise_email
+from accounts.request_throttling import parse_throttle_rate, trusted_client_address
 from accounts.tasks import send_activation_email
-from accounts.token_authentication import parse_throttle_rate, trusted_client_address
 from config.api_errors import (
     ActivationTokenExpired,
     ActivationTokenForeign,

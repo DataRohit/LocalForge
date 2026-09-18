@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import secrets
+from dataclasses import dataclass
 from http import HTTPStatus
 from importlib import import_module
 from typing import TYPE_CHECKING, Any, NoReturn, cast
@@ -18,7 +19,7 @@ import pytest
 from django.conf import settings
 from django.http import HttpResponse
 from django.test import Client, override_settings
-from django.urls import path
+from django.urls import include, path
 
 from config.api import ERROR_STATUS_REGISTRY, ErrorCode, api_server_error
 from config.asgi import application as asgi_application
@@ -61,6 +62,35 @@ Response = import_module("rest_framework.response").Response
 BasicAuthentication = import_module("rest_framework.authentication").BasicAuthentication
 SessionAuthentication = import_module("rest_framework.authentication").SessionAuthentication
 BaseThrottle = import_module("rest_framework.throttling").BaseThrottle
+pytestmark = pytest.mark.api_runtime
+
+
+@dataclass(frozen=True, slots=True)
+class AsgiRequestSpec:
+    """Describe transport metadata for one ASGI test request.
+
+    Groups method, path, additional headers, and peer address so request helpers stay below the
+    repository's argument-count limit while retaining explicit call-site behavior.
+
+    Attributes:
+        method: HTTP method exposed to the application.
+        path: Request path exposed to the application.
+        content_type: Raw content type header, or ``None`` when absent.
+        extra_headers: Additional raw request headers.
+        client_address: Immediate ASGI peer address.
+
+    Members:
+        None.
+    """
+
+    method: str = "POST"
+    path: str = "/api/v1/write/"
+    content_type: bytes | None = b"application/json"
+    extra_headers: tuple[tuple[bytes, bytes], ...] = ()
+    client_address: str = "127.0.0.1"
+
+
+DEFAULT_ASGI_REQUEST_SPEC = AsgiRequestSpec()
 
 
 def protected_get(_self: object, _request: object) -> HttpResponseBase:
@@ -418,6 +448,16 @@ urlpatterns = [
         "outside-api/",
         accept_non_api_write,
     ),
+    path(
+        "api/v1/",
+        include(
+            (
+                [path("boundary-write/", JsonWriteView.as_view())],
+                "api-v1",
+            ),
+            namespace="api-v1",
+        ),
+    ),
 ]
 handler500 = api_server_error
 
@@ -463,7 +503,8 @@ def assert_error_envelope(
 def asgi_post_scope(
     content_length: bytes | None = None,
     *,
-    path_value: str = "/api/v1/write/",
+    origins: tuple[bytes, ...] = (),
+    request_spec: AsgiRequestSpec = DEFAULT_ASGI_REQUEST_SPEC,
 ) -> HTTPScope:
     """Build an ASGI POST scope for the parser-backed API route.
 
@@ -472,7 +513,8 @@ def asgi_post_scope(
 
     Arguments:
         content_length: Raw content-length header value, or ``None`` when transport omits it.
-        path_value: Request path exposed to the ASGI application.
+        origins: Raw browser origin header values in transport order.
+        request_spec: HTTP method, path, additional headers, and immediate peer.
 
     Returns:
         Complete HTTP scope accepted by the project ASGI application.
@@ -480,22 +522,26 @@ def asgi_post_scope(
     Raises:
         None.
     """
-    headers = [(b"host", b"testserver"), (b"content-type", b"application/json")]
+    headers = [(b"host", b"testserver")]
+    if request_spec.content_type is not None:
+        headers.append((b"content-type", request_spec.content_type))
     if content_length is not None:
         headers.append((b"content-length", content_length))
+    headers.extend((b"origin", origin) for origin in origins)
+    headers.extend(request_spec.extra_headers)
 
     return {
         "type": "http",
         "asgi": {"version": "3.0", "spec_version": "2.5"},
         "http_version": "1.1",
-        "method": "POST",
+        "method": request_spec.method,
         "scheme": "http",
-        "path": path_value,
-        "raw_path": path_value.encode(),
+        "path": request_spec.path,
+        "raw_path": request_spec.path.encode(),
         "query_string": b"",
         "root_path": "",
         "headers": headers,
-        "client": ("127.0.0.1", 50000),
+        "client": (request_spec.client_address, 50000),
         "server": ("127.0.0.1", 8000),
         "extensions": {},
     }
@@ -505,7 +551,8 @@ async def invoke_asgi_write(
     chunks: tuple[bytes, ...],
     *,
     content_length: bytes | None = None,
-    path_value: str = "/api/v1/write/",
+    origins: tuple[bytes, ...] = (),
+    request_spec: AsgiRequestSpec = DEFAULT_ASGI_REQUEST_SPEC,
 ) -> list[ASGISendEvent]:
     """Send one multi-chunk request through the public ASGI application.
 
@@ -515,7 +562,8 @@ async def invoke_asgi_write(
     Arguments:
         chunks: Body fragments delivered in transport order.
         content_length: Raw content-length header value, or ``None`` when omitted.
-        path_value: Request path exposed to the ASGI application.
+        origins: Raw browser origin header values in transport order.
+        request_spec: HTTP method, path, additional headers, and immediate peer.
 
     Returns:
         Response events emitted by the application.
@@ -575,7 +623,11 @@ async def invoke_asgi_write(
     with override_settings(ROOT_URLCONF=__name__, API_REQUEST_BODY_MAX_BYTES=8):
         async with asyncio.timeout(ASGI_REQUEST_TIMEOUT_SECONDS):
             await asgi_application(
-                asgi_post_scope(content_length, path_value=path_value),
+                asgi_post_scope(
+                    content_length,
+                    origins=origins,
+                    request_spec=request_spec,
+                ),
                 receive,
                 send,
             )
@@ -584,7 +636,7 @@ async def invoke_asgi_write(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 def test_new_api_view_denies_anonymous_access_by_default(client: Client) -> None:
     """Close a new versioned route unless it explicitly opts out.
 
@@ -617,7 +669,7 @@ def test_new_api_view_denies_anonymous_access_by_default(client: Client) -> None
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 def test_challenge_authentication_returns_unauthorized_envelope(client: Client) -> None:
     """Return unauthorized when the selected authenticator can challenge.
 
@@ -646,7 +698,7 @@ def test_challenge_authentication_returns_unauthorized_envelope(client: Client) 
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 def test_unknown_path_returns_a_correlated_json_envelope(
     client: Client,
     caplog: pytest.LogCaptureFixture,
@@ -691,6 +743,7 @@ def test_unknown_path_returns_a_correlated_json_envelope(
 
 
 @pytest.mark.integration
+@pytest.mark.api_runtime_exempt
 @pytest.mark.services("postgres")
 def test_unknown_non_api_path_uses_djangos_standard_not_found_response(client: Client) -> None:
     """Leave routing misses outside the versioned API under Django's standard boundary.
@@ -716,6 +769,7 @@ def test_unknown_non_api_path_uses_djangos_standard_not_found_response(client: C
 
 
 @pytest.mark.integration
+@pytest.mark.api_runtime_exempt
 @pytest.mark.services("postgres")
 def test_admin_csrf_rejection_uses_djangos_standard_response() -> None:
     """Leave administration CSRF failures under Django's standard boundary.
@@ -746,7 +800,7 @@ def test_admin_csrf_rejection_uses_djangos_standard_response() -> None:
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 def test_unhandled_exception_returns_a_sanitized_correlated_envelope(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -798,7 +852,7 @@ def test_unhandled_exception_returns_a_sanitized_correlated_envelope(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 def test_malformed_json_returns_bad_request_envelope(client: Client) -> None:
     """Return bad request when a write body is not valid JSON.
 
@@ -830,7 +884,7 @@ def test_malformed_json_returns_bad_request_envelope(client: Client) -> None:
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 def test_unacceptable_representation_is_rejected_before_view_execution(client: Client) -> None:
     """Reject an unacceptable response representation during negotiation.
 
@@ -861,7 +915,7 @@ def test_unacceptable_representation_is_rejected_before_view_execution(client: C
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 def test_unsupported_write_content_type_returns_media_type_envelope(client: Client) -> None:
     """Reject a write representation no configured parser supports.
 
@@ -893,7 +947,7 @@ def test_unsupported_write_content_type_returns_media_type_envelope(client: Clie
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 def test_unsupported_method_returns_allowed_methods_with_envelope(client: Client) -> None:
     """Return method not allowed with the route's permitted methods.
 
@@ -929,7 +983,7 @@ def test_unsupported_method_returns_allowed_methods_with_envelope(client: Client
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 def test_throttled_route_returns_retry_delay_with_envelope(client: Client) -> None:
     """Return too many requests through REST framework's throttle stage.
 
@@ -958,7 +1012,7 @@ def test_throttled_route_returns_retry_delay_with_envelope(client: Client) -> No
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_session_authenticated_csrf_failure_uses_middleware_backed_authentication(
     django_user_model: type[User],
@@ -1005,7 +1059,7 @@ def test_session_authenticated_csrf_failure_uses_middleware_backed_authenticatio
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 def test_versioned_service_failure_returns_unavailable_envelope(client: Client) -> None:
     """Envelope a service-unavailable response from a versioned operation.
 
@@ -1033,7 +1087,7 @@ def test_versioned_service_failure_returns_unavailable_envelope(client: Client) 
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 def test_oversized_api_request_is_rejected_before_the_view_consumes_it(client: Client) -> None:
     """Reject a request whose declared body exceeds the configured API limit.
 
@@ -1066,7 +1120,7 @@ def test_oversized_api_request_is_rejected_before_the_view_consumes_it(client: C
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.parametrize(
     "content_length",
     [
@@ -1110,11 +1164,15 @@ async def test_asgi_rejects_oversized_multichunk_body_from_actual_bytes(
         "details": {},
         "request_id": headers[b"x-request-id"].decode(),
     }
+    assert headers[b"x-content-type-options"] == b"nosniff"
+    assert headers[b"x-frame-options"] == b"DENY"
+    assert headers[b"referrer-policy"] == b"same-origin"
+    assert b"default-src 'self'" in headers[b"content-security-policy"]
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 async def test_asgi_rejects_declared_oversized_body_before_receiving_transport_data() -> None:
     """Reject an oversized declaration without reading its body.
 
@@ -1181,11 +1239,436 @@ async def test_asgi_rejects_declared_oversized_body_before_receiving_transport_d
     assert start["status"] == HTTPStatus.CONTENT_TOO_LARGE
     assert payload["request_id"] == headers[b"x-request-id"].decode()
     assert payload["code"] == ErrorCode.REQUEST_TOO_LARGE
+    assert headers[b"x-content-type-options"] == b"nosniff"
+    assert headers[b"x-frame-options"] == b"DENY"
+    assert headers[b"referrer-policy"] == b"same-origin"
+    assert b"default-src 'self'" in headers[b"content-security-policy"]
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
+@pytest.mark.parametrize(
+    ("origin", "expected_origin", "expected_exposure"),
+    [
+        (
+            b"http://localhost:8080",
+            b"http://localhost:8080",
+            b"Retry-After, X-Request-ID",
+        ),
+        (b"http://attacker.invalid", None, None),
+        (None, None, None),
+    ],
+)
+async def test_asgi_413_applies_exact_origin_cors_and_variance(
+    origin: bytes | None,
+    expected_origin: bytes | None,
+    expected_exposure: bytes | None,
+) -> None:
+    """Apply centralized exact-origin CORS policy to early ASGI rejection.
+
+    Crosses the body ceiling before Django creates a request and verifies both allowed and denied
+    origins vary the response while only the configured exact origin receives credentialed access.
+
+    Arguments:
+        origin: Browser origin supplied directly in the ASGI scope.
+        expected_origin: Reflected exact origin, or ``None`` when denied.
+        expected_exposure: Stable exposed response headers, or ``None`` when CORS is inapplicable.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If ASGI-level CORS diverges from ordinary response policy.
+    """
+    events = await invoke_asgi_write(
+        (b'{"value":', b'"too large"}'),
+        origins=() if origin is None else (origin,),
+    )
+    start = next(event for event in events if event["type"] == "http.response.start")
+    headers = {name.lower(): value for name, value in start["headers"]}
+
+    assert start["status"] == HTTPStatus.CONTENT_TOO_LARGE
+    if origin is not None:
+        assert b"Origin" in headers[b"vary"].split(b", ")
+    else:
+        assert b"vary" not in headers
+    if expected_origin is not None:
+        assert headers[b"access-control-allow-origin"] == expected_origin
+        assert headers[b"access-control-allow-credentials"] == b"true"
+        assert headers[b"access-control-expose-headers"] == expected_exposure
+    else:
+        assert b"access-control-allow-origin" not in headers
+        assert b"access-control-allow-credentials" not in headers
+        assert b"access-control-expose-headers" not in headers
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.services("postgres", "valkey-cache")
+async def test_asgi_boundary_charges_preflight_and_both_early_413_paths_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Charge every transport outcome once before Django and body rejection.
+
+    Consumes a three-request source budget with an allowed preflight, declared-size rejection, and
+    streamed-size rejection, then proves a valid write is rejected by the broad ASGI boundary.
+
+    Arguments:
+        monkeypatch: Fixture fixing every request in one Valkey window.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any request is skipped, charged twice, or admitted out of order.
+    """
+    address = f"2001:db8::{secrets.token_hex(2)}"
+    ambiguous_origins = (b"http://localhost:8080", b"http://attacker.invalid")
+    boundary_request = AsgiRequestSpec(
+        path="/api/v1/boundary-write/",
+        client_address=address,
+    )
+    monkeypatch.setattr(
+        "accounts.api_throttling.TEST_SERVER_TIME_MILLISECONDS",
+        1_800_000_000_250,
+    )
+
+    with override_settings(
+        API_BOUNDARY_ADDRESS_THROTTLE_RATE="3/minute",
+        API_ANONYMOUS_THROTTLE_RATE="1000/minute",
+        API_AUTHENTICATION_THROTTLE_RATE="1000/minute",
+    ):
+        preflight = await invoke_asgi_write(
+            (b"",),
+            origins=(b"http://localhost:8080",),
+            request_spec=AsgiRequestSpec(
+                method="OPTIONS",
+                path=boundary_request.path,
+                extra_headers=((b"access-control-request-method", b"POST"),),
+                client_address=address,
+            ),
+        )
+        declared = await invoke_asgi_write(
+            (b'{"value":"too large"}',),
+            content_length=b"9",
+            origins=ambiguous_origins,
+            request_spec=boundary_request,
+        )
+        streamed = await invoke_asgi_write(
+            (b'{"value":', b'"too large"}'),
+            origins=ambiguous_origins,
+            request_spec=boundary_request,
+        )
+        throttled = await invoke_asgi_write(
+            (b"{}",),
+            content_length=b"2",
+            origins=ambiguous_origins,
+            request_spec=boundary_request,
+        )
+
+    preflight_start = next(event for event in preflight if event["type"] == "http.response.start")
+    declared_start = next(event for event in declared if event["type"] == "http.response.start")
+    streamed_start = next(event for event in streamed if event["type"] == "http.response.start")
+    throttled_start = next(event for event in throttled if event["type"] == "http.response.start")
+    declared_headers = {name.lower(): value for name, value in declared_start["headers"]}
+    streamed_headers = {name.lower(): value for name, value in streamed_start["headers"]}
+    throttled_headers = {name.lower(): value for name, value in throttled_start["headers"]}
+    throttled_body = b"".join(
+        event.get("body", b"") for event in throttled if event["type"] == "http.response.body"
+    )
+    throttled_payload = cast("dict[str, object]", json.loads(throttled_body))
+
+    assert preflight_start["status"] == HTTPStatus.NO_CONTENT
+    assert declared_start["status"] == HTTPStatus.CONTENT_TOO_LARGE
+    assert streamed_start["status"] == HTTPStatus.CONTENT_TOO_LARGE
+    assert throttled_start["status"] == HTTPStatus.TOO_MANY_REQUESTS
+    assert throttled_payload == {
+        "code": ErrorCode.THROTTLED,
+        "message": "Too many requests.",
+        "details": {},
+        "request_id": throttled_headers[b"x-request-id"].decode(),
+    }
+    assert int(throttled_headers[b"retry-after"]) > 0
+    for headers in (declared_headers, streamed_headers, throttled_headers):
+        assert b"Origin" in headers[b"vary"].split(b", ")
+        assert b"access-control-allow-origin" not in headers
+        assert b"access-control-allow-credentials" not in headers
+        assert headers[b"x-content-type-options"] == b"nosniff"
+        assert headers[b"x-frame-options"] == b"DENY"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.services("postgres", "valkey-cache")
+async def test_asgi_boundary_charges_framework_failures_before_django(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Charge malformed, negotiation, media, and authentication failures.
+
+    Consumes four source admissions at distinct Django and REST framework stages, then proves an
+    otherwise successful write receives the secured correlated boundary rejection.
+
+    Arguments:
+        monkeypatch: Fixture fixing every request in one Valkey window.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any pre-view framework failure bypasses broad ASGI admission.
+    """
+    address = f"2001:db8::{secrets.token_hex(2)}"
+    monkeypatch.setattr(
+        "accounts.api_throttling.TEST_SERVER_TIME_MILLISECONDS",
+        1_800_000_050_250,
+    )
+
+    with override_settings(
+        API_BOUNDARY_ADDRESS_THROTTLE_RATE="4/minute",
+        API_ANONYMOUS_THROTTLE_RATE="1000/minute",
+        API_AUTHENTICATION_THROTTLE_RATE="1000/minute",
+    ):
+        malformed = await invoke_asgi_write(
+            (b"{",),
+            content_length=b"1",
+            request_spec=AsgiRequestSpec(client_address=address),
+        )
+        unsupported = await invoke_asgi_write(
+            (b"x",),
+            content_length=b"1",
+            request_spec=AsgiRequestSpec(
+                content_type=b"text/plain",
+                client_address=address,
+            ),
+        )
+        unacceptable = await invoke_asgi_write(
+            (b"",),
+            request_spec=AsgiRequestSpec(
+                method="GET",
+                path="/api/v1/negotiated/",
+                content_type=None,
+                extra_headers=((b"accept", b"text/plain"),),
+                client_address=address,
+            ),
+        )
+        unauthenticated = await invoke_asgi_write(
+            (b"",),
+            request_spec=AsgiRequestSpec(
+                method="GET",
+                path="/api/v1/basic-protected/",
+                content_type=None,
+                client_address=address,
+            ),
+        )
+        throttled = await invoke_asgi_write(
+            (b"{}",),
+            content_length=b"2",
+            origins=(b"http://localhost:8080",),
+            request_spec=AsgiRequestSpec(client_address=address),
+        )
+
+    starts = [
+        next(event for event in events if event["type"] == "http.response.start")
+        for events in (malformed, unsupported, unacceptable, unauthenticated, throttled)
+    ]
+    throttled_headers = {name.lower(): value for name, value in starts[-1]["headers"]}
+
+    assert [start["status"] for start in starts] == [
+        HTTPStatus.BAD_REQUEST,
+        HTTPStatus.UNSUPPORTED_MEDIA_TYPE,
+        HTTPStatus.NOT_ACCEPTABLE,
+        HTTPStatus.UNAUTHORIZED,
+        HTTPStatus.TOO_MANY_REQUESTS,
+    ]
+    assert int(throttled_headers[b"retry-after"]) > 0
+    assert throttled_headers[b"access-control-allow-origin"] == b"http://localhost:8080"
+    assert throttled_headers[b"access-control-allow-credentials"] == b"true"
+    assert throttled_headers[b"access-control-expose-headers"] == (b"Retry-After, X-Request-ID")
+    assert b"Origin" in throttled_headers[b"vary"].split(b", ")
+    assert throttled_headers[b"x-content-type-options"] == b"nosniff"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.services("postgres", "valkey-cache")
+async def test_asgi_boundary_rejection_precedes_body_parser(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reject an exhausted source before malformed JSON reaches parsing.
+
+    Consumes one admission with content negotiation, replaces the parser with a sentinel, and
+    verifies the following malformed write receives 429 without invoking Django parsing.
+
+    Arguments:
+        monkeypatch: Fixture controlling fixed-window time and the parser seam.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If body parsing runs before the broad ASGI decision.
+    """
+
+    def fail_parse(*_args: object, **_kwargs: object) -> None:
+        """Fail if exhausted source admission reaches JSON parsing.
+
+        Replaces the framework parser only after the source budget is consumed.
+        Any invocation proves the ASGI rejection ran too late.
+
+        Arguments:
+            *_args: Positional parser arguments.
+            **_kwargs: Keyword parser arguments.
+
+        Returns:
+            None.
+
+        Raises:
+            AssertionError: Always, because source admission must reject first.
+        """
+        message = "body parser ran before ASGI source admission"
+        raise AssertionError(message)
+
+    address = f"2001:db8::{secrets.token_hex(2)}"
+    monkeypatch.setattr(
+        "accounts.api_throttling.TEST_SERVER_TIME_MILLISECONDS",
+        1_800_000_100_250,
+    )
+    with override_settings(API_BOUNDARY_ADDRESS_THROTTLE_RATE="1/minute"):
+        consumed = await invoke_asgi_write(
+            (b"",),
+            request_spec=AsgiRequestSpec(
+                method="GET",
+                path="/api/v1/negotiated/",
+                content_type=None,
+                extra_headers=((b"accept", b"text/plain"),),
+                client_address=address,
+            ),
+        )
+        monkeypatch.setattr("rest_framework.parsers.JSONParser.parse", fail_parse)
+        throttled = await invoke_asgi_write(
+            (b"{",),
+            request_spec=AsgiRequestSpec(client_address=address),
+        )
+
+    consumed_start = next(event for event in consumed if event["type"] == "http.response.start")
+    throttled_start = next(event for event in throttled if event["type"] == "http.response.start")
+
+    assert consumed_start["status"] == HTTPStatus.NOT_ACCEPTABLE
+    assert throttled_start["status"] == HTTPStatus.TOO_MANY_REQUESTS
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.services("postgres", "valkey-cache")
+async def test_asgi_boundary_cache_failure_remains_fail_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Serve accepted API behavior when general admission cache is unavailable.
+
+    Replaces the shared atomic counter with its documented unavailable outcome and verifies both
+    outer source admission and the anonymous framework scope allow a valid request to continue.
+
+    Arguments:
+        monkeypatch: Fixture replacing the external cache boundary.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If evictable cache loss becomes an API outage.
+    """
+
+    class UnavailableCounterCache:
+        """Represent an unavailable general admission cache.
+
+        Inherits nothing and reports no atomic decision, matching the resilient cache adapter's
+        timeout and connection-failure contract.
+
+        Attributes:
+            None.
+
+        Members:
+            atomic_fixed_window_admit: Report unavailable admission state.
+        """
+
+        def atomic_fixed_window_admit(
+            self,
+            keys: tuple[str, ...],
+            *,
+            limit: int,
+            window_seconds: int,
+            now_milliseconds: int | None = None,
+        ) -> None:
+            """Report that cache admission is unavailable.
+
+            Mirrors the resilient adapter outcome after timeout or connection failure.
+            Callers must interpret the absent decision as fail-open.
+
+            Arguments:
+                keys: Opaque admission dimension keys.
+                limit: Configured admission limit.
+                window_seconds: Fixed-window duration.
+                now_milliseconds: Optional coordinated test time.
+
+            Returns:
+                None because the cache is unavailable.
+            """
+            del keys, limit, window_seconds, now_milliseconds
+
+    monkeypatch.setattr(
+        "accounts.api_throttling.caches",
+        {"default": UnavailableCounterCache()},
+    )
+
+    events = await invoke_asgi_write(
+        (b"{}",),
+        content_length=b"2",
+        request_spec=AsgiRequestSpec(
+            client_address=f"2001:db8::{secrets.token_hex(2)}",
+        ),
+    )
+    start = next(event for event in events if event["type"] == "http.response.start")
+
+    assert start["status"] == HTTPStatus.OK
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.services("postgres", "valkey-cache")
+async def test_asgi_ordinary_response_varies_without_reflecting_duplicate_origin() -> None:
+    """Treat duplicate Origin values as supplied but unsafe.
+
+    Sends an otherwise valid API write with conflicting browser origins and verifies the ordinary
+    Django response varies on Origin without reflecting either ambiguous value.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If duplicate origin input is reflected or omitted from cache variance.
+    """
+    events = await invoke_asgi_write(
+        (b"{}",),
+        content_length=b"2",
+        origins=(b"http://localhost:8080", b"http://attacker.invalid"),
+        request_spec=AsgiRequestSpec(client_address=f"2001:db8::{secrets.token_hex(2)}"),
+    )
+    start = next(event for event in events if event["type"] == "http.response.start")
+    headers = {name.lower(): value for name, value in start["headers"]}
+
+    assert start["status"] == HTTPStatus.OK
+    assert b"Origin" in headers[b"vary"].split(b", ")
+    assert b"access-control-allow-origin" not in headers
+    assert b"access-control-allow-credentials" not in headers
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.parametrize(
     "content_length",
     [
@@ -1223,6 +1706,7 @@ async def test_asgi_preserves_accepted_multichunk_body_stream(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+@pytest.mark.api_runtime_exempt
 @pytest.mark.services("postgres")
 async def test_asgi_body_limit_exempts_non_api_routes() -> None:
     """Leave bodies outside the versioned API unrestricted.
@@ -1241,7 +1725,7 @@ async def test_asgi_body_limit_exempts_non_api_routes() -> None:
     """
     events = await invoke_asgi_write(
         (b"outside", b"-api-limit"),
-        path_value="/outside-api/",
+        request_spec=AsgiRequestSpec(path="/outside-api/"),
     )
     start = next(event for event in events if event["type"] == "http.response.start")
 
@@ -1252,6 +1736,7 @@ async def test_asgi_body_limit_exempts_non_api_routes() -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.api_runtime_exempt
 @pytest.mark.services("postgres")
 def test_route_contract_covers_every_registered_error_status() -> None:
     """Keep the route-level contract aligned with the durable status registry.

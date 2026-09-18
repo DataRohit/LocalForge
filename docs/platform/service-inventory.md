@@ -68,7 +68,9 @@ Each is a deliberate remap. Reverting one reintroduces a collision.
 The direct Django publication is additionally bound to host loopback. It remains useful for local diagnostics and
 health checks, but Traefik is the only remotely reachable application entry point. `edge-net-ne2vk` is fixed at
 `10.89.2.0/24`; Django trusts forwarded client addresses only when the immediate peer belongs to that explicit
-proxy subnet. Testing has no trusted proxy subnet and uses `REMOTE_ADDR` directly.
+proxy subnet. The Traefik web entrypoint keeps insecure forwarded-header trust disabled, replaces untrusted client
+metadata, and supplies its own standard forwarded address. Testing has no trusted proxy subnet and uses
+`REMOTE_ADDR` directly.
 
 ### 1.3 Four flags that are not optional
 

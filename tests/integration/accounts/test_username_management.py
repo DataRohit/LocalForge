@@ -70,7 +70,10 @@ EXPECTED_DIVERGENT_TIMEOUT_MESSAGE_COUNT = 3
 EXPECTED_TASK_ARGUMENT_COUNT = 2
 SECOND_ACCOUNT_LOOKUP = 2
 timing_logger = logging.getLogger("localforge.tests.username_reset_timing")
-pytestmark = pytest.mark.xdist_group(name="username-management")
+pytestmark = [
+    pytest.mark.api_runtime,
+    pytest.mark.xdist_group(name="username-management"),
+]
 
 
 def _request_reset_link(
@@ -143,7 +146,7 @@ def _mailpit_request(method: str, path: str) -> object | None:
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_authenticated_username_change_preserves_existing_credentials(
     client: DjangoClient,
@@ -209,7 +212,7 @@ def test_authenticated_username_change_preserves_existing_credentials(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_authenticated_username_change_contains_notification_failure(
     client: DjangoClient,
@@ -291,7 +294,7 @@ def test_authenticated_username_change_contains_notification_failure(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_username_reset_full_loop_is_single_use_and_preserves_credentials(
     client: DjangoClient,
@@ -383,7 +386,7 @@ def test_username_reset_full_loop_is_single_use_and_preserves_credentials(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_username_reset_confirm_contains_notification_failure(
     client: DjangoClient,
@@ -467,7 +470,7 @@ def test_username_reset_confirm_contains_notification_failure(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_username_changes_reject_invalid_or_unavailable_names(
     client: DjangoClient,
@@ -523,7 +526,7 @@ def test_username_changes_reject_invalid_or_unavailable_names(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_username_change_requires_authentication_current_password_and_exact_body(
     client: DjangoClient,
@@ -593,7 +596,7 @@ def test_username_change_requires_authentication_current_password_and_exact_body
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_username_reset_request_is_indistinguishable_across_account_states(
     client: DjangoClient,
@@ -653,7 +656,7 @@ def test_username_reset_request_is_indistinguishable_across_account_states(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.parametrize(
     ("kind", "expected_code"),
@@ -735,7 +738,7 @@ def test_username_reset_confirm_classifies_invalid_tokens(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @override_settings(
     PASSWORD_RESET_TIMEOUT=3600,
@@ -803,7 +806,7 @@ def test_username_reset_confirm_uses_the_username_lifetime(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_username_reset_task_uses_divergent_username_lifetimes(
     client: DjangoClient,
@@ -921,7 +924,8 @@ def test_username_reset_task_uses_divergent_username_lifetimes(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.api_runtime
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_username_token_parsing_and_expired_publication_boundaries(
     django_user_model: type[User],
@@ -986,7 +990,7 @@ def test_username_token_parsing_and_expired_publication_boundaries(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_unavailable_reset_username_does_not_consume_the_token(
     client: DjangoClient,
@@ -1043,7 +1047,7 @@ def test_unavailable_reset_username_does_not_consume_the_token(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_email_change_deletion_and_used_tombstone_classify_safely(
     client: DjangoClient,
@@ -1123,7 +1127,7 @@ def test_email_change_deletion_and_used_tombstone_classify_safely(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @override_settings(
     USERNAME_RESET_ADDRESS_THROTTLE_RATE=LOW_RESET_RATE,
@@ -1229,7 +1233,7 @@ def test_username_reset_throttles_are_exact_recoverable_and_ignore_invalid_bodie
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_username_reset_admission_fails_closed_when_postgres_is_unavailable(
     client: DjangoClient,
@@ -1309,7 +1313,7 @@ def test_username_reset_admission_fails_closed_when_postgres_is_unavailable(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_username_reset_common_lookup_loss_returns_service_unavailable(
     client: DjangoClient,
@@ -1380,7 +1384,7 @@ def test_username_reset_common_lookup_loss_returns_service_unavailable(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.parametrize(
     ("transition", "expected_code"),
@@ -1483,7 +1487,7 @@ def test_username_reset_confirm_rechecks_state_after_preflight(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_username_change_contains_account_disappearance_and_database_failure(
     client: DjangoClient,
@@ -1566,7 +1570,7 @@ def test_username_change_contains_account_disappearance_and_database_failure(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @override_settings(USERNAME_RESET_MINIMUM_RESPONSE_DURATION_SECONDS=0.001)
 def test_username_reset_token_store_failure_is_indistinguishable_and_redacted(
@@ -1647,7 +1651,7 @@ def test_username_reset_token_store_failure_is_indistinguishable_and_redacted(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_username_reset_task_is_single_attempt_and_revalidates_state(
     client: DjangoClient,
@@ -1740,7 +1744,7 @@ def test_username_reset_task_is_single_attempt_and_revalidates_state(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.parametrize("transition", ["account-deleted", "record-used", "email-rejected"])
 def test_username_reset_task_revalidates_after_durable_claim(
@@ -1871,7 +1875,7 @@ def test_username_reset_task_revalidates_after_durable_claim(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_username_reset_publication_failure_is_contained_and_redacted(
     client: DjangoClient,
@@ -1954,7 +1958,7 @@ def test_username_reset_publication_failure_is_contained_and_redacted(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.timeout(90)
 def test_concurrent_username_reset_confirm_has_one_winner_and_one_used_replay(
@@ -2032,7 +2036,8 @@ def test_concurrent_username_reset_confirm_has_one_winner_and_one_used_replay(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.api_runtime
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.timeout(90)
 def test_concurrent_case_insensitive_username_conflict_has_one_winner(
@@ -2111,7 +2116,7 @@ def test_concurrent_case_insensitive_username_conflict_has_one_winner(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_username_constraint_race_returns_neutral_validation(
     client: DjangoClient,
@@ -2180,7 +2185,7 @@ def test_username_constraint_race_returns_neutral_validation(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_username_routes_document_and_reach_complete_framework_contract(
     client: DjangoClient,
@@ -2215,6 +2220,7 @@ def test_username_routes_document_and_reach_complete_framework_contract(
             "406",
             "413",
             "415",
+            "429",
             "500",
             "503",
         },
@@ -2296,7 +2302,7 @@ def test_username_routes_document_and_reach_complete_framework_contract(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.security_timing
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @override_settings(
@@ -2455,7 +2461,7 @@ def test_username_reset_request_outcomes_meet_the_approved_timing_criterion(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres", "mailpit")
+@pytest.mark.services("postgres", "mailpit", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.skipif(
     settings.EMAIL_BACKEND != SMTP_BACKEND,

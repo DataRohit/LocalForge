@@ -178,7 +178,10 @@ timing_logger = logging.getLogger("localforge.tests.jwt_timing")
 LOW_ADDRESS_RATE = "1/minute"
 HIGH_LOGIN_RATE = "1000/minute"
 RACE_WAIT_SECONDS = 45
-pytestmark = pytest.mark.xdist_group(name="jwt-authentication")
+pytestmark = [
+    pytest.mark.api_runtime,
+    pytest.mark.xdist_group(name="jwt-authentication"),
+]
 
 
 class RejectUnpinnedJWTReadRouter:
@@ -304,7 +307,7 @@ def _unlimited_login_settings() -> dict[str, str]:
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_active_account_can_create_access_and_refresh_tokens(
     client: Client,
@@ -346,7 +349,7 @@ def test_active_account_can_create_access_and_refresh_tokens(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_jwt_create_locks_revalidated_account_before_outstanding_token(
     client: Client,
@@ -405,7 +408,7 @@ def test_jwt_create_locks_revalidated_account_before_outstanding_token(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_refresh_rotates_blacklists_and_verify_discloses_no_claims(
     client: Client,
@@ -500,7 +503,7 @@ def test_refresh_rotates_blacklists_and_verify_discloses_no_claims(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @override_settings(
     ROOT_URLCONF=__name__,
@@ -560,7 +563,7 @@ def test_jwt_authentication_reads_immediate_account_state_from_primary(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @override_settings(ROOT_URLCONF=__name__)
 def test_jwt_authentication_maps_primary_account_outage_to_service_unavailable(
@@ -683,7 +686,7 @@ def test_refresh_and_verify_bypass_replica_routing(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.timeout(30)
 def test_concurrent_refresh_replay_has_exactly_one_winner(
@@ -750,7 +753,7 @@ def test_concurrent_refresh_replay_has_exactly_one_winner(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_refresh_locks_account_before_outstanding_token(
     client: Client,
@@ -797,7 +800,7 @@ def test_refresh_locks_account_before_outstanding_token(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.timeout(90)
 def test_concurrent_refresh_and_password_change_leave_no_surviving_old_identity(
@@ -1178,7 +1181,7 @@ def test_jwt_create_requires_reset_for_nonaccepted_password_profiles(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_expired_and_malformed_tokens_return_correlated_unauthorized_envelopes(
     client: Client,
@@ -1257,7 +1260,7 @@ def test_expired_and_malformed_tokens_return_correlated_unauthorized_envelopes(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @override_settings(ROOT_URLCONF=__name__)
 @pytest.mark.parametrize(
@@ -1354,7 +1357,7 @@ def test_signed_tokens_with_non_scalar_temporal_claims_return_unauthorized(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @override_settings(ROOT_URLCONF=__name__)
 @pytest.mark.parametrize(
@@ -1462,7 +1465,7 @@ def test_signed_tokens_with_invalid_numeric_dates_return_unauthorized(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @override_settings(ROOT_URLCONF=__name__)
 def test_signed_non_uuid_user_id_claims_return_correlated_unauthorized_envelopes(
@@ -1527,7 +1530,7 @@ def test_signed_non_uuid_user_id_claims_return_correlated_unauthorized_envelopes
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_refresh_and_verify_reject_immediate_account_deactivation_and_deletion(
     client: Client,
@@ -1595,7 +1598,7 @@ def test_refresh_and_verify_reject_immediate_account_deactivation_and_deletion(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.parametrize(
     ("claim", "claim_present", "value"),
@@ -1654,7 +1657,7 @@ def test_verify_rejects_signed_tokens_with_invalid_protocol_claims(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.parametrize(
     ("claim_present", "value"),
@@ -2405,7 +2408,7 @@ def test_json_web_tokens_never_leave_their_success_response_or_request_body(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_simplejwt_blacklist_migrations_and_primary_records_are_present(
     client: Client,
@@ -2473,6 +2476,7 @@ def test_simplejwt_blacklist_migrations_and_primary_records_are_present(
 
 
 @pytest.mark.integration
+@pytest.mark.api_runtime_exempt
 @pytest.mark.services("postgres")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.timeout(30)
@@ -2587,6 +2591,7 @@ def test_flushexpiredtokens_prunes_only_expired_primary_token_state(
 
 
 @pytest.mark.integration
+@pytest.mark.api_runtime_exempt
 @pytest.mark.services("postgres")
 def test_jwt_routes_document_every_reachable_response_with_examples() -> None:
     """Expose the complete JWT create, refresh, and verify contracts in OpenAPI.
@@ -2627,6 +2632,7 @@ def test_jwt_routes_document_every_reachable_response_with_examples() -> None:
             "406",
             "413",
             "415",
+            "429",
             "500",
             "503",
         },
@@ -2638,6 +2644,7 @@ def test_jwt_routes_document_every_reachable_response_with_examples() -> None:
             "406",
             "413",
             "415",
+            "429",
             "500",
             "503",
         },
@@ -2943,6 +2950,23 @@ def test_jwt_token_operation_statuses_match_their_documented_contracts(
     with override_settings(API_REQUEST_BODY_MAX_BYTES=1):
         too_large = client.post(case.route, data="oversized", content_type="text/plain")
     unsupported = client.post(case.route, data="unsupported", content_type="text/plain")
+    throttle_address = f"2001:db8::{uuid.uuid4().int & 0xFFFF:x}"
+    with override_settings(
+        API_AUTHENTICATION_THROTTLE_RATE="1/minute",
+        API_ANONYMOUS_THROTTLE_RATE="1000/minute",
+    ):
+        client.post(
+            case.route,
+            {case.field: "not-a-json-web-token"},
+            content_type="application/json",
+            REMOTE_ADDR=throttle_address,
+        )
+        throttled = client.post(
+            case.route,
+            {case.field: "not-a-json-web-token"},
+            content_type="application/json",
+            REMOTE_ADDR=throttle_address,
+        )
 
     with monkeypatch.context() as failure_patch:
         failure_patch.setattr(
@@ -2979,6 +3003,7 @@ def test_jwt_token_operation_statuses_match_their_documented_contracts(
             not_acceptable,
             too_large,
             unsupported,
+            throttled,
             unexpected,
             unavailable,
         )

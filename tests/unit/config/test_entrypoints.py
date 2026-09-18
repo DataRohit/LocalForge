@@ -6,6 +6,9 @@ protocol requires so a misconfigured entry point fails here rather than at deplo
 
 import importlib
 import os
+import subprocess
+import sys
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -14,6 +17,8 @@ from django.core.handlers.asgi import ASGIHandler
 from django.core.handlers.wsgi import WSGIHandler
 
 from config import asgi, routing, wsgi
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 
 
 @pytest.mark.unit
@@ -102,6 +107,40 @@ def test_the_asgi_application_dispatches_both_protocols() -> None:
     assert set(asgi.application.application_mapping) == {"http", "websocket"}
     assert isinstance(asgi.django_application, ASGIHandler)
     assert asgi.application.application_mapping["http"] is asgi.http_application
+
+
+@pytest.mark.unit
+def test_asgi_cold_import_populates_apps_before_rest_framework_models() -> None:
+    """Start the ASGI entry point in a fresh interpreter.
+
+    Imports the production module before any test harness calls ``django.setup()``, reproducing
+    Uvicorn worker startup and proving REST authentication models load only after app population.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a cold Uvicorn-style import fails.
+    """
+    environment = {
+        **os.environ,
+        "DJANGO_SETTINGS_MODULE": "config.settings.testing",
+        "PYTHONPATH": f"{REPOSITORY_ROOT / 'src'}{os.pathsep}{REPOSITORY_ROOT}",
+    }
+    completed = subprocess.run(
+        [sys.executable, "-c", "import config.asgi"],
+        cwd=REPOSITORY_ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
 
 
 @pytest.mark.unit

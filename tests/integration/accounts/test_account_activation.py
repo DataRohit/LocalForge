@@ -51,6 +51,7 @@ SECOND_LOCK_ORDER = 2
 ACTIVATION_LIFETIME_SECONDS = 60
 PUBLICATION_DELAY_SECONDS = 10
 EXPIRED_PUBLICATION_DELAY_SECONDS = 61
+pytestmark = pytest.mark.api_runtime
 
 
 class MailpitAddress(TypedDict):
@@ -476,7 +477,7 @@ def _register_for_activation(client: Client, username: str) -> dict[str, str]:
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_registration_email_activates_once_through_the_existing_user_post(
     client: Client,
@@ -539,7 +540,7 @@ def test_registration_email_activates_once_through_the_existing_user_post(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_used_activation_token_stays_used_after_account_deletion(client: Client) -> None:
     """Preserve used-token classification after its account is deleted.
@@ -579,7 +580,7 @@ def test_used_activation_token_stays_used_after_account_deletion(client: Client)
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_admin_activation_consumes_links_before_account_deletion(
     admin_client: Client,
@@ -651,7 +652,7 @@ def test_admin_activation_consumes_links_before_account_deletion(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_admin_email_change_invalidates_old_links_and_new_link_activates(
     admin_client: Client,
@@ -716,7 +717,7 @@ def test_admin_email_change_invalidates_old_links_and_new_link_activates(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_unused_activation_token_becomes_foreign_after_account_deletion(
     client: Client,
@@ -753,7 +754,7 @@ def test_unused_activation_token_becomes_foreign_after_account_deletion(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_resend_is_identical_for_unknown_inactive_and_active_accounts(
     client: Client,
@@ -811,7 +812,7 @@ def test_resend_is_identical_for_unknown_inactive_and_active_accounts(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_duplicate_registration_emails_only_the_matching_inactive_inbox(
     client: Client,
@@ -872,7 +873,7 @@ def test_duplicate_registration_emails_only_the_matching_inactive_inbox(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_activation_consumes_every_outstanding_link_for_the_account(client: Client) -> None:
     """Invalidate older links when any current link activates the account.
@@ -922,7 +923,7 @@ def test_activation_consumes_every_outstanding_link_for_the_account(client: Clie
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.timeout(30)
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_activation_serializes_a_concurrent_resend_without_a_stale_link(
@@ -1024,7 +1025,7 @@ def test_activation_serializes_a_concurrent_resend_without_a_stale_link(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.timeout(30)
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_activation_classifies_a_token_removed_after_preflight_as_foreign(
@@ -1088,7 +1089,7 @@ def test_activation_classifies_a_token_removed_after_preflight_as_foreign(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_malformed_activation_is_identical_for_existing_and_unknown_accounts(
     client: Client,
@@ -1131,7 +1132,7 @@ def test_malformed_activation_is_identical_for_existing_and_unknown_accounts(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_activation_token_bound_to_another_account_is_foreign(client: Client) -> None:
     """Reject a valid token paired with a different account.
@@ -1177,7 +1178,7 @@ def test_activation_token_bound_to_another_account_is_foreign(client: Client) ->
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @override_settings(ACCOUNT_ACTIVATION_TOKEN_LIFETIME_SECONDS=60)
 def test_activation_token_expiry_uses_frozen_time(client: Client) -> None:
@@ -1211,7 +1212,7 @@ def test_activation_token_expiry_uses_frozen_time(client: Client) -> None:
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @override_settings(ACCOUNT_ACTIVATION_TOKEN_LIFETIME_SECONDS=60)
 def test_delayed_activation_task_rejects_an_expired_token(
@@ -1274,7 +1275,7 @@ def test_delayed_activation_task_rejects_an_expired_token(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.timeout(30)
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @override_settings(ACCOUNT_ACTIVATION_TOKEN_LIFETIME_SECONDS=60)
@@ -1370,7 +1371,7 @@ def test_claimed_activation_expiring_before_final_locks_sends_nothing(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_activation_task_rejects_malformed_foreign_used_and_active_state(
     client: Client,
@@ -1439,7 +1440,7 @@ def test_activation_task_rejects_malformed_foreign_used_and_active_state(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @override_settings(ACCOUNT_ACTIVATION_TOKEN_LIFETIME_SECONDS=ACTIVATION_LIFETIME_SECONDS)
 def test_activation_publication_expires_with_the_remaining_token_lifetime(
@@ -1501,7 +1502,7 @@ def test_activation_publication_expires_with_the_remaining_token_lifetime(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.parametrize(
     "publication_delay",
@@ -1568,7 +1569,7 @@ def test_activation_publication_skips_work_with_no_token_lifetime(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_activation_delivery_is_durably_claimed_at_most_once(
     client: Client,
@@ -1638,7 +1639,7 @@ def test_activation_delivery_is_durably_claimed_at_most_once(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.timeout(30)
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.parametrize("state_change", ["delete", "activate"])
@@ -1736,7 +1737,7 @@ def test_claimed_delivery_rechecks_account_state_before_smtp(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.timeout(30)
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_admin_email_change_serializes_before_claimed_delivery(
@@ -1851,7 +1852,7 @@ def test_admin_email_change_serializes_before_claimed_delivery(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_failed_activation_delivery_recovers_only_through_resend(
     client: Client,
@@ -1947,7 +1948,7 @@ def test_failed_activation_delivery_recovers_only_through_resend(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_rolled_back_registration_never_publishes_or_sends_activation(
     client: Client,
@@ -2028,7 +2029,7 @@ def test_rolled_back_registration_never_publishes_or_sends_activation(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.usefixtures("_suppress_activation_delivery")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_resend_account_throttle_is_shared_across_addresses_and_recovers(
@@ -2088,7 +2089,7 @@ def test_resend_account_throttle_is_shared_across_addresses_and_recovers(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.usefixtures("_suppress_activation_delivery")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_resend_address_throttle_spans_accounts_and_recovers(
@@ -2142,7 +2143,7 @@ def test_resend_address_throttle_spans_accounts_and_recovers(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.usefixtures("_suppress_activation_delivery")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_unknown_resend_admission_constrains_the_later_registered_account(
@@ -2189,7 +2190,7 @@ def test_unknown_resend_admission_constrains_the_later_registered_account(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.usefixtures("_suppress_activation_delivery")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_resend_account_admission_survives_an_email_change(client: Client) -> None:
@@ -2239,7 +2240,7 @@ def test_resend_account_admission_survives_an_email_change(client: Client) -> No
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.usefixtures("_suppress_activation_delivery")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_resend_metadata_methods_do_not_consume_post_quota(client: Client) -> None:
@@ -2289,7 +2290,7 @@ def test_resend_metadata_methods_do_not_consume_post_quota(client: Client) -> No
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.usefixtures("_suppress_activation_delivery")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.parametrize(
@@ -2346,7 +2347,7 @@ def test_invalid_resend_body_does_not_consume_quota(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_duplicate_registration_uses_shared_activation_mail_admission(
     client: Client,
@@ -2397,7 +2398,7 @@ def test_duplicate_registration_uses_shared_activation_mail_admission(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.usefixtures("_suppress_activation_delivery")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_unknown_resend_constrains_later_duplicate_registration(client: Client) -> None:
@@ -2447,7 +2448,7 @@ def test_unknown_resend_constrains_later_duplicate_registration(client: Client) 
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_duplicate_registration_hides_activation_admission_outage(
     client: Client,
@@ -2520,7 +2521,7 @@ def test_duplicate_registration_hides_activation_admission_outage(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_resend_admission_failure_is_a_correlated_service_unavailable(
     client: Client,
@@ -2583,7 +2584,7 @@ def test_resend_admission_failure_is_a_correlated_service_unavailable(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_resend_token_write_failure_is_identical_for_every_account_state(
     client: Client,
@@ -2694,6 +2695,7 @@ def test_resend_token_write_failure_is_identical_for_every_account_state(
 
 
 @pytest.mark.integration
+@pytest.mark.api_runtime_exempt
 @pytest.mark.services("postgres")
 def test_activation_routes_document_every_reachable_response() -> None:
     """Expose complete activation and resend contracts in OpenAPI.
@@ -2770,7 +2772,7 @@ def test_activation_routes_document_every_reachable_response() -> None:
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_resend_observed_statuses_exactly_match_its_documented_contract(
     client: Client,
@@ -2931,7 +2933,7 @@ def test_resend_observed_statuses_exactly_match_its_documented_contract(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_resend_rejects_missing_invalid_and_undeclared_fields(client: Client) -> None:
     """Keep activation resend input on its one-field contract.
@@ -2991,7 +2993,7 @@ def test_resend_rejects_missing_invalid_and_undeclared_fields(client: Client) ->
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.parametrize(
     "failure_type",
@@ -3120,7 +3122,7 @@ def test_registration_token_failure_is_identical_for_every_candidate_state(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres", "rabbitmq")
+@pytest.mark.services("postgres", "rabbitmq", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_task_publication_failure_does_not_change_registration_response(
     client: Client,
@@ -3180,7 +3182,7 @@ def test_task_publication_failure_does_not_change_registration_response(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_validly_signed_unissued_and_invalid_payload_tokens_are_foreign(
     client: Client,
@@ -3245,7 +3247,7 @@ def test_validly_signed_unissued_and_invalid_payload_tokens_are_foreign(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_activation_persistence_failure_is_service_unavailable(client: Client) -> None:
     """Fail closed when activation cannot lock authoritative account state.
@@ -3302,7 +3304,7 @@ def test_activation_persistence_failure_is_service_unavailable(client: Client) -
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_resend_account_lookup_failure_after_admission_is_service_unavailable(
     client: Client,
@@ -3363,7 +3365,7 @@ def test_resend_account_lookup_failure_after_admission_is_service_unavailable(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres", "mailpit")
+@pytest.mark.services("postgres", "mailpit", "valkey-cache")
 @pytest.mark.serial
 @pytest.mark.timeout(MAILPIT_TIMEOUT_SECONDS)
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)

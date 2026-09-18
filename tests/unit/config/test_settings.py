@@ -5,6 +5,7 @@ failure a missing required variable produces, so a configuration mistake surface
 at startup in a container.
 """
 
+import base64
 import importlib
 import importlib.util
 import os
@@ -21,6 +22,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.views.debug import SafeExceptionReporterFilter
 
 from config import settings as settings_package
+from scripts import gen_secrets
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -30,11 +32,18 @@ BODY_LIMIT_PROBE_BYTES = 2048
 
 REQUIRED_ENVIRONMENT = {
     "DJANGO_SECRET_KEY": secrets.token_urlsafe(32),
+    "DJANGO_API_THROTTLE_IDENTITY_HMAC_KEY": secrets.token_urlsafe(64),
     "DJANGO_DEBUG": "true",
     "DJANGO_ALLOWED_HOSTS": "localhost,localforge.localhost",
     "DJANGO_CSRF_TRUSTED_ORIGINS": ("http://localhost:8080,http://localforge.localhost:8080"),
+    "DJANGO_CORS_ALLOWED_ORIGINS": ("http://localhost:8080,http://localforge.localhost:8080"),
+    "DJANGO_CORS_ALLOW_CREDENTIALS": "true",
     "DJANGO_TRUSTED_PROXY_NETWORKS": "10.89.2.0/24",
     "DJANGO_API_REQUEST_BODY_MAX_BYTES": "1048576",
+    "DJANGO_API_AUTHENTICATION_THROTTLE_RATE": "30/minute",
+    "DJANGO_API_AUTHENTICATED_READ_THROTTLE_RATE": "120/minute",
+    "DJANGO_API_ANONYMOUS_THROTTLE_RATE": "60/minute",
+    "DJANGO_API_BOUNDARY_ADDRESS_THROTTLE_RATE": "600/minute",
     "DJANGO_JWT_ACCESS_TOKEN_LIFETIME_SECONDS": "300",
     "DJANGO_JWT_REFRESH_TOKEN_LIFETIME_SECONDS": "86400",
     "DJANGO_JWT_SIGNING_KEY": secrets.token_urlsafe(32),
@@ -471,8 +480,10 @@ def test_request_and_database_instrumentation_wrap_the_application() -> None:
     assert configured_settings.INSTALLED_APPS[0] == "django_prometheus"
     assert middleware[0] == "django_prometheus.middleware.PrometheusBeforeMiddleware"
     assert middleware[1] == "config.logs.request_context_middleware"
-    assert middleware[2] == "config.api.api_request_body_limit_middleware"
-    assert middleware[3] == "config.api.api_error_envelope_middleware"
+    assert middleware[2] == "config.security.browser_security_middleware"
+    assert middleware[3] == "config.api.api_request_body_limit_middleware"
+    assert middleware[4] == "config.api.api_error_envelope_middleware"
+    assert "config.api.api_boundary_throttle_middleware" not in middleware
     assert "config.api.ApiCommonMiddleware" in middleware
     assert "django.middleware.common.CommonMiddleware" not in middleware
     assert middleware[-1] == "config.logs.BoundedPrometheusAfterMiddleware"
@@ -534,6 +545,9 @@ def test_shared_rest_framework_defaults_close_new_routes() -> None:
         "DEFAULT_PERMISSION_CLASSES": [
             "rest_framework.permissions.IsAuthenticated",
         ],
+        "DEFAULT_THROTTLE_CLASSES": [
+            "accounts.api_throttling.AnonymousApiThrottle",
+        ],
         "DEFAULT_RENDERER_CLASSES": [
             "rest_framework.renderers.JSONRenderer",
         ],
@@ -545,6 +559,22 @@ def test_shared_rest_framework_defaults_close_new_routes() -> None:
     assert (
         REQUIRED_ENVIRONMENT["DJANGO_TOKEN_LOGIN_ACCOUNT_THROTTLE_RATE"]
         == configured_settings.TOKEN_LOGIN_ACCOUNT_THROTTLE_RATE
+    )
+    assert (
+        REQUIRED_ENVIRONMENT["DJANGO_API_AUTHENTICATION_THROTTLE_RATE"]
+        == configured_settings.API_AUTHENTICATION_THROTTLE_RATE
+    )
+    assert (
+        REQUIRED_ENVIRONMENT["DJANGO_API_AUTHENTICATED_READ_THROTTLE_RATE"]
+        == configured_settings.API_AUTHENTICATED_READ_THROTTLE_RATE
+    )
+    assert (
+        REQUIRED_ENVIRONMENT["DJANGO_API_ANONYMOUS_THROTTLE_RATE"]
+        == configured_settings.API_ANONYMOUS_THROTTLE_RATE
+    )
+    assert (
+        REQUIRED_ENVIRONMENT["DJANGO_API_BOUNDARY_ADDRESS_THROTTLE_RATE"]
+        == configured_settings.API_BOUNDARY_ADDRESS_THROTTLE_RATE
     )
     assert (
         REQUIRED_ENVIRONMENT["DJANGO_TOKEN_LOGIN_ADDRESS_THROTTLE_RATE"]
@@ -596,6 +626,71 @@ def test_shared_rest_framework_defaults_close_new_routes() -> None:
     )
     assert configured_settings.LOGIN_THROTTLE_DATABASE_ALIAS == "default"
     assert set(configured_settings.CACHES) == {"default", "sessions"}
+
+
+@pytest.mark.unit
+def test_browser_security_policy_is_explicit_for_local_plaintext_transport() -> None:
+    """Configure browser defenses without pretending local HTTP is TLS.
+
+    Verifies exact-origin credentialed CORS, response hardening, and deliberately inert transport
+    controls as one coherent policy for the loopback and Docker-only deployment shape.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If browser or transport security settings drift.
+    """
+    assert configured_settings.CORS_ALLOWED_ORIGINS == ("http://localhost:8080",)
+    assert configured_settings.CORS_ALLOW_CREDENTIALS is True
+    development = _execute_module_in_isolation("base", REQUIRED_ENVIRONMENT)
+    assert development.CORS_ALLOWED_ORIGINS == (
+        "http://localhost:8080",
+        "http://localforge.localhost:8080",
+    )
+    assert configured_settings.SECURE_CONTENT_TYPE_NOSNIFF is True
+    assert configured_settings.X_FRAME_OPTIONS == "DENY"
+    assert configured_settings.SECURE_REFERRER_POLICY == "same-origin"
+    assert configured_settings.CONTENT_SECURITY_POLICY == (
+        "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; "
+        "form-action 'self'"
+    )
+    assert configured_settings.SECURE_SSL_REDIRECT is False
+    assert configured_settings.SECURE_HSTS_SECONDS == 0
+    assert configured_settings.SECURE_HSTS_INCLUDE_SUBDOMAINS is False
+    assert configured_settings.SECURE_HSTS_PRELOAD is False
+    assert configured_settings.SESSION_COOKIE_SECURE is False
+    assert configured_settings.CSRF_COOKIE_SECURE is False
+    assert configured_settings.SECURE_PROXY_SSL_HEADER is None
+
+
+@pytest.mark.unit
+def test_credentialed_cors_rejects_a_wildcard_origin() -> None:
+    """Reject a wildcard origin when browser credentials are enabled.
+
+    Executes the shared settings boundary with the forbidden combination so configuration fails
+    at startup instead of reflecting arbitrary credentialed origins at runtime.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If unsafe credentialed wildcard CORS is accepted.
+    """
+    environment = REQUIRED_ENVIRONMENT | {"DJANGO_CORS_ALLOWED_ORIGINS": "*"}
+
+    with pytest.raises(
+        ImproperlyConfigured,
+        match="DJANGO_CORS_ALLOWED_ORIGINS must not contain a wildcard",
+    ):
+        _execute_module_in_isolation("base", environment)
 
 
 @pytest.mark.unit
@@ -685,6 +780,160 @@ def test_json_web_token_settings_reject_unsafe_relationships(
     """
     with pytest.raises(ImproperlyConfigured, match=message):
         _execute_module_in_isolation("base", REQUIRED_ENVIRONMENT | overrides)
+
+
+@pytest.mark.unit
+def test_throttle_identity_hmac_key_uses_dedicated_generated_material() -> None:
+    """Load one independent HMAC key for opaque throttle identities.
+
+    Executes shared settings with three generated secrets and verifies the throttle identity key is
+    retained without reusing either signing boundary.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the dedicated key is changed or aliases a signing key.
+    """
+    module = _execute_module_in_isolation("base", REQUIRED_ENVIRONMENT)
+
+    encoded = REQUIRED_ENVIRONMENT["DJANGO_API_THROTTLE_IDENTITY_HMAC_KEY"]
+    expected = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+
+    assert expected == module.API_THROTTLE_IDENTITY_HMAC_KEY
+    assert isinstance(module.API_THROTTLE_IDENTITY_HMAC_KEY, bytes)
+    assert module.API_THROTTLE_IDENTITY_HMAC_KEY not in {
+        base64.urlsafe_b64decode(module.SECRET_KEY + "=" * (-len(module.SECRET_KEY) % 4)),
+        base64.urlsafe_b64decode(module.JWT_SIGNING_KEY + "=" * (-len(module.JWT_SIGNING_KEY) % 4)),
+    }
+    reporter_filter = SafeExceptionReporterFilter()
+    assert (
+        reporter_filter.cleanse_setting(
+            "API_THROTTLE_IDENTITY_HMAC_KEY",
+            module.API_THROTTLE_IDENTITY_HMAC_KEY,
+        )
+        == reporter_filter.cleansed_substitute
+    )
+    assert all(value != encoded for name, value in vars(module).items() if name.isupper())
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("override", "message"),
+    [
+        pytest.param("", "must not be empty", id="empty"),
+        pytest.param(
+            base64.urlsafe_b64encode(b"too-short").decode().rstrip("="),
+            "at least 32 bytes",
+            id="inadequate-length",
+        ),
+        pytest.param(
+            base64.urlsafe_b64encode(bytes(range(31))).decode().rstrip("="),
+            "at least 32 bytes",
+            id="inadequate-decoded-length",
+        ),
+        pytest.param(
+            base64.b64encode(b"\xfb\xff" * 16).decode().rstrip("="),
+            "unpadded URL-safe",
+            id="standard-base64-alphabet",
+        ),
+        pytest.param(
+            base64.urlsafe_b64encode(bytes(range(32))).decode(),
+            "unpadded URL-safe",
+            id="base64-padding",
+        ),
+        pytest.param("A" * 45, "valid unpadded", id="invalid-base64-length"),
+        pytest.param("*" * 43, "URL-safe", id="invalid-encoding"),
+        pytest.param("A" * 43, "degenerate", id="zero-bytes"),
+        pytest.param(
+            base64.urlsafe_b64encode(b"\xa5" * 32).decode().rstrip("="),
+            "degenerate",
+            id="uniform-nonzero-bytes",
+        ),
+        pytest.param(
+            base64.urlsafe_b64encode(b"abcd" * 8).decode().rstrip("="),
+            "degenerate",
+            id="short-repeating-pattern",
+        ),
+        pytest.param(
+            base64.urlsafe_b64encode(b"<GENERATED>" * 3).decode().rstrip("="),
+            "placeholder",
+            id="generated-placeholder",
+        ),
+        pytest.param(
+            base64.urlsafe_b64encode(b"change-me-change-me-change-me-1234").decode().rstrip("="),
+            "placeholder",
+            id="text-placeholder",
+        ),
+        pytest.param(
+            REQUIRED_ENVIRONMENT["DJANGO_SECRET_KEY"],
+            "must differ",
+            id="shared-django-key",
+        ),
+        pytest.param(
+            REQUIRED_ENVIRONMENT["DJANGO_JWT_SIGNING_KEY"],
+            "must differ",
+            id="shared-json-web-token-key",
+        ),
+    ],
+)
+def test_throttle_identity_hmac_key_rejects_unsafe_material(
+    override: str,
+    message: str,
+) -> None:
+    """Reject absent, weak, or reused throttle identity key material.
+
+    Executes shared settings with each unsafe dedicated key and verifies startup stops without
+    rendering the supplied value in its diagnostic.
+
+    Arguments:
+        override: Unsafe dedicated HMAC key to load.
+        message: Safe diagnostic fragment expected from startup.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If unsafe key material loads or appears in the error.
+    """
+    environment = REQUIRED_ENVIRONMENT | {"DJANGO_API_THROTTLE_IDENTITY_HMAC_KEY": override}
+
+    with pytest.raises(ImproperlyConfigured, match=message) as raised:
+        _execute_module_in_isolation("base", environment)
+
+    assert not override or override not in str(raised.value)
+
+
+@pytest.mark.unit
+def test_generated_throttle_identity_hmac_keys_pass_startup_validation() -> None:
+    """Accept keys produced by the platform's secure generator recipe.
+
+    Executes shared settings with several independently generated 64-byte URL-safe tokens, proving
+    defense-in-depth screening does not reject the only supported source of key material.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If generated key material is rejected or changed.
+    """
+    for _ in range(8):
+        generated = gen_secrets.generate_hmac_key()
+        environment = REQUIRED_ENVIRONMENT | {
+            "DJANGO_API_THROTTLE_IDENTITY_HMAC_KEY": generated,
+        }
+
+        module = _execute_module_in_isolation("base", environment)
+
+        expected = base64.urlsafe_b64decode(generated + "=" * (-len(generated) % 4))
+
+        assert expected == module.API_THROTTLE_IDENTITY_HMAC_KEY
 
 
 @pytest.mark.unit

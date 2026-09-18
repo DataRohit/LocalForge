@@ -52,6 +52,17 @@ SECURITY_TIMING_CASES_BY_TEST = {
     USERNAME_MANAGEMENT_TEST: 1,
 }
 SECURITY_TIMING_CASES = 23
+API_RUNTIME_TESTS = (
+    REPOSITORY_ROOT / "tests" / "integration" / "accounts" / "test_account_activation.py",
+    REPOSITORY_ROOT / "tests" / "integration" / "accounts" / "test_jwt_authentication.py",
+    REPOSITORY_ROOT / "tests" / "integration" / "accounts" / "test_password_management.py",
+    REPOSITORY_ROOT / "tests" / "integration" / "accounts" / "test_registration_timing.py",
+    REPOSITORY_ROOT / "tests" / "integration" / "accounts" / "test_token_authentication.py",
+    REPOSITORY_ROOT / "tests" / "integration" / "accounts" / "test_user_profiles.py",
+    REPOSITORY_ROOT / "tests" / "integration" / "accounts" / "test_username_management.py",
+    REPOSITORY_ROOT / "tests" / "integration" / "config" / "test_api.py",
+    REPOSITORY_ROOT / "tests" / "integration" / "config" / "test_security.py",
+)
 UNDECLARED_INTEGRATION_TEST = '''"""Probe module for the collection guard.
 
 Holds one integration test that names no service, so a real collection can be observed rejecting
@@ -67,6 +78,33 @@ def test_probe() -> None:
 
     Exists only to be collected, carrying the integration marker and no services declaration, which
     is the combination the guard must refuse.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        None.
+    """
+'''
+MISSING_API_CACHE_TEST = '''"""Probe module for the API dependency guard.
+
+Holds one explicitly declared runtime API test without its cache service, so real pytest
+collection must reject the incomplete dependency contract.
+"""
+
+import pytest
+
+
+@pytest.mark.integration
+@pytest.mark.api_runtime
+@pytest.mark.services("postgres")
+def test_probe() -> None:
+    """Do nothing at all.
+
+    Exists only to be collected with an incomplete runtime API dependency declaration.
 
     Arguments:
         None.
@@ -169,7 +207,14 @@ def _item(nodeid: str, markers: dict[str, object]) -> Any:  # noqa: ANN401
     Raises:
         None.
     """
-    return SimpleNamespace(nodeid=nodeid, get_closest_marker=markers.get)
+    path_text, _, test_name = nodeid.partition("::")
+
+    return SimpleNamespace(
+        nodeid=nodeid,
+        path=REPOSITORY_ROOT / path_text,
+        originalname=test_name or None,
+        get_closest_marker=markers.get,
+    )
 
 
 def _marker(*names: object) -> object:
@@ -344,6 +389,161 @@ def test_a_declared_integration_test_is_collected() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    "dispatch_shape",
+    [
+        "django-client",
+        "getattr-alias",
+        "nested-executor-callback",
+        "direct-asgi-helper",
+    ],
+    ids=str,
+)
+def test_an_explicit_api_runtime_contract_must_declare_the_cache_service(
+    dispatch_shape: str,
+) -> None:
+    """Require cache declaration for every explicitly declared API dispatch shape.
+
+    Represents direct clients, aliases, nested callbacks, and ASGI helpers with the same marker,
+    proving dependency enforcement is independent of increasingly brittle source inference.
+
+    Arguments:
+        dispatch_shape: Human-readable dispatch shape represented by the fabricated item.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the missing cache dependency is not reported.
+    """
+    item = _item(
+        f"tests/integration/config/test_probe.py::test_{dispatch_shape.replace('-', '_')}",
+        {
+            "integration": object(),
+            "api_runtime": object(),
+            "services": _marker("postgres"),
+        },
+    )
+
+    with pytest.raises(pytest.UsageError, match="valkey-cache"):
+        integration_conftest.pytest_collection_modifyitems([item])
+
+
+@pytest.mark.unit
+def test_an_explicit_api_runtime_contract_with_cache_is_collected() -> None:
+    """Accept any API dispatch implementation once its boundary dependency is explicit.
+
+    Uses no source file or callable inspection, proving aliases, callbacks, and direct ASGI helpers
+    are covered by the declared contract rather than by syntax shapes.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a complete explicit declaration is rejected.
+    """
+    items = [
+        _item(
+            "tests/integration/config/test_probe.py::test_nested_callback",
+            {
+                "integration": object(),
+                "api_runtime": object(),
+                "services": _marker("postgres", "valkey-cache"),
+            },
+        )
+    ]
+
+    integration_conftest.pytest_collection_modifyitems(items)
+
+    assert items
+
+
+@pytest.mark.unit
+def test_an_explicit_non_api_case_can_opt_out_of_a_runtime_module() -> None:
+    """Allow schema, source, and non-API cases to avoid the cache dependency.
+
+    Applies the narrow exemption used inside runtime-marked modules and proves a PostgreSQL-only
+    schema case remains collectable without weakening the default API boundary contract.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If an explicitly exempt non-runtime case is rejected.
+    """
+    items = [
+        _item(
+            "tests/integration/config/test_probe.py::test_schema_contract",
+            {
+                "integration": object(),
+                "api_runtime": object(),
+                "api_runtime_exempt": object(),
+                "services": _marker("postgres"),
+            },
+        )
+    ]
+
+    integration_conftest.pytest_collection_modifyitems(items)
+
+    assert items
+
+
+@pytest.mark.unit
+def test_every_known_runtime_api_module_satisfies_the_explicit_contract() -> None:
+    """Collect every current API module under the real dependency guard.
+
+    Covers all known Django-client, alias, helper, callback, spawned-worker, and direct-ASGI cases,
+    so a new or existing missing cache declaration fails this harness test during collection.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If collection rejects a known runtime API case or finds none.
+    """
+    collected = _collected_security_timing_cases(paths=API_RUNTIME_TESTS)
+
+    assert collected
+
+
+@pytest.mark.unit
+def test_non_api_marker_alone_does_not_require_the_cache_service() -> None:
+    """Avoid assigning the cache dependency outside the fixed API runtime marker.
+
+    Builds an ordinary health-boundary declaration and verifies no path or callable source is
+    inspected, preventing unrelated ``/api/v1/`` strings such as Mailpit endpoints from matching.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If an integration case without the API marker is rejected.
+    """
+    items = [
+        _item(
+            "tests/integration/config/test_probe.py::test_health",
+            {"integration": object(), "services": _marker("postgres")},
+        )
+    ]
+
+    integration_conftest.pytest_collection_modifyitems(items)
+
+    assert items
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("names", [(), ("",), ("  ",), (1,)])
 def test_an_empty_or_unusable_services_declaration_is_refused(names: tuple[object, ...]) -> None:
     """Refuse a declaration that names nothing usable.
@@ -443,6 +643,64 @@ def test_the_services_guard_fires_during_real_collection(tmp_path: Path) -> None
 
     assert completed.returncode != 0
     assert "must name the services it needs" in completed.stdout + completed.stderr
+
+
+@pytest.mark.unit
+def test_the_api_cache_guard_fires_during_real_collection(tmp_path: Path) -> None:
+    """Reject a runtime API test missing Valkey during real pytest collection.
+
+    Runs genuine collection over a fabricated marked test, proving the explicit boundary contract
+    is enforced by pytest itself rather than only through direct hook calls.
+
+    Arguments:
+        tmp_path: Temporary directory supplied by the test framework.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If collection accepts the incomplete API dependency declaration.
+    """
+    tree = tmp_path / "integration"
+    tree.mkdir()
+    (tree / "conftest.py").write_text(
+        Path(str(integration_conftest.__file__)).read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    (tree / "test_probe.py").write_text(MISSING_API_CACHE_TEST, encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "--collect-only",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            "-p",
+            "no:django",
+            "-o",
+            "addopts=",
+            "-o",
+            (
+                "markers=integration: tests spanning Django components\n"
+                "services(*names): services\n"
+                "api_runtime: fixed application API boundary"
+            ),
+            str(tree),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+
+    output = completed.stdout + completed.stderr
+
+    assert completed.returncode != 0
+    assert "api_runtime" in output
+    assert "valkey-cache" in output
 
 
 @pytest.mark.unit

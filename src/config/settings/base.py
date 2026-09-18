@@ -5,7 +5,10 @@ through the parsing library, so no module carries a literal secret and a missing
 fails at startup naming itself.
 """
 
+import base64
+import binascii
 import math
+import re
 from datetime import timedelta
 from ipaddress import ip_network
 from pathlib import Path
@@ -16,11 +19,67 @@ from botocore.config import Config
 from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+THROTTLE_IDENTITY_HMAC_MINIMUM_BYTES = 32
+THROTTLE_IDENTITY_HMAC_MAXIMUM_REPEATING_PATTERN_BYTES = 8
+THROTTLE_IDENTITY_HMAC_TEXT_PATTERN = re.compile(r"[A-Za-z0-9_-]+")
+THROTTLE_IDENTITY_HMAC_PLACEHOLDER_FRAGMENTS = (
+    b"changeme",
+    b"defaultsecret",
+    b"examplekey",
+    b"generated",
+    b"placeholder",
+    b"replaceme",
+    b"testkey",
+)
 
 env = environ.Env()
 
+
+def _has_short_repeating_pattern(value: bytes) -> bool:
+    """Identify byte strings formed entirely from one short repeated pattern.
+
+    Checks periods up to eight bytes, covering uniform material and common pasted patterns without
+    claiming to measure entropy or prove whether any other key came from a secure random source.
+
+    Arguments:
+        value: Decoded candidate key material.
+
+    Returns:
+        Whether a short pattern reproduces the entire value.
+    """
+    maximum_period = min(
+        THROTTLE_IDENTITY_HMAC_MAXIMUM_REPEATING_PATTERN_BYTES,
+        len(value) // 2,
+    )
+
+    return any(
+        len(value) % period == 0 and value[:period] * (len(value) // period) == value
+        for period in range(1, maximum_period + 1)
+    )
+
+
+def _contains_hmac_placeholder(value: bytes) -> bool:
+    """Identify known placeholder phrases in decoded key material.
+
+    Normalizes ASCII letters and digits before matching a deliberately narrow phrase list, catching
+    copied setup text while leaving arbitrary structurally valid binary values untouched.
+
+    Arguments:
+        value: Decoded candidate key material.
+
+    Returns:
+        Whether the material contains a known placeholder phrase.
+    """
+    normalized = bytes(
+        byte for byte in value.lower() if byte in b"abcdefghijklmnopqrstuvwxyz0123456789"
+    )
+
+    return any(fragment in normalized for fragment in THROTTLE_IDENTITY_HMAC_PLACEHOLDER_FRAGMENTS)
+
+
 SECRET_KEY = env.str("DJANGO_SECRET_KEY")
 JWT_SIGNING_KEY = env.str("DJANGO_JWT_SIGNING_KEY")
+_api_throttle_identity_hmac_key_text = env.str("DJANGO_API_THROTTLE_IDENTITY_HMAC_KEY")
 JWT_ACCESS_TOKEN_LIFETIME_SECONDS = env.int("DJANGO_JWT_ACCESS_TOKEN_LIFETIME_SECONDS")
 JWT_REFRESH_TOKEN_LIFETIME_SECONDS = env.int("DJANGO_JWT_REFRESH_TOKEN_LIFETIME_SECONDS")
 ACCOUNT_ACTIVATION_TOKEN_LIFETIME_SECONDS = env.int(
@@ -35,6 +94,47 @@ if not JWT_SIGNING_KEY:
 
 if JWT_SIGNING_KEY == SECRET_KEY:
     message = "DJANGO_JWT_SIGNING_KEY must differ from DJANGO_SECRET_KEY"
+    raise ImproperlyConfigured(message)
+
+if not _api_throttle_identity_hmac_key_text:
+    message = "DJANGO_API_THROTTLE_IDENTITY_HMAC_KEY must not be empty"
+    raise ImproperlyConfigured(message)
+
+if THROTTLE_IDENTITY_HMAC_TEXT_PATTERN.fullmatch(_api_throttle_identity_hmac_key_text) is None:
+    message = "DJANGO_API_THROTTLE_IDENTITY_HMAC_KEY must use unpadded URL-safe Base64"
+    raise ImproperlyConfigured(message)
+
+try:
+    API_THROTTLE_IDENTITY_HMAC_KEY: bytes = base64.b64decode(
+        _api_throttle_identity_hmac_key_text
+        + "=" * (-len(_api_throttle_identity_hmac_key_text) % 4),
+        altchars=b"-_",
+        validate=True,
+    )
+except (binascii.Error, ValueError) as error:
+    message = "DJANGO_API_THROTTLE_IDENTITY_HMAC_KEY must be valid unpadded URL-safe Base64"
+    raise ImproperlyConfigured(message) from error
+
+if len(API_THROTTLE_IDENTITY_HMAC_KEY) < THROTTLE_IDENTITY_HMAC_MINIMUM_BYTES:
+    message = (
+        "DJANGO_API_THROTTLE_IDENTITY_HMAC_KEY must be a URL-safe token encoding at least 32 bytes"
+    )
+    raise ImproperlyConfigured(message)
+
+if _has_short_repeating_pattern(API_THROTTLE_IDENTITY_HMAC_KEY) or _contains_hmac_placeholder(
+    API_THROTTLE_IDENTITY_HMAC_KEY
+):
+    message = (
+        "DJANGO_API_THROTTLE_IDENTITY_HMAC_KEY must not contain clearly degenerate or "
+        "placeholder key material"
+    )
+    raise ImproperlyConfigured(message)
+
+if _api_throttle_identity_hmac_key_text in {SECRET_KEY, JWT_SIGNING_KEY}:
+    message = (
+        "DJANGO_API_THROTTLE_IDENTITY_HMAC_KEY must differ from DJANGO_SECRET_KEY and "
+        "DJANGO_JWT_SIGNING_KEY"
+    )
     raise ImproperlyConfigured(message)
 
 if min(JWT_ACCESS_TOKEN_LIFETIME_SECONDS, JWT_REFRESH_TOKEN_LIFETIME_SECONDS) <= 0:
@@ -63,6 +163,13 @@ if USERNAME_RESET_TIMEOUT <= 0:
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS")
 
 CSRF_TRUSTED_ORIGINS = env.list("DJANGO_CSRF_TRUSTED_ORIGINS")
+
+CORS_ALLOWED_ORIGINS = tuple(env.list("DJANGO_CORS_ALLOWED_ORIGINS"))
+CORS_ALLOW_CREDENTIALS = env.bool("DJANGO_CORS_ALLOW_CREDENTIALS")
+
+if "*" in CORS_ALLOWED_ORIGINS:
+    message = "DJANGO_CORS_ALLOWED_ORIGINS must not contain a wildcard"
+    raise ImproperlyConfigured(message)
 
 _trusted_proxy_networks = env.str("DJANGO_TRUSTED_PROXY_NETWORKS")
 TRUSTED_PROXY_NETWORKS = (
@@ -105,6 +212,9 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    "DEFAULT_THROTTLE_CLASSES": [
+        "accounts.api_throttling.AnonymousApiThrottle",
+    ],
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
     ],
@@ -113,6 +223,10 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 100,
 }
 
+API_AUTHENTICATION_THROTTLE_RATE = env.str("DJANGO_API_AUTHENTICATION_THROTTLE_RATE")
+API_AUTHENTICATED_READ_THROTTLE_RATE = env.str("DJANGO_API_AUTHENTICATED_READ_THROTTLE_RATE")
+API_ANONYMOUS_THROTTLE_RATE = env.str("DJANGO_API_ANONYMOUS_THROTTLE_RATE")
+API_BOUNDARY_ADDRESS_THROTTLE_RATE = env.str("DJANGO_API_BOUNDARY_ADDRESS_THROTTLE_RATE")
 TOKEN_LOGIN_ACCOUNT_THROTTLE_RATE = env.str("DJANGO_TOKEN_LOGIN_ACCOUNT_THROTTLE_RATE")
 TOKEN_LOGIN_ADDRESS_THROTTLE_RATE = env.str("DJANGO_TOKEN_LOGIN_ADDRESS_THROTTLE_RATE")
 USER_REGISTRATION_ADDRESS_THROTTLE_RATE = env.str("DJANGO_USER_REGISTRATION_ADDRESS_THROTTLE_RATE")
@@ -180,6 +294,7 @@ CSRF_FAILURE_VIEW = "config.api.api_csrf_failure"
 MIDDLEWARE = [
     "django_prometheus.middleware.PrometheusBeforeMiddleware",
     "config.logs.request_context_middleware",
+    "config.security.browser_security_middleware",
     "config.api.api_request_body_limit_middleware",
     "config.api.api_error_envelope_middleware",
     "django.middleware.security.SecurityMiddleware",
@@ -191,6 +306,26 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "config.logs.BoundedPrometheusAfterMiddleware",
 ]
+
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = "DENY"
+SECURE_REFERRER_POLICY = "same-origin"
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+    "script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; "
+    "form-action 'self'"
+)
+SECURE_SSL_REDIRECT = False
+SECURE_HSTS_SECONDS = 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+SECURE_HSTS_PRELOAD = False
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = False
+SECURE_PROXY_SSL_HEADER = None
+
+SPECTACULAR_SETTINGS = {
+    "POSTPROCESSING_HOOKS": ["config.api.add_throttle_response_headers"],
+}
 
 ROOT_URLCONF = "config.urls"
 

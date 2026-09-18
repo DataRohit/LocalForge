@@ -42,6 +42,12 @@ from accounts.account_activation import (
     schedule_dummy_activation,
     validated_activation_resend_data,
 )
+from accounts.api_throttling import (
+    AnonymousApiThrottle,
+    AuthenticatedReadThrottle,
+    AuthenticationRecoveryThrottle,
+    AuthenticationRecoveryWriteThrottle,
+)
 from accounts.login_throttle import PostgresLoginThrottleStore, RollingWindowRule
 from accounts.models import User
 from accounts.normalisation import normalise_email
@@ -49,12 +55,11 @@ from accounts.registration_timing import (
     monotonic_now,
     wait_for_minimum_registration_duration,
 )
+from accounts.request_throttling import parse_throttle_rate, trusted_client_address
 from accounts.token_authentication import (
     ErrorEnvelopeSerializer,
     error_example,
     error_response,
-    parse_throttle_rate,
-    trusted_client_address,
     verify_encoded_password,
 )
 from config.api_errors import (
@@ -468,7 +473,8 @@ class UserRegistrationView(APIView):
     Attributes:
         authentication_classes: Empty because a new caller has no credential.
         permission_classes: Public access required for registration.
-        throttle_classes: Authoritative client-address registration admission.
+        throttle_classes: Authoritative registration admission plus shared anonymous and
+            authentication scopes.
 
     Members:
         initial: Capture the earliest practical monotonic request boundary.
@@ -477,7 +483,11 @@ class UserRegistrationView(APIView):
 
     authentication_classes: tuple[type, ...] = ()
     permission_classes = (AllowAny,)
-    throttle_classes = (UserRegistrationThrottle,)
+    throttle_classes = (
+        UserRegistrationThrottle,
+        AnonymousApiThrottle,
+        AuthenticationRecoveryThrottle,
+    )
     _registration_started_at: float
 
     @override
@@ -676,7 +686,8 @@ class ActivationResendView(APIView):
     Attributes:
         authentication_classes: Empty because an inactive caller has no credential.
         permission_classes: Public access required for activation recovery.
-        throttle_classes: Authoritative address and account resend admission.
+        throttle_classes: Authoritative resend admission plus shared anonymous and authentication
+            scopes.
 
     Members:
         post: Validate and schedule one indistinguishable resend outcome.
@@ -684,7 +695,11 @@ class ActivationResendView(APIView):
 
     authentication_classes: tuple[type, ...] = ()
     permission_classes = (AllowAny,)
-    throttle_classes = (ActivationResendThrottle,)
+    throttle_classes = (
+        ActivationResendThrottle,
+        AnonymousApiThrottle,
+        AuthenticationRecoveryThrottle,
+    )
 
     @extend_schema(
         operation_id="user_activation_resend",
@@ -793,6 +808,7 @@ class UserProfileView(APIView):
 
     Attributes:
         permission_classes: Authenticated callers only.
+        throttle_classes: Authenticated-read scope for GET and authentication scope for mutations.
 
     Members:
         get: Return the caller's public profile.
@@ -801,6 +817,10 @@ class UserProfileView(APIView):
     """
 
     permission_classes = (IsAuthenticated,)
+    throttle_classes = (
+        AuthenticatedReadThrottle,
+        AuthenticationRecoveryWriteThrottle,
+    )
 
     @extend_schema(
         operation_id="user_profile_retrieve",
@@ -848,6 +868,11 @@ class UserProfileView(APIView):
                 "The request body exceeds the environment-configured API limit.",
                 "Request too large",
                 REQUEST_TOO_LARGE,
+            ),
+            HTTPStatus.TOO_MANY_REQUESTS: error_response(
+                "The client address or account exceeded the authenticated-read scope.",
+                "Too many requests",
+                THROTTLED,
             ),
             HTTPStatus.INTERNAL_SERVER_ERROR: error_response(
                 "An unexpected server failure was contained.",
@@ -948,6 +973,11 @@ class UserProfileView(APIView):
                 "The submitted request representation is unsupported.",
                 "Unsupported media type",
                 UNSUPPORTED_MEDIA_TYPE,
+            ),
+            HTTPStatus.TOO_MANY_REQUESTS: error_response(
+                "The client address or account exceeded the authentication scope.",
+                "Too many requests",
+                THROTTLED,
             ),
             HTTPStatus.INTERNAL_SERVER_ERROR: error_response(
                 "An unexpected server failure was contained.",
@@ -1064,6 +1094,11 @@ class UserProfileView(APIView):
                 "The submitted request representation is unsupported.",
                 "Unsupported media type",
                 UNSUPPORTED_MEDIA_TYPE,
+            ),
+            HTTPStatus.TOO_MANY_REQUESTS: error_response(
+                "The client address or account exceeded the authentication scope.",
+                "Too many requests",
+                THROTTLED,
             ),
             HTTPStatus.INTERNAL_SERVER_ERROR: error_response(
                 "An unexpected server failure was contained.",

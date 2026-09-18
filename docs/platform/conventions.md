@@ -187,11 +187,18 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `DJANGO_SETTINGS_MODULE` | `django-uv5n2` | settings module | `config.settings.development` | no | yes |
 | `DJANGO_SECRET_KEY` | `django-uv5n2` | signing key | `<GENERATED>` | **yes** | yes |
 | `DJANGO_JWT_SIGNING_KEY` | `django-uv5n2` | dedicated HS256 JSON web token signing key, distinct from `DJANGO_SECRET_KEY` | `<GENERATED>` | **yes** | yes |
+| `DJANGO_API_THROTTLE_IDENTITY_HMAC_KEY` | `django-uv5n2` | dedicated domain-separated HMAC-SHA-256 key for opaque throttle identities, encoded as unpadded URL-safe Base64 and distinct from Django and JSON web token signing keys | `<GENERATED>` | **yes** | yes |
 | `DJANGO_DEBUG` | `django-uv5n2` | debug toggle | `true` dev, `false` testing | no | yes |
 | `DJANGO_ALLOWED_HOSTS` | `django-uv5n2` | host header allowlist | `localhost,127.0.0.1,localforge.localhost,django-uv5n2,django-metrics-nb4xt` | no | yes |
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | `django-uv5n2` | CSRF origins behind Traefik | `http://localhost:8080,http://localforge.localhost:8080` | no | yes |
+| `DJANGO_CORS_ALLOWED_ORIGINS` | `django-uv5n2` | exact browser origins allowed to read credentialed cross-origin responses | `http://localhost:8080,http://localforge.localhost:8080` | no | yes |
+| `DJANGO_CORS_ALLOW_CREDENTIALS` | `django-uv5n2` | permit credentials only with exact configured origins; wildcard origins are rejected at startup | `true` | no | yes |
 | `DJANGO_TRUSTED_PROXY_NETWORKS` | `django-uv5n2` | immediate-peer networks allowed to supply forwarded client addresses | `10.89.2.0/24` development, `none` testing | no | yes |
 | `DJANGO_API_REQUEST_BODY_MAX_BYTES` | `django-uv5n2` | versioned API body ceiling and request spool memory limit | `1048576` | no | yes |
+| `DJANGO_API_AUTHENTICATION_THROTTLE_RATE` | `django-uv5n2` | shared cache-backed aggregate scope for authentication, recovery, and account-security operations | `30/minute` | no | yes |
+| `DJANGO_API_AUTHENTICATED_READ_THROTTLE_RATE` | `django-uv5n2` | shared cache-backed account and address-account composite scope for authenticated reads | `120/minute` | no | yes |
+| `DJANGO_API_ANONYMOUS_THROTTLE_RATE` | `django-uv5n2` | shared cache-backed address scope for anonymous API use | `60/minute` | no | yes |
+| `DJANGO_API_BOUNDARY_ADDRESS_THROTTLE_RATE` | `django-uv5n2` | broad pre-framework source scope for every versioned API request | `600/minute` | no | yes |
 | `DJANGO_JWT_ACCESS_TOKEN_LIFETIME_SECONDS` | `django-uv5n2` | JSON web token access lifetime | `300` | no | yes |
 | `DJANGO_JWT_REFRESH_TOKEN_LIFETIME_SECONDS` | `django-uv5n2` | JSON web token refresh lifetime, longer than access | `86400` | no | yes |
 | `DJANGO_TOKEN_LOGIN_ACCOUNT_THROTTLE_RATE` | `django-uv5n2` | strict atomic token-login admissions per primary-resolved account identity in one rolling window | `5/minute` | no | yes |
@@ -284,6 +291,61 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 the whole logical database — sharing an index means a routine `cache.clear()` destroys every pending Celery result.
 See [../adr/0005-valkey-cache.md](../adr/0005-valkey-cache.md).
 
+Ticket 35 adds four reusable fixed-window scopes in cache DB `0`: a broad `600/minute` address boundary at the outer
+ASGI HTTP layer before declared or streamed 413 handling and Django; `30/minute` across authentication, recovery,
+and account-security operations; `120/minute` for authenticated reads; and `60/minute` for anonymous API use. The
+boundary charges every `/api/v1/` request exactly once, including preflight, malformed JSON, unsupported and
+unacceptable representations, invalid credentials, and anonymous permission failures. Health, administration,
+and non-API paths are excluded. It is a deliberately broad source circuit breaker, not the tight identity policy,
+so one shared office does not consume another account's operation budget.
+
+Within an operation scope, an unidentified request uses only its opaque address. An identified request uses the
+immutable authenticated account plus an `(address, account)` composite and never a global operation-address
+counter. Identity precedence is authenticated `user.pk`, then a cryptographically validated subject from the
+view's declared `token` or `refresh` field. Raw `account`, `username`, and `email` values never create general
+account buckets, and every request serializer rejects undeclared keys.
+
+One Valkey script obtains production time with `TIME`, checks every applicable dimension, and increments all
+dimensions only when every one admits. A denied request therefore cannot poison an otherwise available dimension.
+Identified multi-key decisions use `api-throttle:{<scope>:<opaque-account-tag>}:<dimension>:<opaque-value>`.
+The braces contain only a digest derived from the scope and immutable account identity; `account` and `composite`
+remain readable outside the braces. The two keys therefore share one Valkey Cluster slot, while unrelated accounts
+distribute by distinct tags and no address or account value is recoverable from a key.
+
+The fixed epoch window supplies the complete `Retry-After` delay. Tests may inject one coordinated millisecond
+value into the cache adapter so spawned processes cannot straddle a wall-clock boundary; production never supplies
+that value and remains server-time-defined. The ASGI boundary runs this synchronous cache operation in its own
+five-worker executor with one nonblocking admission slot per worker. Saturation creates no executor backlog,
+emits one fixed redacted warning per minute, and immediately follows the same general-scope fail-open behavior as a
+cache outage. Cancellation retains a slot until any already-running client call finishes, so a cancelled request
+cannot oversubscribe the executor. The health endpoint and unrelated executor work never enter this pool.
+
+These general scopes do not replace or weaken the strict PostgreSQL admissions below. Token login, registration,
+activation resend, password recovery, and username recovery keep their ticket-owned exact rolling windows and
+validation ordering in the primary. Cache eviction can reset only the broad aggregate protection, never the
+security decision that guards account or inbox abuse.
+
+Every response carries `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+`Referrer-Policy: same-origin`, and the local sidecar-compatible content security policy. Credentialed CORS reflects
+only an exact `DJANGO_CORS_ALLOWED_ORIGINS` member; every response carrying any `Origin` varies on `Origin`, including
+denied or duplicated origins and ASGI-level 413 or 429 responses. Duplicate origins are never reflected. `*` is
+refused during settings import. Preflight short-circuits only a resolvable versioned API route and advertises
+methods implemented by that resolved operation. Unknown, admin, and
+health OPTIONS requests follow ordinary routing. The health endpoint is explicitly unthrottled so the load balancer
+cannot lock out its own readiness polling. Every exact allowed origin receives
+`Access-Control-Expose-Headers: Retry-After, X-Request-ID` in that stable order on ordinary, ASGI 413, boundary 429,
+and REST framework 429 responses. Missing, denied, and ambiguous origins receive no exposure header.
+
+HEAD shares the authenticated-read scope with GET. OPTIONS and unsupported safe methods do not consume tight
+authentication or recovery account budgets; the broad address boundary remains available for source protection.
+Every OpenAPI 429 response declares integer `Retry-After` and UUID `X-Request-ID` response headers centrally.
+
+Transport controls match the deployed plaintext shape rather than suggesting TLS exists:
+`SECURE_SSL_REDIRECT=false`, `SECURE_HSTS_SECONDS=0`, secure cookie flags are false, and
+`SECURE_PROXY_SSL_HEADER` is unset. They are inert on purpose because Traefik exposes local HTTP only. If TLS is
+introduced later, changing these values and the proxy contract is one documented deployment decision, not an
+independent hardening toggle.
+
 Token login applies both throttle rates to every attempt, successful or failed. The address dimension limits one
 source across usernames. It uses `REMOTE_ADDR` unless the immediate peer is in
 `DJANGO_TRUSTED_PROXY_NETWORKS`; only then does it walk the forwarded chain from right to left and select the first
@@ -338,6 +400,7 @@ Testing overrides, present only in `.env.testing`:
 | `DJANGO_SETTINGS_MODULE` | `config.settings.testing` | selects the testing module |
 | `DJANGO_DEBUG` | `false` | tests must not depend on debug behaviour |
 | `DJANGO_ALLOWED_HOSTS` | replaces `django-uv5n2` with `django-test-dt5qx` | the test runner's own container name; the development app does not run here |
+| `DJANGO_CORS_ALLOWED_ORIGINS` | `http://localhost:8080` | testing permits only its single local browser origin |
 | `DJANGO_TRUSTED_PROXY_NETWORKS` | `none` | testing has no proxy; direct requests use `REMOTE_ADDR` |
 | `POSTGRES_HOST`, `POSTGRES_REPLICA_HOST` | `postgres-tp8vn` | single node; the replica alias points at it |
 | `VALKEY_CACHE_HOST` | `valkey-cache-tv4kq` | the testing cache container |
@@ -370,7 +433,8 @@ image with no Python. The development machine is Windows, so a `.sh` entrypoint 
 | --- | --- |
 | Responsibility | Create or top up `.env.development`, `.env.testing`, `.env.testing.host` |
 | Inputs | `--environment {development,testing,all}`, `--force`; `.env.example` is the variable manifest |
-| Generation | Independent `secrets.token_urlsafe(64)` values for `DJANGO_SECRET_KEY` and `DJANGO_JWT_SIGNING_KEY`; `token_urlsafe(32)` for passwords; `token_hex(20)` for S3 keys; bcrypt at cost 12 for `TRAEFIK_DASHBOARD_AUTH`, which is **composed from** `TRAEFIK_DASHBOARD_PASSWORD` rather than from a password thrown away at generation, because a dashboard credential nobody holds cannot be used to log in. `FLOWER_BASIC_AUTH` is a **plaintext** `user:password` pair, because Flower compares its configured value literally — hashing it would make the digest itself the password. Generated plaintext files remain comment-free and use blank lines between logical service groups; encrypted SOPS dotenv files cannot preserve those separators. |
+| Generation | Independent `secrets.token_urlsafe(64)` values for `DJANGO_SECRET_KEY`, `DJANGO_JWT_SIGNING_KEY`, and `DJANGO_API_THROTTLE_IDENTITY_HMAC_KEY`; `token_urlsafe(32)` for passwords; `token_hex(20)` for S3 keys; bcrypt at cost 12 for `TRAEFIK_DASHBOARD_AUTH`, which is **composed from** `TRAEFIK_DASHBOARD_PASSWORD` rather than from a password thrown away at generation, because a dashboard credential nobody holds cannot be used to log in. `FLOWER_BASIC_AUTH` is a **plaintext** `user:password` pair, because Flower compares its configured value literally — hashing it would make the digest itself the password. Generated plaintext files remain comment-free and use blank lines between logical service groups; encrypted SOPS dotenv files cannot preserve those separators. |
+| HMAC startup validation | Requires the exact unpadded textual alphabet `[A-Za-z0-9_-]+`, rejecting standard Base64 `+` and `/` plus `=` padding, then decodes at least 32 bytes and rejects clearly degenerate repeated bytes or known placeholder text. The decoded bytes, not their encoded text, are the runtime HMAC key. The encoded value must remain distinct from both signing keys. These structural checks do not prove randomness; `scripts/gen_secrets.py` remains the only supported source and uses `secrets.token_urlsafe(64)` |
 | Quoting | A value containing `$` is written single-quoted. Compose expands unquoted values in **both** `env_file:` and `--env-file`, so a bare bcrypt hash loses everything from its third `$` onward and yields a credential that cannot authenticate. Verified against Compose v5.5.1 on 2026-09-13 |
 | Idempotency | Default run **never overwrites an existing value**, and never discards one it does not recognise; it appends only absent variables, so adding an inventory row fills the gap without invalidating a running stack. A composed value is derived when absent and **refused when present but disagreeing** with the variables it is built from, because the generator cannot prove whether such a value is stale or a deliberate edit. `--force` regenerates everything and warns that credential-derived volumes must be recreated |
 | Forcing against a live stack | **`--force` silently desynchronises a running stack.** The files get new credentials; every running service keeps the one it started with, and PostgreSQL and RabbitMQ keep theirs inside their data directories, where recreating the container does not reach them. Nothing detects it — every health check still passes, because each probe authenticates with the credential the service itself holds. **A `docker exec … psql -U …` probe proves nothing either**: `initdb` writes a default `pg_hba.conf` that trusts loopback inside the container, so an in-container connection succeeds whatever the role's password is. Measured 2026-09-14, when `postgres-tp8vn` accepted every in-container probe while rejecting the password in its own environment file from the published port. Verify a credential **from the host, over the published port**. Measured 2026-09-14, when a forced run left the primary, the standby, both brokers and all four cache instances rejecting the passwords in their own environment files. The refusal messages recommend `--force`, so this is easy to walk into: take the stack down first, and recreate the volumes the warning lists. To repair a stack already in this state without losing data, `ALTER ROLE … WITH PASSWORD` on PostgreSQL and `rabbitmqctl change_password` on RabbitMQ, then recreate every other service and re-bootstrap the standby, whose `primary_conninfo` still carries the old password |

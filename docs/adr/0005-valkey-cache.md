@@ -63,6 +63,16 @@ Two behaviours verified in the Django 6.0 source on 2026-09-13 shape the configu
    keeps useful eviction, sessions keep their strict alias, and Ticket 35 may still use shared cache state for
    non-security-sensitive general throttle scopes.
 
+5. **Ticket 35 general scopes use this evictable cache without moving security admission.** Recorded 2026-09-17,
+   amended 2026-09-18. A broad outer-ASGI address boundary, anonymous API use, aggregate authentication and
+   recovery traffic, and authenticated reads use epoch-aligned fixed windows in DB `0`. One Lua decision uses
+   Valkey server time, checks every dimension, then increments all only on admission. The ASGI layer runs its
+   synchronous client call in a non-thread-sensitive worker thread so delayed cache I/O cannot block unrelated
+   requests. Unidentified operation traffic uses address; identified traffic uses immutable account plus
+   address-account composite, so shared addresses do not merge unrelated account budgets. Cache loss fails these
+   broad scopes open, which is acceptable only because the exact token-login, registration, activation-resend,
+   password-recovery, and username-recovery admissions remain in PostgreSQL and continue to fail closed.
+
 Valkey ships no web UI, and the obvious companion is unusable: **RedisInsight is SSPL-licensed and has no Valkey
 support** — the string "Valkey" appears nowhere in its README or its fifteen most recent release notes. The
 dashboard is therefore `redis_exporter` scraped into Prometheus and rendered in Grafana, plus `valkey-cli` for

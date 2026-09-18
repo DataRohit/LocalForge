@@ -44,6 +44,7 @@ CANDIDATE_STATES: tuple[CandidateState, ...] = (
     "username-only",
 )
 timing_logger = logging.getLogger("localforge.tests.registration_timing")
+pytestmark = pytest.mark.api_runtime
 
 
 def _registration_payload(username: str, email: str) -> dict[str, str]:
@@ -212,7 +213,7 @@ def _fail_activation_token_insert(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.timeout(360)
 @pytest.mark.security_timing

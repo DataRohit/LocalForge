@@ -7,9 +7,9 @@ account ownership, mutable-field policy, deletion, throttling, and exhaustive sc
 from __future__ import annotations
 
 import secrets
-import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 from http import HTTPStatus
 from importlib import import_module
 from threading import Barrier
@@ -23,12 +23,13 @@ from django.db import DatabaseError, close_old_connections, transaction
 from django.db.backends.utils import CursorWrapper
 from django.test import Client as DjangoClient
 from django.test import override_settings
+from django.utils import timezone
 from rest_framework.authtoken.models import Token
 
 import accounts.user_profiles as user_profiles_module
 from accounts.jwt_authentication import PrimaryRefreshToken
 from accounts.login_throttle import PostgresLoginThrottleStore
-from accounts.models import User
+from accounts.models import LoginThrottleEvent, User
 from config.api_errors import ErrorCode, ServiceUnavailable
 from config.logs import REQUEST_ID_HEADER
 
@@ -76,6 +77,7 @@ if TYPE_CHECKING:
 
 
 PASSWORD = secrets.token_urlsafe(24)
+pytestmark = pytest.mark.api_runtime
 
 
 def _registration_payload(
@@ -170,7 +172,7 @@ def _invoke_profile_request(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_registration_creates_an_inactive_account_without_sensitive_output(
     client: Client,
@@ -212,7 +214,7 @@ def test_registration_creates_an_inactive_account_without_sensitive_output(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.parametrize(
     ("username", "password", "message"),
@@ -281,7 +283,7 @@ def test_registration_reports_each_configured_password_validator_on_the_password
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_registration_reports_confirmation_required_and_email_errors_per_field(
     client: Client,
@@ -350,7 +352,7 @@ def test_registration_reports_confirmation_required_and_email_errors_per_field(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_registration_rejects_an_address_made_invalid_by_normalization(
     client: Client,
@@ -387,7 +389,7 @@ def test_registration_rejects_an_address_made_invalid_by_normalization(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_registration_preserves_valid_unicode_email_behavior(client: Client) -> None:
     """Accept and normalize an ordinarily valid Unicode email address.
@@ -420,7 +422,7 @@ def test_registration_preserves_valid_unicode_email_behavior(client: Client) -> 
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.parametrize("duplicate_field", ["username", "email"])
 def test_registration_duplicates_match_success_under_postgresql_lower_semantics(
@@ -473,7 +475,7 @@ def test_registration_duplicates_match_success_under_postgresql_lower_semantics(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_registration_rejects_privileged_and_unknown_fields(
     client: Client,
@@ -512,15 +514,15 @@ def test_registration_rejects_privileged_and_unknown_fields(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_registration_is_throttled_authoritatively_and_recovers(
     client: Client,
 ) -> None:
     """Reject registration above the configured address rate and recover after its window.
 
-    Sends three distinct valid registrations from one address around a one-second rolling window,
-    proving primary-backed admission returns Retry-After and later admits without cache state.
+    Sends distinct valid registrations from one address, then ages the authoritative event beyond
+    its configured window, proving rejection returns Retry-After and later admits without cache.
 
     Arguments:
         client: Django test client issuing the versioned requests.
@@ -533,7 +535,7 @@ def test_registration_is_throttled_authoritatively_and_recovers(
     """
     remote_address = f"2001:db8::{uuid.uuid4().int & 0xFFFF:x}"
 
-    with override_settings(USER_REGISTRATION_ADDRESS_THROTTLE_RATE="1/second"):
+    with override_settings(USER_REGISTRATION_ADDRESS_THROTTLE_RATE="1/minute"):
         first = client.post(
             "/api/v1/users/",
             _registration_payload(f"registration-first-{uuid.uuid4().hex}"),
@@ -546,7 +548,9 @@ def test_registration_is_throttled_authoritatively_and_recovers(
             content_type="application/json",
             REMOTE_ADDR=remote_address,
         )
-        time.sleep(1.1)
+        LoginThrottleEvent.objects.using("default").filter(
+            bucket__startswith="registration-address:"
+        ).update(occurred_at=timezone.now() - timedelta(minutes=2))
         recovered = client.post(
             "/api/v1/users/",
             _registration_payload(f"registration-recovered-{uuid.uuid4().hex}"),
@@ -565,7 +569,7 @@ def test_registration_is_throttled_authoritatively_and_recovers(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_registration_throttle_records_only_post_attempts(client: Client) -> None:
     """Exclude metadata and unsupported methods from registration admission.
@@ -617,7 +621,7 @@ def test_registration_throttle_records_only_post_attempts(client: Client) -> Non
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_profile_returns_only_the_authenticated_caller_and_ignores_query_identifiers(
     client: Client,
@@ -667,7 +671,7 @@ def test_profile_returns_only_the_authenticated_caller_and_ignores_query_identif
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_profile_partial_update_changes_only_the_email(
     client: Client,
@@ -732,7 +736,7 @@ def test_profile_partial_update_changes_only_the_email(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_profile_update_rejects_an_address_made_invalid_by_normalization(
     client: Client,
@@ -779,7 +783,7 @@ def test_profile_update_rejects_an_address_made_invalid_by_normalization(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_registration_persistence_outage_returns_service_unavailable(
     client: Client,
@@ -834,7 +838,7 @@ def test_registration_persistence_outage_returns_service_unavailable(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.parametrize("method", ["get", "patch", "delete"])
 def test_profile_token_query_outage_returns_service_unavailable(
@@ -919,7 +923,7 @@ def test_profile_token_query_outage_returns_service_unavailable(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.parametrize("method", ["patch", "delete"])
 def test_profile_persistence_outage_returns_service_unavailable(
@@ -996,7 +1000,7 @@ def test_profile_persistence_outage_returns_service_unavailable(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_profile_rejects_identifier_password_and_permission_updates(
     client: Client,
@@ -1065,7 +1069,7 @@ def test_profile_rejects_identifier_password_and_permission_updates(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_profile_email_update_uses_postgresql_lower_uniqueness(
     client: Client,
@@ -1117,7 +1121,7 @@ def test_profile_email_update_uses_postgresql_lower_uniqueness(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_profile_deletion_requires_the_current_password(
     client: Client,
@@ -1170,7 +1174,7 @@ def test_profile_deletion_requires_the_current_password(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.timeout(30)
 def test_profile_deletion_verifies_the_password_from_the_locked_account(
@@ -1292,7 +1296,7 @@ def test_profile_deletion_verifies_the_password_from_the_locked_account(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.timeout(30)
 def test_profile_deletion_hides_an_account_removed_after_authentication(
@@ -1408,7 +1412,7 @@ def test_profile_deletion_hides_an_account_removed_after_authentication(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_failed_profile_deletion_does_not_rehash_an_outdated_password(
     client: Client,
@@ -1479,7 +1483,7 @@ def test_failed_profile_deletion_does_not_rehash_an_outdated_password(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_profile_deletion_accepts_an_outdated_pbkdf2_password(
     client: Client,
@@ -1523,7 +1527,7 @@ def test_profile_deletion_accepts_an_outdated_pbkdf2_password(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_profile_deletion_is_irreversible_and_invalidates_token_and_jwt_authentication(
     client: Client,
@@ -1579,7 +1583,7 @@ def test_profile_deletion_is_irreversible_and_invalidates_token_and_jwt_authenti
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_ordinary_callers_cannot_list_accounts(
     client: Client,
@@ -1622,7 +1626,7 @@ def test_ordinary_callers_cannot_list_accounts(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.parametrize("method", ["get", "patch", "delete"])
 def test_unauthenticated_profile_access_is_correlated_unauthorized(
@@ -1659,6 +1663,7 @@ def test_unauthenticated_profile_access_is_correlated_unauthorized(
 
 
 @pytest.mark.integration
+@pytest.mark.api_runtime_exempt
 @pytest.mark.services("postgres")
 def test_registration_and_profile_routes_document_every_reachable_response() -> None:
     """Expose complete registration and self-profile contracts in OpenAPI.
@@ -1688,15 +1693,15 @@ def test_registration_and_profile_routes_document_every_reachable_response() -> 
         ),
         "profile-get": (
             cast("dict[str, Any]", profile["get"]),
-            {"200", "401", "405", "406", "413", "500", "503"},
+            {"200", "401", "405", "406", "413", "429", "500", "503"},
         ),
         "profile-patch": (
             cast("dict[str, Any]", profile["patch"]),
-            {"200", "400", "401", "405", "406", "413", "415", "500", "503"},
+            {"200", "400", "401", "405", "406", "413", "415", "429", "500", "503"},
         ),
         "profile-delete": (
             cast("dict[str, Any]", profile["delete"]),
-            {"204", "400", "401", "405", "406", "413", "415", "500", "503"},
+            {"204", "400", "401", "405", "406", "413", "415", "429", "500", "503"},
         ),
     }
 
@@ -1746,7 +1751,7 @@ def test_registration_and_profile_routes_document_every_reachable_response() -> 
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_registration_observed_statuses_exactly_match_its_documented_contract(
     client: Client,
@@ -1908,8 +1913,63 @@ def test_registration_observed_statuses_exactly_match_its_documented_contract(
     assert cast("dict[str, Any]", unavailable.json())["code"] == ErrorCode.SERVICE_UNAVAILABLE
 
 
+def _profile_throttle_response(
+    client: Client,
+    django_user_model: type[User],
+    method: str,
+    suffix: str,
+    invalid_data: dict[str, str] | None,
+) -> ClientResponse:
+    """Produce one profile throttle rejection for schema parity.
+
+    Uses a fresh account and the rate belonging to the selected method so GET exercises the
+    authenticated-read scope while PATCH and DELETE exercise the authentication scope.
+
+    Arguments:
+        client: Django test client issuing the versioned requests.
+        django_user_model: Configured custom user model class.
+        method: Supported profile method under test.
+        suffix: Unique identity suffix for the throttle account.
+        invalid_data: Safe request body that leaves the account available for a second request.
+
+    Returns:
+        Second profile response, which must be throttled.
+
+    Raises:
+        AssertionError: If account setup or request dispatch fails.
+    """
+    account = django_user_model.objects.create_user(
+        f"profile-throttle-{method}-{suffix}",
+        f"profile-throttle-{method}-{suffix}@localforge.invalid",
+        PASSWORD,
+        is_active=True,
+    )
+    headers = _token_headers(account)
+    throttle_settings = (
+        {"API_AUTHENTICATED_READ_THROTTLE_RATE": "1/minute"}
+        if method == "get"
+        else {"API_AUTHENTICATION_THROTTLE_RATE": "1/minute"}
+    )
+    with override_settings(**throttle_settings):
+        _invoke_profile_request(
+            client,
+            method,
+            data=invalid_data,
+            content_type="application/json",
+            headers=headers,
+        )
+
+        return _invoke_profile_request(
+            client,
+            method,
+            data=invalid_data,
+            content_type="application/json",
+            headers=headers,
+        )
+
+
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.parametrize("method", ["get", "patch", "delete"])
 def test_profile_observed_statuses_exactly_match_each_documented_contract(
@@ -2070,12 +2130,20 @@ def test_profile_observed_statuses_exactly_match_each_documented_contract(
         content_type="application/json",
         headers=headers,
     )
+    throttled = _profile_throttle_response(
+        client,
+        django_user_model,
+        method,
+        suffix,
+        invalid_data,
+    )
     responses = [
         success,
         unauthorized,
         method_not_allowed,
         not_acceptable,
         too_large,
+        throttled,
         unexpected,
         unavailable,
     ]

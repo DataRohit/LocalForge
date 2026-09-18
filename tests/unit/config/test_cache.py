@@ -16,6 +16,7 @@ from redis.exceptions import TimeoutError as RedisTimeoutError
 from config.cache import ResilientRedisCache
 
 UNREACHABLE = "redis://127.0.0.1:1/0"
+MULTI_KEY_COUNT = 2
 
 
 class RefusingClient:
@@ -71,6 +72,99 @@ class RefusingClient:
         return self.refuse
 
 
+class ScriptClient:
+    """Capture one atomic script invocation and return a prepared result.
+
+    Inherits nothing and exposes only the redis-py eval surface used by the cache adapter, retaining
+    the complete argument sequence for assertions.
+
+    Attributes:
+        result: Two-item script result returned to the adapter.
+        arguments: Last positional eval arguments observed.
+
+    Members:
+        eval: Record and answer one script execution.
+    """
+
+    def __init__(self, result: list[int]) -> None:
+        """Initialize one prepared script result.
+
+        Stores the result the raw client will return and starts with no observed eval invocation,
+        allowing each test to inspect exactly one adapter call.
+
+        Arguments:
+            result: Admission flag and retry delay returned by eval.
+
+        Returns:
+            None.
+        """
+        self.result = result
+        self.arguments: tuple[object, ...] = ()
+
+    def eval(self, *arguments: object) -> list[int]:
+        """Record and return one script result.
+
+        Captures the script and every key or policy argument without interpreting them, then returns
+        the prepared Valkey-shaped two-item response.
+
+        Arguments:
+            *arguments: Script, key count, prepared keys, and policy arguments.
+
+        Returns:
+            Prepared two-item script result.
+        """
+        self.arguments = arguments
+
+        return self.result
+
+
+class ScriptBackend:
+    """Expose one prepared script client through Django's cache-client seam.
+
+    Inherits nothing and records the key and write intent supplied while selecting the raw client,
+    isolating Django's server-selection boundary from script behavior.
+
+    Attributes:
+        client: Prepared eval-capable client.
+        selection: Last key and write intent observed.
+
+    Members:
+        get_client: Return the prepared client.
+    """
+
+    def __init__(self, client: ScriptClient) -> None:
+        """Initialize one raw client selection.
+
+        Retains the eval-capable client and starts without an observed server-selection call so the
+        test can distinguish selection from execution.
+
+        Arguments:
+            client: Eval-capable client returned for every selection.
+
+        Returns:
+            None.
+        """
+        self.client = client
+        self.selection: tuple[str | None, bool] | None = None
+
+    def get_client(self, key: str | None = None, *, write: bool = False) -> ScriptClient:
+        """Return the prepared script client and capture routing intent.
+
+        Records the first prepared key and write flag exactly as Django's adapter supplies them,
+        then returns the client used for the atomic eval.
+
+        Arguments:
+            key: Prepared first key used for server selection.
+            write: Whether the caller requests a writable connection.
+
+        Returns:
+            Prepared script client.
+        """
+        self.selection = (key, write)
+
+        return self.client
+
+
 @pytest.fixture
 def refusing_cache() -> ResilientRedisCache:
     """Build a cache whose client refuses everything.
@@ -91,6 +185,116 @@ def refusing_cache() -> ResilientRedisCache:
     cache.__dict__["_cache"] = RefusingClient()
 
     return cache
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("raw_result", "expected"),
+    [
+        ([1, 0], (True, 0)),
+        ([0, 7], (False, 7)),
+    ],
+)
+def test_atomic_fixed_window_admission_uses_one_multi_key_script(
+    raw_result: list[int],
+    expected: tuple[bool, int],
+) -> None:
+    """Execute one fixed-window decision for every supplied dimension.
+
+    Substitutes only the raw Redis client and verifies the adapter prepares both namespaced keys,
+    requests a writable connection, and supplies the coordinated time in one eval invocation.
+
+    Arguments:
+        raw_result: Script result returned by the prepared client.
+        expected: Parsed admission and retry result.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If dimensions are split across calls or policy arguments drift.
+    """
+    client = ScriptClient(raw_result)
+    backend = ScriptBackend(client)
+    cache = ResilientRedisCache(UNREACHABLE, {"KEY_PREFIX": "unit"})
+    cache.__dict__["_cache"] = backend
+
+    observed = cache.atomic_fixed_window_admit(
+        ("scope:account", "scope:composite"),
+        limit=3,
+        window_seconds=60,
+        now_milliseconds=1_800_000_000_250,
+    )
+
+    assert observed == expected
+    assert backend.selection is not None
+    selected_key, write = backend.selection
+    assert selected_key is not None
+    assert "scope:account" in selected_key
+    assert write is True
+    assert client.arguments[1] == MULTI_KEY_COUNT
+    assert "scope:account" in str(client.arguments[2])
+    assert "scope:composite" in str(client.arguments[3])
+    assert client.arguments[-3:] == (3, 60_000, 1_800_000_000_250)
+
+
+@pytest.mark.unit
+def test_atomic_fixed_window_admission_uses_server_time_in_production() -> None:
+    """Leave production fixed-window time to Valkey.
+
+    Calls the adapter without a test override and verifies the empty final script argument selects
+    the server TIME branch rather than a process wall clock.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If production passes a process-derived timestamp.
+    """
+    client = ScriptClient([1, 0])
+    cache = ResilientRedisCache(UNREACHABLE, {})
+    cache.__dict__["_cache"] = ScriptBackend(client)
+
+    assert cache.atomic_fixed_window_admit(
+        ("scope:address",),
+        limit=2,
+        window_seconds=1,
+    ) == (True, 0)
+    assert client.arguments[-1] == ""
+
+
+@pytest.mark.unit
+def test_atomic_fixed_window_admission_fails_open_when_cache_refuses(
+    refusing_cache: ResilientRedisCache,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Return no decision when Valkey is unavailable.
+
+    Exercises the raw-script outage path and verifies callers receive the sentinel required by the
+    documented general-throttle fail-open policy while the outage remains visible in logs.
+
+    Arguments:
+        refusing_cache: Cache whose client refuses every operation.
+        caplog: Log capture fixture supplied by the test framework.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the client error escapes or goes unlogged.
+    """
+    with caplog.at_level(logging.WARNING):
+        observed = refusing_cache.atomic_fixed_window_admit(
+            ("scope:address",),
+            limit=1,
+            window_seconds=60,
+        )
+
+    assert observed is None
+    assert "unavailable" in caplog.text
 
 
 @pytest.mark.unit

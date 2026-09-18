@@ -196,7 +196,10 @@ RESET_REQUIRED_PROFILE_NAMES = (
     "overlong",
 )
 STORABLE_RESET_REQUIRED_PROFILE_NAMES = RESET_REQUIRED_PROFILE_NAMES[:-1]
-pytestmark = pytest.mark.xdist_group(name="token-authentication")
+pytestmark = [
+    pytest.mark.api_runtime,
+    pytest.mark.xdist_group(name="token-authentication"),
+]
 
 
 def _post_credentials(
@@ -404,6 +407,7 @@ def _current_cost_short_salt_password_hash(algorithm: str) -> str:
 
 
 @pytest.mark.integration
+@pytest.mark.api_runtime_exempt
 @pytest.mark.services("postgres")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.parametrize("hasher_algorithm", SUPPORTED_HASHER_ALGORITHMS)
@@ -428,6 +432,7 @@ def test_current_password_profiles_are_accepted(hasher_algorithm: str) -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.api_runtime_exempt
 @pytest.mark.services("postgres")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.parametrize("hasher_algorithm", RECOGNIZED_LOWER_HASHERS)
@@ -452,6 +457,7 @@ def test_lower_pbkdf2_profiles_are_recognized(hasher_algorithm: str) -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.api_runtime_exempt
 @pytest.mark.services("postgres")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.parametrize("profile_name", RESET_REQUIRED_PROFILE_NAMES)
@@ -582,7 +588,7 @@ def test_login_throttles_multiple_usernames_from_a_direct_client_address(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_untrusted_forwarded_addresses_cannot_change_login_buckets(client: Client) -> None:
     """Ignore forwarded addresses supplied by a direct untrusted client.
@@ -629,7 +635,7 @@ def test_untrusted_forwarded_addresses_cannot_change_login_buckets(client: Clien
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_repeated_correlation_identifiers_still_count_each_login_attempt(
     client: Client,
@@ -679,7 +685,7 @@ def test_repeated_correlation_identifiers_still_count_each_login_attempt(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_trusted_proxy_uses_the_correct_forwarded_client_hop(client: Client) -> None:
     """Use the first untrusted hop behind an explicitly trusted proxy chain.
@@ -938,6 +944,7 @@ def test_login_throttle_shares_exact_admission_across_spawned_workers(
 
 
 @pytest.mark.integration
+@pytest.mark.api_runtime_exempt
 @pytest.mark.services("postgres")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.timeout(30)
@@ -976,6 +983,7 @@ def test_login_throttle_recovers_after_the_rolling_window() -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.api_runtime_exempt
 @pytest.mark.services("postgres")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_later_admission_prunes_a_bounded_oldest_batch_across_untouched_buckets() -> None:
@@ -1029,6 +1037,7 @@ def test_later_admission_prunes_a_bounded_oldest_batch_across_untouched_buckets(
 
 
 @pytest.mark.integration
+@pytest.mark.api_runtime_exempt
 @pytest.mark.services("postgres")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_bucket_admission_ignores_recently_expired_rows_without_unbounded_deletion() -> None:
@@ -1088,6 +1097,7 @@ def test_bucket_admission_ignores_recently_expired_rows_without_unbounded_deleti
 
 
 @pytest.mark.integration
+@pytest.mark.api_runtime_exempt
 @pytest.mark.services("postgres")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_global_cleanup_query_uses_the_occurred_at_leading_index() -> None:
@@ -1129,6 +1139,7 @@ def test_global_cleanup_query_uses_the_occurred_at_leading_index() -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.api_runtime_exempt
 @pytest.mark.services("postgres")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.timeout(30)
@@ -1263,6 +1274,7 @@ def test_default_cache_clear_cannot_reset_login_admission() -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.api_runtime_exempt
 @pytest.mark.services("postgres")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_general_cache_memory_eviction_cannot_reset_login_admission() -> None:
@@ -1559,7 +1571,7 @@ def test_login_throttle_database_outage_fails_closed_and_recovers(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.serial
 @pytest.mark.timeout(30)
@@ -1927,7 +1939,7 @@ def test_wrong_and_unknown_credentials_perform_equivalent_hash_work(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.parametrize("hasher_algorithm", RECOGNIZED_LOWER_HASHERS)
 def test_recognized_lower_password_hashes_receive_runtime_hardening(
@@ -2039,7 +2051,7 @@ def test_recognized_lower_password_hashes_receive_runtime_hardening(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.parametrize("hasher_algorithm", RECOGNIZED_LOWER_HASHERS)
 def test_inactive_recognized_lower_passwords_harden_without_mutating_the_account(
@@ -2147,7 +2159,7 @@ def test_inactive_recognized_lower_passwords_harden_without_mutating_the_account
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.parametrize("hasher_algorithm", SHORT_SALT_HASHERS)
 def test_inactive_current_cost_short_salt_passwords_do_not_add_hash_work(
@@ -2472,7 +2484,7 @@ def test_concurrent_wrong_and_unknown_token_batches_meet_the_timing_criterion(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.timeout(360)
 @pytest.mark.security_timing
@@ -2585,7 +2597,7 @@ def test_recognized_lower_wrong_passwords_meet_the_timing_criterion(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.timeout(360)
 @pytest.mark.security_timing
@@ -2704,7 +2716,7 @@ def test_reset_required_profiles_meet_the_unknown_account_timing_criterion(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.timeout(360)
 @pytest.mark.security_timing
@@ -2819,7 +2831,7 @@ def test_inactive_recognized_lower_passwords_meet_the_timing_criterion(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.timeout(360)
 @pytest.mark.security_timing
@@ -3388,7 +3400,7 @@ def test_token_reissuance_bypasses_replica_routing_after_immediate_revocation(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_token_login_locks_account_before_token_issuance(
     client: Client,
@@ -3443,7 +3455,7 @@ def test_token_login_locks_account_before_token_issuance(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres")
+@pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_token_login_persistence_loss_returns_service_unavailable(
     client: Client,
@@ -3544,6 +3556,7 @@ def test_authtoken_migrations_are_applied(client: Client) -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.api_runtime_exempt
 @pytest.mark.services("postgres")
 def test_token_routes_document_every_reachable_response() -> None:
     """Expose the token login and logout contracts in the OpenAPI document.
@@ -3580,7 +3593,7 @@ def test_token_routes_document_every_reachable_response() -> None:
         "500",
         "503",
     }
-    assert set(logout_responses) == {"204", "401", "405", "406", "413", "500"}
+    assert set(logout_responses) == {"204", "401", "405", "406", "413", "429", "500"}
     assert "token-persistence" in login_responses["503"]["description"]
 
     for status, response in {**login_responses, **logout_responses}.items():
@@ -3657,6 +3670,48 @@ def test_logout_observed_statuses_exactly_match_its_documented_contract(
         content_type="text/plain",
         headers=authorization,
     )
+    throttle_account = django_user_model.objects.create_user(
+        f"{username}-throttle",
+        f"{username}-throttle@localforge.invalid",
+        PASSWORD,
+        is_active=True,
+    )
+    throttle_token = Token.objects.using("default").create(user=throttle_account)
+    throttle_authorization = {"authorization": f"Token {throttle_token.key}"}
+    throttle_address = f"2001:db8::{uuid.uuid4().hex[:4]}"
+    monkeypatch.setattr(
+        "accounts.api_throttling.TEST_SERVER_TIME_MILLISECONDS",
+        1_800_000_050_000,
+    )
+
+    def preserve_token(_token: Token) -> None:
+        """Keep the authenticated token after one admitted logout.
+
+        Replaces only deletion so two requests can share the same authenticated account and
+        composite throttle dimensions without changing the route's admission behavior.
+
+        Arguments:
+            _token: Authenticated token whose deletion is suppressed.
+
+        Returns:
+            None.
+        """
+
+    monkeypatch.setattr(Token, "delete", preserve_token)
+    with override_settings(
+        API_BOUNDARY_ADDRESS_THROTTLE_RATE="1000/minute",
+        API_AUTHENTICATION_THROTTLE_RATE="1/minute",
+    ):
+        client.post(
+            "/api/v1/token/logout/",
+            headers=throttle_authorization,
+            REMOTE_ADDR=throttle_address,
+        )
+        throttled = client.post(
+            "/api/v1/token/logout/",
+            headers=throttle_authorization,
+            REMOTE_ADDR=throttle_address,
+        )
     failing_token = Token.objects.using("default").create(user=account)
 
     def fail_delete(_token: Token) -> None:
@@ -3691,6 +3746,7 @@ def test_logout_observed_statuses_exactly_match_its_documented_contract(
             not_acceptable,
             too_large,
             success,
+            throttled,
             unexpected,
         )
     }

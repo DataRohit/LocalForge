@@ -8,7 +8,8 @@ import pytest
 
 from accounts.login_throttle import PostgresLoginThrottleStore, RollingWindowRule
 from accounts.models import LoginThrottleEvent
-from accounts.token_authentication import TokenLoginThrottle, parse_throttle_rate
+from accounts.request_throttling import parse_throttle_rate
+from accounts.token_authentication import TokenLoginThrottle
 
 
 @pytest.mark.unit

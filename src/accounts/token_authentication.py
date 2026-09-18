@@ -17,8 +17,7 @@ from enum import StrEnum
 from functools import cache
 from hashlib import sha256
 from http import HTTPStatus
-from ipaddress import ip_address
-from typing import TYPE_CHECKING, cast, override
+from typing import TYPE_CHECKING, Any, cast, override
 
 from django.conf import settings
 from django.contrib.auth.hashers import (
@@ -43,9 +42,14 @@ from rest_framework.serializers import CharField, DictField, Serializer
 from rest_framework.throttling import BaseThrottle
 from rest_framework.views import APIView
 
+from accounts.api_throttling import (
+    AnonymousApiThrottle,
+    AuthenticationRecoveryThrottle,
+)
 from accounts.authentication import PrimaryTokenAuthentication
 from accounts.login_throttle import PostgresLoginThrottleStore, RollingWindowRule
 from accounts.models import User
+from accounts.request_throttling import parse_throttle_rate, trusted_client_address
 from config.api_errors import (
     AUTHENTICATION_FAILED,
     INTERNAL_SERVER_ERROR,
@@ -342,36 +346,6 @@ def error_response(
     )
 
 
-def parse_throttle_rate(rate: str) -> tuple[int, int]:
-    """Parse one configured strict rolling-window rate.
-
-    Accepts the repository's ``count/period`` format and resolves the period by its first letter,
-    matching the documented second, minute, hour, and day vocabulary without using DRF throttling.
-
-    Arguments:
-        rate: Environment-derived count and period.
-
-    Returns:
-        Positive request limit and window duration in seconds.
-
-    Raises:
-        ValueError: If the configured rate is malformed or non-positive.
-    """
-    try:
-        count_text, period = rate.split("/", maxsplit=1)
-        count = int(count_text)
-        duration = {"s": 1, "m": 60, "h": 3600, "d": 86400}[period[0].lower()]
-    except (IndexError, KeyError, ValueError) as error:
-        message = f"invalid strict throttle rate: {rate!r}"
-        raise ValueError(message) from error
-
-    if count <= 0:
-        message = f"strict throttle count must be positive: {rate!r}"
-        raise ValueError(message)
-
-    return count, duration
-
-
 @cache
 def dummy_password_hashes() -> tuple[str, ...]:
     """Build one current-cost dummy hash for every configured algorithm.
@@ -507,43 +481,6 @@ def resolve_login_account(username: str) -> User | None:
         return None
 
 
-def trusted_client_address(request: Request) -> str:
-    """Resolve one client address through explicitly trusted proxy hops.
-
-    Uses the immediate peer for direct traffic and consults the forwarded chain only when that peer
-    belongs to an environment-configured trusted network, walking right-to-left past trusted hops.
-
-    Arguments:
-        request: REST request carrying WSGI peer and optional forwarded metadata.
-
-    Returns:
-        Canonical client address used for the shared throttle bucket.
-    """
-    remote_text = str(request.META.get("REMOTE_ADDR", ""))
-    try:
-        remote_address = ip_address(remote_text)
-    except ValueError:
-        return remote_text
-
-    trusted_networks = settings.TRUSTED_PROXY_NETWORKS
-    if not any(remote_address in network for network in trusted_networks):
-        return remote_address.compressed
-
-    forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
-    if not isinstance(forwarded, str) or not forwarded.strip():
-        return remote_address.compressed
-
-    for value in reversed(forwarded.split(",")):
-        try:
-            forwarded_address = ip_address(value.strip())
-        except ValueError:
-            return remote_address.compressed
-        if not any(forwarded_address in network for network in trusted_networks):
-            return forwarded_address.compressed
-
-    return remote_address.compressed
-
-
 def normalized_login_username(data: object) -> str | None:
     """Normalize a raw username with the login serializer's public field contract.
 
@@ -658,12 +595,50 @@ class TokenLoginThrottle(BaseThrottle):
         return float(self.retry_after_seconds) if self.retry_after_seconds is not None else None
 
 
-class TokenLoginSerializer(Serializer):
+class StrictRequestSerializer(Serializer):
+    """Reject every request key outside a serializer's declared contract.
+
+    Inherits from DRF's ``Serializer`` and converts unknown keys into field-specific validation
+    details before normal field validation, preventing silent identity-selector spoofing.
+
+    Attributes:
+        None beyond those inherited from ``Serializer``.
+
+    Members:
+        to_internal_value: Reject undeclared input keys.
+    """
+
+    @override
+    def to_internal_value(self, data: object) -> dict[str, Any]:
+        """Reject undeclared keys before validating declared fields.
+
+        Preserves DRF's normal non-object handling and returns one stable detail entry for every
+        unexpected mapping key.
+
+        Arguments:
+            data: Raw parsed request representation.
+
+        Returns:
+            Validated native field mapping.
+
+        Raises:
+            ValidationError: If the input carries an undeclared field.
+        """
+        if isinstance(data, Mapping):
+            unexpected = sorted(str(key) for key in data if key not in self.fields)
+            if unexpected:
+                raise ValidationError(
+                    {field: ["This field is not allowed."] for field in unexpected}
+                )
+
+        return cast("dict[str, Any]", super().to_internal_value(data))
+
+
+class TokenLoginSerializer(StrictRequestSerializer):
     """Validate the two token-login credential fields.
 
-    Inherits from DRF's ``Serializer`` and accepts only the username and password the authentication
-    boundary needs, leaving account lookup and password verification to the view's credential
-    verifier.
+    Inherits from ``StrictRequestSerializer`` and accepts only username and password, leaving
+    account lookup and password verification to the view's credential verifier.
 
     Attributes:
         username: Account username supplied by the client.
@@ -804,7 +779,8 @@ class TokenLoginView(APIView):
     Attributes:
         authentication_classes: Empty because callers do not yet hold a usable credential.
         permission_classes: Public access needed to exchange credentials.
-        throttle_classes: Independent address and account rate limits.
+        throttle_classes: Strict PostgreSQL address and account admission plus shared anonymous and
+            authentication scopes.
 
     Members:
         get_authenticate_header: Preserve unauthorized status without authenticating the request.
@@ -813,7 +789,11 @@ class TokenLoginView(APIView):
 
     authentication_classes: tuple[type, ...] = ()
     permission_classes = (AllowAny,)
-    throttle_classes = (TokenLoginThrottle,)
+    throttle_classes = (
+        TokenLoginThrottle,
+        AnonymousApiThrottle,
+        AuthenticationRecoveryThrottle,
+    )
 
     @override
     def get_authenticate_header(self, request: Request) -> str:
@@ -956,6 +936,7 @@ class TokenLogoutView(APIView):
     Attributes:
         authentication_classes: Primary-reading token authentication for this operation.
         permission_classes: Authenticated callers only.
+        throttle_classes: Shared authentication and account-security scope.
 
     Members:
         post: Delete the presented token.
@@ -963,6 +944,7 @@ class TokenLogoutView(APIView):
 
     authentication_classes = (PrimaryTokenAuthentication,)
     permission_classes = (IsAuthenticated,)
+    throttle_classes = (AuthenticationRecoveryThrottle,)
 
     @extend_schema(
         operation_id="token_logout",
@@ -1000,6 +982,11 @@ class TokenLogoutView(APIView):
                 "The request body exceeds the environment-configured API limit.",
                 "Request too large",
                 REQUEST_TOO_LARGE,
+            ),
+            HTTPStatus.TOO_MANY_REQUESTS: error_response(
+                "The client address or account exceeded the authentication scope.",
+                "Too many requests",
+                THROTTLED,
             ),
             HTTPStatus.INTERNAL_SERVER_ERROR: error_response(
                 "An unexpected server failure was contained.",

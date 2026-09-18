@@ -69,6 +69,7 @@ Listed so scope creep is recognisable. None exists.
 | `src/config/health.py` | Health view executor that preserves request correlation |
 | `src/config/metrics_asgi.py`, `src/config/metrics_urls.py` | Observability-only metrics listener |
 | `src/config/api.py`, `src/config/api_errors.py` | Versioned API routing and the shared error boundary and vocabulary |
+| `src/config/security.py` | Browser security headers and exact-origin credentialed CORS response boundary |
 | `src/config/cache.py` | Resilient general caching |
 | `src/accounts/login_throttle.py` | Authoritative primary-database login admission |
 | `src/accounts/` | The user model, manager, admin, migrations, and first-party account authentication endpoints |
