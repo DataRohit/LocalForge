@@ -51,11 +51,16 @@ Exactly two, and there is no third.
 5. Pinned versions only. `latest` is forbidden, including Dockerfile base images.
 6. Use `uv run` for every Python command. Bare `python` here is 3.12.10, not the required 3.14.6.
 7. Keep the quality gate where it is: 100% branch coverage, Ruff `select = ["ALL"]`, mypy `strict`. Fix the code.
-8. Run ticket implementation with **GPT-5.6 Sol Fast**. Audit each ticket with two independent subagents in
-   parallel using the same complete ticket-audit brief: one **GPT-5.6 Sol Fast** agent at **High** reasoning and one
-   **Grok 4.6** agent at **High** reasoning. Both agents must audit the entire ticket; do not divide the review by
-   area or assign specialized audit scopes. Reconcile both reports and remediate every legitimate finding before
-   committing. Do not use Claude models, GPT-6 Astra, or Gemini 3.8 Flash for ticket audits.
+8. **All repository subagents are OpenAI-only.** Pass `reasoning_effort: high` and
+   `context_tier: long_context` (the 1,000,000-token window) explicitly on every dispatch.
+    - Coding, implementation, remediation, exploration, research, and merge work uses the standard
+      **GPT-5.6 Sol** model (`gpt-5.6-sol`), never a Fast variant.
+    - Audit and review work uses **GPT-5.6 Terra** (`gpt-5.6-terra`) or standard **GPT-5.6 Sol**
+      (`gpt-5.6-sol`). Each ticket receives exactly two independent auditors concurrently: one Terra and one Sol,
+      using the same complete ticket-audit brief and evidence.
+    - Both auditors review the entire ticket; do not divide the review by area. Reconcile both reports against
+      authoritative repository evidence and remediate every legitimate finding before committing.
+    - Do not dispatch a non-OpenAI model.
 
 ## Scope
 

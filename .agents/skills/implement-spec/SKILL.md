@@ -12,6 +12,8 @@ The tickets are not a list of steps. They are a **task graph** with blocking rel
 
 Communication to and from subagents should be sparse. Communicate primarily through **context pointers**: to the spec, tickets, research notes, and previous commits. Don't duplicate information already available via pointers.
 
+Configure every subagent from the model policy in the root `AGENTS.md`; do not select models independently here.
+
 **Implementer subagents** should be run in the background where possible for **maximum concurrency**.
 
 ## Steps
