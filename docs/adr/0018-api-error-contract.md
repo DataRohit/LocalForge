@@ -18,7 +18,9 @@ One shape for every error, so a client parses once:
 
 - A stable machine-readable `code` that clients branch on. Never a localised string, never a raw exception name.
 - A human-readable `message`.
-- Per-field detail for validation failures, keyed by field name.
+- Per-field detail for validation failures, keyed by field name, where each value is a non-empty array of
+  non-empty messages. Non-validation errors use an empty detail object. The fixed serializers have no nested
+  serializer, list, or dictionary fields, so nested validation objects are not part of this contract.
 - The request identifier from [../platform/service-inventory.md](../platform/service-inventory.md), so a user-reported
   failure is traceable to a log line.
 
@@ -59,8 +61,9 @@ security policy headers. Exact-origin credentialed CORS changes which browser ma
 envelope, so it adds no status variant. Any supplied origin adds `Vary: Origin` on ordinary, 413, and 429 responses,
 even when denied or duplicated; duplicate or otherwise ambiguous values are never reflected. Allowed preflight is
 bodyless `204` middleware behavior only for resolvable versioned API routes, advertises that resolved operation's
-methods, and remains absent from per-view OpenAPI methods. Unknown, admin, and health OPTIONS requests route
-normally.
+methods, and remains absent from per-view OpenAPI methods. The root boundary-response extension binds that status
+to an explicit no-content example and the real middleware test instead of inventing a representation forbidden by
+HTTP semantics. Unknown, admin, and health OPTIONS requests route normally.
 
 Ticket 32 adds four stable `400` codes beneath the same envelope: `activation_token_expired`,
 `activation_token_foreign`, `activation_token_malformed`, and `activation_token_used`. The foreign response also
@@ -85,6 +88,24 @@ constructs the request or a parser reads the body, and **403 from CSRF** is midd
 not a permission class. The broad source admission precedes all four framework layers, so malformed JSON, 406,
 415, invalid authentication, and unauthenticated protected requests cannot bypass aggregate source accounting. A
 route documented only with the codes its own code raises is incomplete.
+
+Ticket 36 also records Django's Host validation as a reachable `400` on every fixed HTTP operation. Each operation
+carries the exact correlated `bad_request` example and cites its own parameterized public request, rather than a
+global evidence claim that cannot prove every method and route. The health boundary uses the same stable JSON
+envelope for invalid Host and unexpected `500` responses; administration and unrelated Django routes retain their
+framework representations.
+
+The runtime derives `HEAD` from `GET` for `/api/v1/users/me/` and `/health/`. Both safe operations are therefore
+published explicitly with stable identifiers, summaries, security, bodyless response semantics, and only the
+statuses a real HEAD request can produce. Profile HEAD is charged to authenticated-read admission and is excluded
+from the tighter authentication-write scope. Health HEAD remains unthrottled like health GET.
+
+Every request serializer that rejects undeclared fields publishes `additionalProperties: false`, including both
+branches of the registration-or-activation `oneOf`. The health contract publishes separate closed `200` ready and
+`503` not-ready schemas: success requires all seven fixed checks to be working, while service unavailability
+requires at least one check to be unavailable. Optional staff branches retain bounded diagnostics whose status and
+generic error agree. Framework failures retain exact `ErrorEnvelope` references. Contract tests validate
+representative and negative objects with a JSON Schema 2020-12 validator and reject cross-status bodies.
 
 The request-body ceiling is `DJANGO_API_REQUEST_BODY_MAX_BYTES`. The ASGI boundary rejects an oversized valid
 `Content-Length` before receiving body data, then counts every actual `http.request` body chunk so omitted,

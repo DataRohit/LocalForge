@@ -324,7 +324,17 @@ CSRF_COOKIE_SECURE = False
 SECURE_PROXY_SSL_HEADER = None
 
 SPECTACULAR_SETTINGS = {
-    "POSTPROCESSING_HOOKS": ["config.api.add_throttle_response_headers"],
+    "TITLE": "LocalForge API",
+    "DESCRIPTION": (
+        "The fixed LocalForge health and versioned REST API contract. "
+        "WebSocket protocol details are published separately."
+    ),
+    "VERSION": "1.0.0",
+    "OAS_VERSION": "3.1.0",
+    "POSTPROCESSING_HOOKS": [
+        "config.api.add_throttle_response_headers",
+        "config.api.finalize_openapi_contract",
+    ],
 }
 
 ROOT_URLCONF = "config.urls"

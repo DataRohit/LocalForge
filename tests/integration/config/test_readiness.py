@@ -330,14 +330,18 @@ def test_health_route_contains_mail_cleanup_failure(
     "rabbitmq",
     "seaweedfs",
 )
-def test_health_route_rejects_unsupported_methods_and_representations(client: Client) -> None:
-    """Match observed framework errors to their documented correlated envelopes.
+def test_health_observed_statuses_exactly_match_its_documented_contract(
+    client: Client,
+    mocker: MockerFixture,
+) -> None:
+    """Compare every empirically reachable health status with OpenAPI.
 
-    Exercises both statuses reachable before dependency evaluation and compares each body with its
-    OpenAPI example while proving the response body and header share one request identifier.
+    Exercises ready, degraded, method, and negotiation outcomes through the public route, compares
+    framework bodies with their examples, and requires the observed and documented status sets.
 
     Arguments:
         client: Django client supplied by the test framework.
+        mocker: Fixture inducing one unexpected dependency-check failure.
 
     Returns:
         None.
@@ -345,28 +349,160 @@ def test_health_route_rejects_unsupported_methods_and_representations(client: Cl
     Raises:
         AssertionError: If observed status, body, documentation, or correlation changes.
     """
+    ready = client.get("/health/", headers={"accept": "application/json"})
+    caches = cast("dict[str, dict[str, object]]", settings.CACHES)
+    unreachable = {
+        **caches,
+        "default": {
+            **caches["default"],
+            "LOCATION": "redis://127.0.0.1:1/0",
+        },
+    }
+    with override_settings(CACHES=unreachable):
+        degraded = client.get("/health/", headers={"accept": "application/json"})
     unsupported_method = client.post("/health/")
     unsupported_representation = client.get(
         "/health/",
         headers={"accept": "text/plain"},
     )
+    with override_settings(ALLOWED_HOSTS=["allowed.test"]):
+        invalid_host = client.get("/health/", HTTP_HOST="invalid host")
+    redis_from_url = mocker.patch(
+        "config.health.Redis.from_url",
+        side_effect=RuntimeError("private health failure"),
+    )
+    client.raise_request_exception = False
+    unexpected = client.get("/health/", headers={"accept": "application/json"})
+    mocker.stop(redis_from_url)
     method_payload = cast("dict[str, object]", unsupported_method.json())
     representation_payload = cast("dict[str, object]", unsupported_representation.json())
+    unexpected_payload = cast("dict[str, object]", unexpected.json())
     documented_method = _documented_health_example(HTTPStatus.METHOD_NOT_ALLOWED)
     documented_representation = _documented_health_example(HTTPStatus.NOT_ACCEPTABLE)
+    documented_unexpected = _documented_health_example(HTTPStatus.INTERNAL_SERVER_ERROR)
+    generator_factory = cast(
+        "Callable[[], SchemaGeneratorProtocol]",
+        import_module("drf_spectacular.generators").SchemaGenerator,
+    )
+    schema = generator_factory().get_schema(request=None, public=True)
+    documented = {
+        int(status)
+        for status in cast(
+            "dict[str, Any]",
+            cast("dict[str, Any]", schema["paths"])["/health/"]["get"]["responses"],
+        )
+    }
+    observed = {
+        response.status_code
+        for response in (
+            ready,
+            degraded,
+            unsupported_method,
+            unsupported_representation,
+            invalid_host,
+            unexpected,
+        )
+    }
 
+    assert observed == documented
     assert unsupported_method.status_code == HTTPStatus.METHOD_NOT_ALLOWED
     assert unsupported_representation.status_code == HTTPStatus.NOT_ACCEPTABLE
+    assert invalid_host.status_code == HTTPStatus.BAD_REQUEST
+    assert unexpected.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
     assert method_payload == documented_method | {
         "request_id": method_payload["request_id"],
     }
     assert representation_payload == documented_representation | {
         "request_id": representation_payload["request_id"],
     }
+    assert unexpected_payload == documented_unexpected | {
+        "request_id": unexpected_payload["request_id"],
+    }
     assert method_payload["code"] == ErrorCode.METHOD_NOT_ALLOWED
     assert representation_payload["code"] == ErrorCode.NOT_ACCEPTABLE
+    assert unexpected_payload["code"] == ErrorCode.INTERNAL_SERVER_ERROR
     assert method_payload["request_id"] == unsupported_method.headers[REQUEST_ID_HEADER]
     assert (
         representation_payload["request_id"]
         == unsupported_representation.headers[REQUEST_ID_HEADER]
+    )
+    assert unexpected_payload["request_id"] == unexpected.headers[REQUEST_ID_HEADER]
+    assert "private health failure" not in unexpected.content.decode()
+
+
+@pytest.mark.integration
+@pytest.mark.services(
+    "postgres",
+    "valkey-cache",
+    "valkey-channels",
+    "rabbitmq",
+    "seaweedfs",
+)
+def test_health_head_observed_statuses_exactly_match_its_documented_contract(
+    client: Client,
+    mocker: MockerFixture,
+) -> None:
+    """Compare every reachable health HEAD status with its bodyless OpenAPI contract.
+
+    Exercises ready, degraded, invalid-host, negotiation, and unexpected-failure outcomes through
+    the implicit safe method and requires every wire response to suppress its representation.
+
+    Arguments:
+        client: Django client issuing health HEAD requests.
+        mocker: Fixture inducing one unexpected dependency-check failure.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a status drifts or any HEAD response returns a body.
+    """
+    ready = client.head("/health/", headers={"accept": "application/json"})
+    caches = cast("dict[str, dict[str, object]]", settings.CACHES)
+    unreachable = {
+        **caches,
+        "default": {
+            **caches["default"],
+            "LOCATION": "redis://127.0.0.1:1/0",
+        },
+    }
+    with override_settings(CACHES=unreachable):
+        degraded = client.head("/health/", headers={"accept": "application/json"})
+    with override_settings(ALLOWED_HOSTS=["allowed.test"]):
+        invalid_host = client.head("/health/", HTTP_HOST="invalid host")
+    unsupported_representation = client.head(
+        "/health/",
+        headers={"accept": "text/plain"},
+    )
+    redis_from_url = mocker.patch(
+        "config.health.Redis.from_url",
+        side_effect=RuntimeError("private health HEAD failure"),
+    )
+    client.raise_request_exception = False
+    unexpected = client.head("/health/", headers={"accept": "application/json"})
+    mocker.stop(redis_from_url)
+    responses = (
+        ready,
+        invalid_host,
+        unsupported_representation,
+        unexpected,
+        degraded,
+    )
+    generator_factory = cast(
+        "Callable[[], SchemaGeneratorProtocol]",
+        import_module("drf_spectacular.generators").SchemaGenerator,
+    )
+    schema = generator_factory().get_schema(request=None, public=True)
+    documented = {
+        int(status)
+        for status in cast(
+            "dict[str, Any]",
+            cast("dict[str, Any]", schema["paths"])["/health/"]["head"]["responses"],
+        )
+    }
+
+    assert {response.status_code for response in responses} == documented
+    assert all(response.content == b"" for response in responses)
+    assert all(
+        response.headers["Content-Type"].startswith("application/json") for response in responses
     )

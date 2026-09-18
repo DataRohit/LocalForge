@@ -993,6 +993,11 @@ class TokenLogoutView(APIView):
                 "Internal server error",
                 INTERNAL_SERVER_ERROR,
             ),
+            HTTPStatus.SERVICE_UNAVAILABLE: error_response(
+                "Authoritative token or account state is unavailable.",
+                "Service unavailable",
+                SERVICE_UNAVAILABLE,
+            ),
         },
     )
     def post(self, request: Request) -> Response:
@@ -1008,9 +1013,12 @@ class TokenLogoutView(APIView):
             Empty successful response.
 
         Raises:
-            DatabaseError: If token deletion cannot be persisted on the primary.
+            ServiceUnavailable: If token authentication or deletion loses the primary database.
         """
         token = cast("Token", request.auth)
-        token.delete()
+        try:
+            token.delete()
+        except DatabaseError as error:
+            raise ServiceUnavailable from error
 
         return Response(status=HTTPStatus.NO_CONTENT)

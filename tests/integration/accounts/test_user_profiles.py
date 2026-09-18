@@ -1693,7 +1693,11 @@ def test_registration_and_profile_routes_document_every_reachable_response() -> 
         ),
         "profile-get": (
             cast("dict[str, Any]", profile["get"]),
-            {"200", "401", "405", "406", "413", "429", "500", "503"},
+            {"200", "400", "401", "405", "406", "413", "429", "500", "503"},
+        ),
+        "profile-head": (
+            cast("dict[str, Any]", profile["head"]),
+            {"200", "400", "401", "406", "413", "429", "500", "503"},
         ),
         "profile-patch": (
             cast("dict[str, Any]", profile["patch"]),
@@ -1706,14 +1710,14 @@ def test_registration_and_profile_routes_document_every_reachable_response() -> 
     }
 
     assert set(registration) == {"post"}
-    assert set(profile) == {"get", "patch", "delete"}
+    assert set(profile) == {"get", "head", "patch", "delete"}
 
-    for operation, statuses in expected.values():
+    for name, (operation, statuses) in expected.items():
         responses = cast("dict[str, Any]", operation["responses"])
 
         assert set(responses) == statuses
         for status, response in responses.items():
-            if status == "204":
+            if status == "204" or name == "profile-head":
                 continue
 
             content = cast("dict[str, Any]", response["content"])
@@ -1743,6 +1747,12 @@ def test_registration_and_profile_routes_document_every_reachable_response() -> 
         "password_confirm",
     }
     assert set(cast("dict[str, object]", profile_update["properties"])) == {"email"}
+    assert registration["post"]["operationId"] == "user_registration_or_activation"
+    assert registration["post"]["summary"] == "Register or activate an account"
+    assert "registration body" in registration_description
+    assert "activation body" in registration_description
+    assert "returns 201" in registration_description
+    assert "returns bodyless 204" in registration_description
     assert "same status and body" in registration_description
     assert "activation" in deletion_description
     assert "JWT revocation metadata" in deletion_description
@@ -1913,6 +1923,156 @@ def test_registration_observed_statuses_exactly_match_its_documented_contract(
     assert cast("dict[str, Any]", unavailable.json())["code"] == ErrorCode.SERVICE_UNAVAILABLE
 
 
+@pytest.mark.integration
+@pytest.mark.services("postgres", "valkey-cache")
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
+def test_profile_head_observed_statuses_exactly_match_its_documented_contract(
+    client: Client,
+    django_user_model: type[User],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Compare every reachable profile HEAD status with its bodyless OpenAPI contract.
+
+    Exercises authentication, host validation, negotiation, size, read throttling, dependency,
+    and unexpected failures through HEAD while proving the tight write budget is never charged.
+
+    Arguments:
+        client: Django client issuing profile HEAD requests.
+        django_user_model: Configured custom user model class.
+        monkeypatch: Fixture inducing operation failures.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a status drifts, a body escapes, or HEAD uses the write budget.
+    """
+    suffix = uuid.uuid4().hex
+    account = django_user_model.objects.create_user(
+        f"profile-head-{suffix}",
+        f"profile-head-{suffix}@localforge.invalid",
+        PASSWORD,
+        is_active=True,
+    )
+    headers = _token_headers(account)
+    success = client.head("/api/v1/users/me/", headers=headers)
+    unauthorized = client.head("/api/v1/users/me/")
+    not_acceptable = client.head(
+        "/api/v1/users/me/",
+        headers={**headers, "accept": "text/plain"},
+    )
+    with override_settings(ALLOWED_HOSTS=["allowed.test"]):
+        invalid_host = client.head("/api/v1/users/me/", HTTP_HOST="invalid host")
+    with override_settings(API_REQUEST_BODY_MAX_BYTES=1):
+        too_large = client.generic(
+            "HEAD",
+            "/api/v1/users/me/",
+            data="oversized",
+            content_type="text/plain",
+            headers=headers,
+        )
+
+    throttle_account = django_user_model.objects.create_user(
+        f"profile-head-throttle-{suffix}",
+        f"profile-head-throttle-{suffix}@localforge.invalid",
+        PASSWORD,
+        is_active=True,
+    )
+    throttle_headers = _token_headers(throttle_account)
+    with override_settings(
+        API_AUTHENTICATED_READ_THROTTLE_RATE="1/minute",
+        API_AUTHENTICATION_THROTTLE_RATE="1000/minute",
+    ):
+        client.head("/api/v1/users/me/", headers=throttle_headers)
+        throttled = client.head("/api/v1/users/me/", headers=throttle_headers)
+
+    write_budget_account = django_user_model.objects.create_user(
+        f"profile-head-write-budget-{suffix}",
+        f"profile-head-write-budget-{suffix}@localforge.invalid",
+        PASSWORD,
+        is_active=True,
+    )
+    write_budget_headers = _token_headers(write_budget_account)
+    with override_settings(
+        API_AUTHENTICATED_READ_THROTTLE_RATE="1000/minute",
+        API_AUTHENTICATION_THROTTLE_RATE="1/minute",
+    ):
+        first_safe = client.head("/api/v1/users/me/", headers=write_budget_headers)
+        second_safe = client.head("/api/v1/users/me/", headers=write_budget_headers)
+
+    def fail_unexpected(_view: object, _request: object) -> None:
+        """Raise one unexpected profile HEAD failure.
+
+        Replaces the GET implementation Django derives HEAD from after real authentication and
+        admission have completed.
+
+        Arguments:
+            _view: Profile view instance.
+            _request: Authenticated HEAD request.
+
+        Returns:
+            Never returns.
+
+        Raises:
+            RuntimeError: Always.
+        """
+        message = "private profile HEAD failure"
+        raise RuntimeError(message)
+
+    def fail_unavailable(_view: object, _request: object) -> None:
+        """Raise one profile HEAD dependency failure.
+
+        Replaces the GET implementation after real authentication and admission so the shared
+        service-unavailable boundary remains observable through HEAD.
+
+        Arguments:
+            _view: Profile view instance.
+            _request: Authenticated HEAD request.
+
+        Returns:
+            Never returns.
+
+        Raises:
+            ServiceUnavailable: Always.
+        """
+        raise ServiceUnavailable
+
+    with monkeypatch.context() as failure_patch:
+        failure_patch.setattr(user_profiles_module.UserProfileView, "get", fail_unexpected)
+        client.raise_request_exception = False
+        unexpected = client.head("/api/v1/users/me/", headers=headers)
+    with monkeypatch.context() as outage_patch:
+        outage_patch.setattr(user_profiles_module.UserProfileView, "get", fail_unavailable)
+        unavailable = client.head("/api/v1/users/me/", headers=headers)
+
+    responses = (
+        success,
+        invalid_host,
+        unauthorized,
+        not_acceptable,
+        too_large,
+        throttled,
+        unexpected,
+        unavailable,
+    )
+    observed = {response.status_code for response in responses}
+    generator = import_module("drf_spectacular.generators").SchemaGenerator()
+    schema = cast("dict[str, Any]", generator.get_schema(request=None, public=True))
+    documented = {
+        int(status)
+        for status in cast(
+            "dict[str, Any]",
+            cast("dict[str, Any]", schema["paths"])["/api/v1/users/me/"]["head"]["responses"],
+        )
+    }
+
+    assert observed == documented
+    assert all(response.content == b"" for response in responses)
+    assert throttled.status_code == HTTPStatus.TOO_MANY_REQUESTS
+    assert first_safe.status_code == HTTPStatus.OK
+    assert second_safe.status_code == HTTPStatus.OK
+
+
 def _profile_throttle_response(
     client: Client,
     django_user_model: type[User],
@@ -2038,6 +2198,18 @@ def test_profile_observed_statuses_exactly_match_each_documented_contract(
             content_type="text/plain",
             headers=headers,
         )
+    with override_settings(ALLOWED_HOSTS=["allowed.test"]):
+        invalid_host = cast(
+            "ClientResponse",
+            client.generic(
+                method.upper(),
+                "/api/v1/users/me/",
+                data=b"",
+                content_type="application/json",
+                headers=headers,
+                HTTP_HOST="invalid host",
+            ),
+        )
 
     invalid = (
         _invoke_profile_request(
@@ -2143,6 +2315,7 @@ def test_profile_observed_statuses_exactly_match_each_documented_contract(
         method_not_allowed,
         not_acceptable,
         too_large,
+        invalid_host,
         throttled,
         unexpected,
         unavailable,

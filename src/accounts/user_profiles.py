@@ -513,12 +513,14 @@ class UserRegistrationView(APIView):
         super().initial(request, *args, **kwargs)
 
     @extend_schema(
-        operation_id="user_registration",
-        summary="Register an inactive account",
+        operation_id="user_registration_or_activation",
+        summary="Register or activate an account",
         description=(
-            "Validates and attempts one inactive account creation. The response contains only the "
-            "submitted username and normalized email. A username or email already occupied under "
-            "PostgreSQL LOWER identity semantics returns the same status and body as creation, so "
+            "Accepts exactly one of two request branches. A registration body contains username, "
+            "email, password, and password_confirm and returns 201 with the submitted public "
+            "identifiers. An activation body contains account and token and returns bodyless 204 "
+            "after consuming a valid token. A username or email already occupied under PostgreSQL "
+            "LOWER identity semantics returns the same status and body as creation, always 201, so "
             "account existence is disclosed only by the later activation email. Every completed "
             "201 response observes the environment-configured monotonic minimum duration."
         ),

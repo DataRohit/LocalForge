@@ -76,6 +76,7 @@ dev = [
     "factory-boy>=3.3.3",
     "freezegun>=1.5.5",
     "hypothesis>=6.167.1",
+    "jsonschema>=4.26.0",
     "mypy>=2.3.1",
     "poethepoet>=0.48.0",
     "pre-commit>=4.6.2",
@@ -255,6 +256,14 @@ sequence = [
     { cmd = "python src/manage.py makemigrations --check --dry-run", env = { DJANGO_SETTINGS_MODULE = "config.settings.testing" } },
 ]
 
+[tool.poe.tasks.openapi-generate]
+help = "Generate the validated warning-free OpenAPI 3.1 artifact"
+cmd = "python src/manage.py spectacular --validate --fail-on-warn --file docs/api/openapi-v1.yaml"
+
+[tool.poe.tasks.openapi-check]
+help = "Verify the fixed API contract and committed generated artifacts"
+cmd = "pytest tests/unit/config/test_openapi_contract.py --no-cov -q"
+
 [tool.poe.tasks.docs-standard]
 help = "Check the no-comment rule and the docstring section structure"
 cmd = "python scripts/check_docstrings.py"
@@ -334,4 +343,4 @@ cmd = """pytest -n 4 --dist load
 
 [tool.poe.tasks.check]
 help = "Run the complete local quality gate"
-sequence = ["django-check", "format-check", "lint", "docs-standard", "typecheck", "test"]
+sequence = ["django-check", "openapi-check", "format-check", "lint", "docs-standard", "typecheck", "test"]

@@ -85,6 +85,10 @@ Registration bodies still contain `username`, `email`, `password`, and `password
 only `account` and `token`. The email link is built on `DJANGO_SITE_URL` at `/users/?account=...&token=...`, for a
 frontend to submit those values to the versioned `/users/` POST. No `/users/activation/` route exists.
 
+Ticket 36 names the combined OpenAPI operation `user_registration_or_activation`. Its summary and description state
+both exact body branches and distinguish the enumeration-resistant registration `201` representation from the
+bodyless activation `204`, so generated clients do not present the operation as registration-only.
+
 Activation tokens are timestamp-signed with Django's signing API, bind the immutable account key and a random nonce,
 and are stored only as SHA-256 digests. A successful confirmation locks the account before its token record, activates
 the account, and consumes every outstanding link for that account in one primary-database transaction. Expired,

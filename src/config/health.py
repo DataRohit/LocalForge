@@ -810,6 +810,7 @@ async def _collect_readiness() -> tuple[tuple[str, ReadinessResult], ...]:
 
 
 @extend_schema(
+    operation_id="health_readiness",
     summary="Check application readiness",
     description=(
         "Reports process liveness and whether every required backing service can support traffic. "
@@ -889,6 +890,22 @@ async def _collect_readiness() -> tuple[tuple[str, ReadinessResult], ...]:
                     value={
                         "code": ErrorCode.NOT_ACCEPTABLE.value,
                         "message": "The requested response format is not available.",
+                        "details": {},
+                        "request_id": "00000000-0000-4000-8000-000000000000",
+                    },
+                    response_only=True,
+                )
+            ],
+        ),
+        HTTPStatus.INTERNAL_SERVER_ERROR: OpenApiResponse(
+            response={"$ref": "#/components/schemas/ErrorEnvelope"},
+            description="An unexpected readiness failure was contained and correlated.",
+            examples=[
+                OpenApiExample(
+                    "Internal server error",
+                    value={
+                        "code": ErrorCode.INTERNAL_SERVER_ERROR.value,
+                        "message": "An unexpected error occurred.",
                         "details": {},
                         "request_id": "00000000-0000-4000-8000-000000000000",
                     },

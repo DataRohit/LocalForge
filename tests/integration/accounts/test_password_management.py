@@ -48,7 +48,7 @@ from accounts.password_tokens import (
     password_reset_token_is_expired,
 )
 from accounts.tasks import send_password_reset_email
-from config.api_errors import ErrorCode
+from config.api_errors import ErrorCode, ServiceUnavailable
 from config.logs import REQUEST_ID_HEADER, StructuredFormatter
 
 if TYPE_CHECKING:
@@ -2134,6 +2134,296 @@ def test_password_routes_document_their_complete_status_contract() -> None:
     assert "token insert failure" in request_operation["description"].lower()
     assert "account lookup" in request_operation["responses"]["503"]["description"].lower()
     assert "account-independent" in confirm_operation["description"]
+
+
+@pytest.mark.integration
+@pytest.mark.services("postgres", "valkey-cache")
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param("set-password", id="set-password"),
+        pytest.param("reset-password", id="reset-password"),
+        pytest.param("reset-password-confirm", id="reset-password-confirm"),
+    ],
+)
+def test_password_operation_observed_statuses_exactly_match_its_documented_contract(  # noqa: C901, PLR0915
+    client: DjangoClient,
+    django_user_model: type[User],
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+) -> None:
+    """Compare every reachable password-operation status with OpenAPI.
+
+    Drives one fixed password route through success and every applicable framework, authentication,
+    throttle, dependency, and unexpected-failure boundary before comparing the observed status set.
+
+    Arguments:
+        client: Django test client issuing versioned requests.
+        django_user_model: Configured custom account model.
+        monkeypatch: Fixture inducing contained operation failures.
+        case: Password operation selected by the parameter case.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If observed and documented statuses differ.
+    """
+    suffix = uuid.uuid4().hex
+    route = {
+        "set-password": "/api/v1/users/set_password/",
+        "reset-password": "/api/v1/users/reset_password/",
+        "reset-password-confirm": "/api/v1/users/reset_password_confirm/",
+    }[case]
+    view_class = {
+        "set-password": password_management_module.PasswordChangeView,
+        "reset-password": password_management_module.PasswordResetRequestView,
+        "reset-password-confirm": password_management_module.PasswordResetConfirmView,
+    }[case]
+    confirmation_link: dict[str, str] | None = None
+    if case == "reset-password-confirm":
+        account = django_user_model.objects.create_user(
+            f"password-contract-confirm-{suffix}",
+            f"password-contract-confirm-{suffix}@localforge.invalid",
+            CURRENT_PASSWORD,
+            is_active=True,
+        )
+        with override_settings(
+            PASSWORD_RESET_ADDRESS_THROTTLE_RATE=HIGH_RESET_RATE,
+            PASSWORD_RESET_ACCOUNT_THROTTLE_RATE=HIGH_RESET_RATE,
+        ):
+            confirmation_link = _request_reset_link(
+                client,
+                account,
+                remote_address=f"2001:db8::{uuid.uuid4().int & 0xFFFF:x}",
+            )
+
+    def invoke(
+        data: object,
+        *,
+        accept: str | None = None,
+        content_type: str = "application/json",
+        remote_address: str | None = None,
+        authenticated: bool = True,
+    ) -> object:
+        """Invoke the selected password operation through its public HTTP seam.
+
+        Creates a fresh authenticated account for password replacement while public recovery routes
+        reuse only their stable request values, preventing one response from mutating another.
+
+        Arguments:
+            data: Request body passed to the Django client.
+            accept: Optional response media type.
+            content_type: Submitted request media type.
+            remote_address: Optional unique client address.
+            authenticated: Whether a protected operation receives a token.
+
+        Returns:
+            Django client response.
+
+        Raises:
+            AssertionError: If confirmation setup is unexpectedly absent.
+        """
+        headers = {} if accept is None else {"accept": accept}
+        if case == "set-password" and authenticated:
+            identity = uuid.uuid4().hex
+            account = django_user_model.objects.create_user(
+                f"password-contract-change-{identity}",
+                f"password-contract-change-{identity}@localforge.invalid",
+                CURRENT_PASSWORD,
+                is_active=True,
+            )
+            token = Token.objects.using("default").create(user=account)
+            headers["authorization"] = f"Token {token.key}"
+        if remote_address is None:
+            return client.post(
+                route,
+                data,
+                content_type=content_type,
+                headers=headers,
+            )
+        return client.post(
+            route,
+            data,
+            content_type=content_type,
+            headers=headers,
+            REMOTE_ADDR=remote_address,
+        )
+
+    valid_data: object
+    if case == "set-password":
+        valid_data = {
+            "current_password": CURRENT_PASSWORD,
+            "new_password": NEW_PASSWORD,
+            "new_password_confirm": NEW_PASSWORD,
+        }
+    elif case == "reset-password":
+        valid_data = {"email": f"password-contract-{suffix}@localforge.invalid"}
+    else:
+        assert confirmation_link is not None
+        valid_data = _confirm_payload(confirmation_link)
+
+    invalid = invoke({})
+    method_headers: dict[str, str] = {}
+    if case == "set-password":
+        method_account = django_user_model.objects.create_user(
+            f"password-contract-method-{suffix}",
+            f"password-contract-method-{suffix}@localforge.invalid",
+            CURRENT_PASSWORD,
+            is_active=True,
+        )
+        method_token = Token.objects.using("default").create(user=method_account)
+        method_headers["authorization"] = f"Token {method_token.key}"
+    method_not_allowed = client.get(route, headers=method_headers)
+    not_acceptable = invoke(valid_data, accept="text/plain")
+    with override_settings(API_REQUEST_BODY_MAX_BYTES=1):
+        too_large = invoke("oversized", content_type="text/plain")
+    unsupported = invoke("unsupported", content_type="text/plain")
+    throttle_address = f"2001:db8::{uuid.uuid4().int & 0xFFFF:x}"
+    throttle_headers: dict[str, str] = {}
+    throttled: object
+    if case == "set-password":
+        throttle_account = django_user_model.objects.create_user(
+            f"password-contract-throttle-{suffix}",
+            f"password-contract-throttle-{suffix}@localforge.invalid",
+            CURRENT_PASSWORD,
+            is_active=True,
+        )
+        throttle_token = Token.objects.using("default").create(user=throttle_account)
+        throttle_headers["authorization"] = f"Token {throttle_token.key}"
+    with override_settings(
+        API_ANONYMOUS_THROTTLE_RATE="1000/minute",
+        API_AUTHENTICATION_THROTTLE_RATE="1/minute",
+        PASSWORD_RESET_ACCOUNT_THROTTLE_RATE=HIGH_RESET_RATE,
+        PASSWORD_RESET_ADDRESS_THROTTLE_RATE=(
+            HIGH_RESET_RATE if case == "set-password" else LOW_RESET_RATE
+        ),
+    ):
+        if case == "set-password":
+            client.post(
+                route,
+                {},
+                content_type="application/json",
+                headers=throttle_headers,
+                REMOTE_ADDR=throttle_address,
+            )
+            throttled = client.post(
+                route,
+                {},
+                content_type="application/json",
+                headers=throttle_headers,
+                REMOTE_ADDR=throttle_address,
+            )
+        elif case == "reset-password":
+            invoke(
+                {"email": f"password-throttle-first-{suffix}@localforge.invalid"},
+                remote_address=throttle_address,
+            )
+            throttled = invoke(
+                {"email": f"password-throttle-second-{suffix}@localforge.invalid"},
+                remote_address=throttle_address,
+            )
+        else:
+            throttle_account = django_user_model.objects.create_user(
+                f"password-confirm-throttle-{suffix}",
+                f"password-confirm-throttle-{suffix}@localforge.invalid",
+                CURRENT_PASSWORD,
+                is_active=True,
+            )
+            throttle_link = _request_reset_link(
+                client,
+                throttle_account,
+                remote_address=f"2001:db8::{uuid.uuid4().int & 0xFFFF:x}",
+            )
+            throttle_payload = _confirm_payload(throttle_link)
+            client.post(
+                route,
+                throttle_payload,
+                content_type="application/json",
+                REMOTE_ADDR=throttle_address,
+            )
+            throttled = client.post(
+                route,
+                throttle_payload,
+                content_type="application/json",
+                REMOTE_ADDR=throttle_address,
+            )
+
+    def fail_unexpected(_view: object, _request: object) -> None:
+        """Raise one contained password-operation server failure.
+
+        Replaces only the selected view method after framework admission so routing, authentication,
+        and response containment stay production-shaped.
+
+        Arguments:
+            _view: Selected password view instance.
+            _request: Admitted REST request.
+
+        Returns:
+            Never returns.
+
+        Raises:
+            RuntimeError: Always.
+        """
+        message = "induced password operation failure"
+        raise RuntimeError(message)
+
+    def fail_unavailable(_view: object, _request: object) -> None:
+        """Raise one password-operation dependency failure.
+
+        Replaces only the selected view method after framework admission so the shared correlated
+        unavailable response remains executable for every route.
+
+        Arguments:
+            _view: Selected password view instance.
+            _request: Admitted REST request.
+
+        Returns:
+            Never returns.
+
+        Raises:
+            ServiceUnavailable: Always.
+        """
+        raise ServiceUnavailable
+
+    with monkeypatch.context() as failure_patch:
+        failure_patch.setattr(view_class, "post", fail_unexpected)
+        client.raise_request_exception = False
+        unexpected = invoke(valid_data)
+
+    with monkeypatch.context() as outage_patch:
+        outage_patch.setattr(view_class, "post", fail_unavailable)
+        unavailable = invoke(valid_data)
+
+    success = invoke(valid_data)
+    responses = [
+        success,
+        invalid,
+        method_not_allowed,
+        not_acceptable,
+        too_large,
+        unsupported,
+        throttled,
+        unexpected,
+        unavailable,
+    ]
+    if case == "set-password":
+        responses.append(invoke(valid_data, authenticated=False))
+    observed = {cast("Any", response).status_code for response in responses}
+    schema = cast(
+        "dict[str, Any]",
+        SchemaGenerator().get_schema(request=None, public=True),  # type: ignore[no-untyped-call]
+    )
+    documented = {
+        int(status)
+        for status in cast(
+            "dict[str, Any]",
+            cast("dict[str, Any]", schema["paths"])[route]["post"]["responses"],
+        )
+    }
+
+    assert observed == documented
 
 
 @pytest.mark.integration

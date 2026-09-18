@@ -13,7 +13,7 @@ This describes work that has **not** been done. Read [../adr/README.md](../adr/R
 Observed 2026-09-13. Re-verify; the tree may have moved on.
 
 | Fact | Value |
-|---|---|
+| --- | --- |
 | Django project root | `src/` |
 | Settings | `src/config/settings.py` — a **single module**, to become a package |
 | ASGI entry point | `src/config/asgi.py`, plain `get_asgi_application()` |
@@ -36,7 +36,7 @@ Two constraints that are easy to trip over:
 Listed so scope creep is recognisable. None exists.
 
 | Path | Purpose |
-|---|---|
+| --- | --- |
 | `compose.yaml` | Shared services and the project name |
 | `compose.development.yaml`, `compose.testing.yaml` | Per-environment overlays, each owning its own networks and volumes because the two registries are disjoint |
 | `docker/django/Dockerfile` | Multi-stage app image with a `test` stage |
@@ -44,6 +44,8 @@ Listed so scope creep is recognisable. None exists.
 | `docker/pgbackrest/Dockerfile` | pgBackRest image; no first-party image exists upstream |
 | `docker/pgbackrest/pgbackrest.conf` | Stanza and repository paths |
 | `docs/runbooks/restore-drill.md` | The restore drill ticket 05 requires be documented and performed |
+| `docs/api/openapi-v1.yaml` | Deterministic OpenAPI 3.1 artifact for the fixed versioned REST and health contract, committed so review exposes contract drift |
+| `docs/api/websocket-v1.md` | Versioned planned WebSocket message and close-code contract, kept separate until Phase 5 can verify it at runtime |
 | `docker/postgres/primary/` | `postgresql.conf` fragments, init SQL for the replication role and slot |
 | `docker/traefik/traefik.yaml` | Static Traefik configuration |
 | `docker/prometheus/prometheus.yml` | Scrape configuration |
@@ -117,7 +119,7 @@ phase gate depends on two things the earlier phases produce, because the setting
 the environment and the `default` alias is PostgreSQL.
 
 | Prerequisite | Why |
-|---|---|
+| --- | --- |
 | `uv run python scripts/gen_secrets.py --environment all` has been run | `manage.py` under `config.settings.development` reads `.env.development`, and the suite and the type stub plugin read `.env.testing.host`. Without them the gate fails on the first required variable |
 | The testing database node is up | `uv run pytest` builds a test database on `postgres-tp8vn`, and the migration check connects to it |
 
@@ -140,7 +142,7 @@ Three configuration references point at the old path and **must** move in the sa
 its own gate:
 
 | File | Key | From | To |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `pyproject.toml` | `[tool.pytest.ini_options] DJANGO_SETTINGS_MODULE` | `config.settings` | `config.settings.testing` |
 | `pyproject.toml` | `[tool.django-stubs] django_settings_module` | `config.settings` | `config.settings.testing` |
 | `pyproject.toml` | `[tool.ruff.lint.per-file-ignores]` | `"src/config/settings.py"` | `"src/config/settings/*.py"` |
@@ -245,7 +247,7 @@ replication slot and credentials before re-seeding.
 One at a time, each with its own test in `tests/integration/`. A batched failure is far harder to attribute.
 
 | Step | Integration | Verification | Pass |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 6a | PostgreSQL primary | `docker exec django-uv5n2 python manage.py migrate --check`, then `showmigrations` | exit `0`, nothing unapplied |
 | 6b | Replica routing | A test asserting reads use `replica` and writes use `default` | routing correct; `allow_migrate` returns `True` only for `default` |
 | 6c | Channels over Valkey | Two `WebsocketCommunicator` instances in one group | a message sent by one arrives at the other |

@@ -302,11 +302,17 @@ def test_health_route_schema_documents_every_response_shape() -> None:
             )
         )["value"]
         for status, response in responses.items()
-        if status in {"405", "406"}
+        if status in {"400", "405", "406", "500"}
     }
 
-    assert set(responses) == {"200", "405", "406", "503"}
+    assert set(responses) == {"200", "400", "405", "406", "500", "503"}
     assert error_examples == {
+        "400": {
+            "code": ErrorCode.BAD_REQUEST,
+            "message": "The request was invalid.",
+            "details": {},
+            "request_id": "00000000-0000-4000-8000-000000000000",
+        },
         "405": {
             "code": ErrorCode.METHOD_NOT_ALLOWED,
             "message": "The requested method is not allowed.",
@@ -316,6 +322,12 @@ def test_health_route_schema_documents_every_response_shape() -> None:
         "406": {
             "code": ErrorCode.NOT_ACCEPTABLE,
             "message": "The requested response format is not available.",
+            "details": {},
+            "request_id": "00000000-0000-4000-8000-000000000000",
+        },
+        "500": {
+            "code": ErrorCode.INTERNAL_SERVER_ERROR,
+            "message": "An unexpected error occurred.",
             "details": {},
             "request_id": "00000000-0000-4000-8000-000000000000",
         },

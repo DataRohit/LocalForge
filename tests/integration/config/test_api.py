@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import secrets
+import uuid
 from dataclasses import dataclass
 from http import HTTPStatus
 from importlib import import_module
@@ -91,6 +92,35 @@ class AsgiRequestSpec:
 
 
 DEFAULT_ASGI_REQUEST_SPEC = AsgiRequestSpec()
+FIXED_HTTP_OPERATIONS = (
+    pytest.param("POST", "/api/v1/jwt/create/", id="jwt_create"),
+    pytest.param("POST", "/api/v1/jwt/refresh/", id="jwt_refresh"),
+    pytest.param("POST", "/api/v1/jwt/verify/", id="jwt_verify"),
+    pytest.param("POST", "/api/v1/token/login/", id="token_login"),
+    pytest.param("POST", "/api/v1/token/logout/", id="token_logout"),
+    pytest.param("POST", "/api/v1/users/", id="user_registration_or_activation"),
+    pytest.param("GET", "/api/v1/users/me/", id="user_profile_retrieve"),
+    pytest.param("HEAD", "/api/v1/users/me/", id="user_profile_head"),
+    pytest.param("PATCH", "/api/v1/users/me/", id="user_profile_update"),
+    pytest.param("DELETE", "/api/v1/users/me/", id="user_profile_delete"),
+    pytest.param("POST", "/api/v1/users/resend_activation/", id="user_activation_resend"),
+    pytest.param("POST", "/api/v1/users/reset_password/", id="user_password_reset_request"),
+    pytest.param(
+        "POST",
+        "/api/v1/users/reset_password_confirm/",
+        id="user_password_reset_confirm",
+    ),
+    pytest.param("POST", "/api/v1/users/reset_username/", id="user_username_reset_request"),
+    pytest.param(
+        "POST",
+        "/api/v1/users/reset_username_confirm/",
+        id="user_username_reset_confirm",
+    ),
+    pytest.param("POST", "/api/v1/users/set_password/", id="user_password_change"),
+    pytest.param("POST", "/api/v1/users/set_username/", id="user_username_change"),
+    pytest.param("GET", "/health/", id="health_readiness"),
+    pytest.param("HEAD", "/health/", id="health_readiness_head"),
+)
 
 
 def protected_get(_self: object, _request: object) -> HttpResponseBase:
@@ -498,6 +528,47 @@ def assert_error_envelope(
     }
 
     return payload
+
+
+@pytest.mark.integration
+@pytest.mark.services("postgres", "valkey-cache")
+@pytest.mark.parametrize(("method", "route"), FIXED_HTTP_OPERATIONS)
+def test_fixed_operation_invalid_host_returns_correlated_bad_request(
+    client: Client,
+    method: str,
+    route: str,
+) -> None:
+    """Reject an invalid Host at every fixed HTTP operation boundary.
+
+    Sends each real method and route through Django's host validation and verifies the stable
+    correlated bad-request representation, including body suppression required by HEAD.
+
+    Arguments:
+        client: Django client issuing the fixed operation request.
+        method: Public HTTP method under test.
+        route: Fixed route under test.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If host rejection is undocumented, uncorrelated, or not JSON-backed.
+    """
+    with override_settings(ALLOWED_HOSTS=["allowed.test"]):
+        response = client.generic(method, route, HTTP_HOST="invalid host")
+
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+    assert response.headers["Content-Type"].startswith("application/json")
+    uuid.UUID(response.headers[REQUEST_ID_HEADER])
+    if method == "HEAD":
+        assert response.content == b""
+    else:
+        assert_error_envelope(
+            response,
+            HTTPStatus.BAD_REQUEST,
+            ErrorCode.BAD_REQUEST,
+            "The request was invalid.",
+        )
 
 
 def asgi_post_scope(

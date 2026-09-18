@@ -55,7 +55,7 @@ import accounts.token_authentication as token_authentication_module
 from accounts.login_throttle import PostgresLoginThrottleStore, RollingWindowRule
 from accounts.models import LOGIN_THROTTLE_TABLE, LoginThrottleEvent
 from accounts.token_authentication import PasswordHashDisposition, classify_password_hash
-from config.api_errors import ErrorCode
+from config.api_errors import ErrorCode, ServiceUnavailable
 from config.logs import REQUEST_ID_HEADER, StructuredFormatter
 from tests.integration.config.throttle_worker import count_postgres_throttle_admissions
 
@@ -3593,8 +3593,19 @@ def test_token_routes_document_every_reachable_response() -> None:
         "500",
         "503",
     }
-    assert set(logout_responses) == {"204", "401", "405", "406", "413", "429", "500"}
+    assert set(logout_responses) == {
+        "204",
+        "400",
+        "401",
+        "405",
+        "406",
+        "413",
+        "429",
+        "500",
+        "503",
+    }
     assert "token-persistence" in login_responses["503"]["description"]
+    assert "Authoritative token or account state" in logout_responses["503"]["description"]
 
     for status, response in {**login_responses, **logout_responses}.items():
         if status == "204":
@@ -3621,6 +3632,186 @@ def test_token_routes_document_every_reachable_response() -> None:
 @pytest.mark.integration
 @pytest.mark.services("postgres", "valkey-cache")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
+def test_login_observed_statuses_exactly_match_its_documented_contract(
+    client: Client,
+    django_user_model: type[User],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Compare every empirically reachable token-login status with OpenAPI.
+
+    Exercises success, validation, authentication, method, negotiation, body-size, media,
+    throttling, dependency, and unexpected-failure paths through the public endpoint.
+
+    Arguments:
+        client: Django test client supplied by the framework.
+        django_user_model: Configured custom user model class.
+        monkeypatch: Fixture inducing contained operation failures.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If observed and documented statuses differ.
+    """
+    username = f"token-login-contract-{uuid.uuid4().hex}"
+    django_user_model.objects.create_user(
+        username,
+        f"{username}@localforge.invalid",
+        PASSWORD,
+        is_active=True,
+    )
+    high_rate = "1000/minute"
+    with override_settings(
+        TOKEN_LOGIN_ADDRESS_THROTTLE_RATE=high_rate,
+        TOKEN_LOGIN_ACCOUNT_THROTTLE_RATE=high_rate,
+    ):
+        success = _post_credentials(
+            client,
+            username,
+            PASSWORD,
+            remote_address=f"2001:db8::{uuid.uuid4().int & 0xFFFF:x}",
+        )
+        invalid = client.post(
+            "/api/v1/token/login/",
+            {},
+            content_type="application/json",
+            REMOTE_ADDR=f"2001:db8::{uuid.uuid4().int & 0xFFFF:x}",
+        )
+        unauthorized = _post_credentials(
+            client,
+            username,
+            f"{PASSWORD}-wrong",
+            remote_address=f"2001:db8::{uuid.uuid4().int & 0xFFFF:x}",
+        )
+        method_not_allowed = client.get("/api/v1/token/login/")
+        not_acceptable = client.post(
+            "/api/v1/token/login/",
+            {"username": username, "password": PASSWORD},
+            content_type="application/json",
+            headers={"accept": "text/plain"},
+            REMOTE_ADDR=f"2001:db8::{uuid.uuid4().int & 0xFFFF:x}",
+        )
+        with override_settings(API_REQUEST_BODY_MAX_BYTES=1):
+            too_large = client.post(
+                "/api/v1/token/login/",
+                data="oversized",
+                content_type="text/plain",
+                REMOTE_ADDR=f"2001:db8::{uuid.uuid4().int & 0xFFFF:x}",
+            )
+        unsupported = client.post(
+            "/api/v1/token/login/",
+            data="unsupported",
+            content_type="text/plain",
+            REMOTE_ADDR=f"2001:db8::{uuid.uuid4().int & 0xFFFF:x}",
+        )
+
+    throttle_address = f"2001:db8::{uuid.uuid4().int & 0xFFFF:x}"
+    with override_settings(
+        API_ANONYMOUS_THROTTLE_RATE=high_rate,
+        API_AUTHENTICATION_THROTTLE_RATE="1/minute",
+        TOKEN_LOGIN_ADDRESS_THROTTLE_RATE=high_rate,
+        TOKEN_LOGIN_ACCOUNT_THROTTLE_RATE=high_rate,
+    ):
+        _post_credentials(
+            client,
+            f"token-login-throttle-first-{uuid.uuid4().hex}",
+            PASSWORD,
+            remote_address=throttle_address,
+        )
+        throttled = _post_credentials(
+            client,
+            f"token-login-throttle-second-{uuid.uuid4().hex}",
+            PASSWORD,
+            remote_address=throttle_address,
+        )
+
+    def fail_unexpected(_view: object, _request: object) -> None:
+        """Raise one contained token-login server failure.
+
+        Replaces only the selected operation after framework admission so routing and response
+        boundaries remain production-shaped.
+
+        Arguments:
+            _view: Token-login view instance.
+            _request: Admitted REST request.
+
+        Returns:
+            Never returns.
+
+        Raises:
+            RuntimeError: Always.
+        """
+        message = "induced token-login failure"
+        raise RuntimeError(message)
+
+    def fail_unavailable(_view: object, _request: object) -> None:
+        """Raise one token-login dependency failure.
+
+        Replaces only the selected operation after framework admission so the shared correlated
+        service-unavailable conversion remains executable.
+
+        Arguments:
+            _view: Token-login view instance.
+            _request: Admitted REST request.
+
+        Returns:
+            Never returns.
+
+        Raises:
+            ServiceUnavailable: Always.
+        """
+        raise ServiceUnavailable
+
+    with monkeypatch.context() as failure_patch:
+        failure_patch.setattr(token_authentication_module.TokenLoginView, "post", fail_unexpected)
+        client.raise_request_exception = False
+        unexpected = client.post(
+            "/api/v1/token/login/",
+            {"username": username, "password": PASSWORD},
+            content_type="application/json",
+            REMOTE_ADDR=f"2001:db8::{uuid.uuid4().int & 0xFFFF:x}",
+        )
+
+    with monkeypatch.context() as outage_patch:
+        outage_patch.setattr(token_authentication_module.TokenLoginView, "post", fail_unavailable)
+        unavailable = client.post(
+            "/api/v1/token/login/",
+            {"username": username, "password": PASSWORD},
+            content_type="application/json",
+            REMOTE_ADDR=f"2001:db8::{uuid.uuid4().int & 0xFFFF:x}",
+        )
+
+    observed = {
+        response.status_code
+        for response in (
+            success,
+            invalid,
+            unauthorized,
+            method_not_allowed,
+            not_acceptable,
+            too_large,
+            unsupported,
+            throttled,
+            unexpected,
+            unavailable,
+        )
+    }
+    generator = import_module("drf_spectacular.generators").SchemaGenerator()
+    schema = cast("dict[str, Any]", generator.get_schema(request=None, public=True))
+    documented = {
+        int(status)
+        for status in cast(
+            "dict[str, Any]",
+            cast("dict[str, Any]", schema["paths"])["/api/v1/token/login/"]["post"]["responses"],
+        )
+    }
+
+    assert observed == documented
+
+
+@pytest.mark.integration
+@pytest.mark.services("postgres", "valkey-cache")
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 def test_logout_observed_statuses_exactly_match_its_documented_contract(
     client: Client,
     django_user_model: type[User],
@@ -3628,8 +3819,9 @@ def test_logout_observed_statuses_exactly_match_its_documented_contract(
 ) -> None:
     """Compare every empirically reachable logout status with OpenAPI.
 
-    Exercises authentication, method, negotiation, body-size, success, and unexpected-failure
-    paths through HTTP, including a successful unsupported-content-type body proving 415 is absent.
+    Exercises host validation, authentication, method, negotiation, body-size, success, primary
+    authentication outage, and unexpected-failure paths through HTTP, including a successful
+    unsupported-content-type body proving 415 is absent.
 
     Arguments:
         client: Django test client supplied by the framework.
@@ -3651,6 +3843,8 @@ def test_logout_observed_statuses_exactly_match_its_documented_contract(
     )
     token = Token.objects.using("default").create(user=account)
     authorization = {"authorization": f"Token {token.key}"}
+    with override_settings(ALLOWED_HOSTS=["allowed.test"]):
+        invalid_host = client.post("/api/v1/token/logout/", HTTP_HOST="invalid host")
     unauthorized = client.post("/api/v1/token/logout/")
     method_not_allowed = client.get("/api/v1/token/logout/", headers=authorization)
     not_acceptable = client.post(
@@ -3670,6 +3864,40 @@ def test_logout_observed_statuses_exactly_match_its_documented_contract(
         content_type="text/plain",
         headers=authorization,
     )
+    outage_token = Token.objects.using("default").create(user=account)
+    original_get = QuerySet.get
+
+    def fail_primary_token_authentication(
+        queryset: QuerySet[Any],
+        *args: object,
+        **kwargs: object,
+    ) -> object:
+        """Fail the real primary token lookup used by logout authentication.
+
+        Raises only for the DRF token model while preserving unrelated querysets, proving the
+        authenticator converts authoritative database loss before the view executes.
+
+        Arguments:
+            queryset: Queryset performing one object lookup.
+            *args: Positional lookup arguments.
+            **kwargs: Keyword lookup arguments.
+
+        Returns:
+            Object returned by non-token querysets.
+
+        Raises:
+            DatabaseError: For the DRF token authentication query.
+        """
+        if queryset.model is Token:
+            raise DatabaseError
+        return original_get(queryset, *args, **kwargs)
+
+    with monkeypatch.context() as outage_patch:
+        outage_patch.setattr(QuerySet, "get", fail_primary_token_authentication)
+        authentication_unavailable = client.post(
+            "/api/v1/token/logout/",
+            headers={"authorization": f"Token {outage_token.key}"},
+        )
     throttle_account = django_user_model.objects.create_user(
         f"{username}-throttle",
         f"{username}-throttle@localforge.invalid",
@@ -3712,7 +3940,7 @@ def test_logout_observed_statuses_exactly_match_its_documented_contract(
             headers=throttle_authorization,
             REMOTE_ADDR=throttle_address,
         )
-    failing_token = Token.objects.using("default").create(user=account)
+    failing_token = outage_token
 
     def fail_delete(_token: Token) -> None:
         """Raise the unexpected persistence failure documented by the route.
@@ -3742,12 +3970,14 @@ def test_logout_observed_statuses_exactly_match_its_documented_contract(
         response.status_code
         for response in (
             unauthorized,
+            invalid_host,
             method_not_allowed,
             not_acceptable,
             too_large,
             success,
             throttled,
             unexpected,
+            authentication_unavailable,
         )
     }
     generator = import_module("drf_spectacular.generators").SchemaGenerator()
@@ -3764,6 +3994,73 @@ def test_logout_observed_statuses_exactly_match_its_documented_contract(
     assert HTTPStatus.UNSUPPORTED_MEDIA_TYPE not in observed
     assert success.status_code == HTTPStatus.NO_CONTENT
     assert cast("dict[str, Any]", unexpected.json())["code"] == ErrorCode.INTERNAL_SERVER_ERROR
+    assert (
+        cast("dict[str, Any]", authentication_unavailable.json())["code"]
+        == ErrorCode.SERVICE_UNAVAILABLE
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.api_runtime
+@pytest.mark.services("postgres", "valkey-cache")
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
+def test_logout_maps_primary_token_deletion_failure_to_service_unavailable(
+    client: Client,
+    django_user_model: type[User],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Contain an authoritative token-deletion database failure.
+
+    Authenticates through the public logout route, fails only primary token deletion, and verifies
+    the documented correlated service-unavailable envelope rather than a generic server error.
+
+    Arguments:
+        client: Django client issuing the logout request.
+        django_user_model: Configured custom account model.
+        monkeypatch: Fixture replacing token deletion.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If deletion loss returns another status or code.
+    """
+    suffix = uuid.uuid4().hex
+    account = django_user_model.objects.create_user(
+        f"token-delete-outage-{suffix}",
+        f"token-delete-outage-{suffix}@localforge.invalid",
+        PASSWORD,
+        is_active=True,
+    )
+    token = Token.objects.using("default").create(user=account)
+
+    def fail_database_delete(_token: Token) -> None:
+        """Raise one authoritative token-deletion database failure.
+
+        Replaces only the authenticated token's primary deletion boundary so the public response
+        proves database loss is converted without changing authentication or routing behavior.
+
+        Arguments:
+            _token: Authenticated token whose deletion fails.
+
+        Returns:
+            Never returns.
+
+        Raises:
+            DatabaseError: Always.
+        """
+        raise DatabaseError
+
+    monkeypatch.setattr(Token, "delete", fail_database_delete)
+    response = client.post(
+        "/api/v1/token/logout/",
+        headers={"authorization": f"Token {token.key}"},
+    )
+    payload = cast("dict[str, Any]", response.json())
+
+    assert response.status_code == HTTPStatus.SERVICE_UNAVAILABLE
+    assert payload["code"] == ErrorCode.SERVICE_UNAVAILABLE
+    assert payload["request_id"] == response.headers[REQUEST_ID_HEADER]
 
 
 @pytest.mark.integration

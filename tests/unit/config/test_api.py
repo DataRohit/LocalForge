@@ -1172,6 +1172,30 @@ def test_non_api_permission_failure_uses_djangos_standard_response() -> None:
 
 
 @pytest.mark.unit
+def test_non_api_bad_request_uses_djangos_standard_response() -> None:
+    """Delegate non-API bad requests to Django.
+
+    Calls the configured root handler for an administration path and verifies it returns the
+    framework's HTML response rather than the versioned API or health JSON contract.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a non-API bad request is represented as API JSON.
+    """
+    request = RequestFactory().get("/admin/probe/")
+
+    response = api_bad_request(request, Exception("private bad request"))
+
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+    assert response.headers["Content-Type"].startswith("text/html")
+
+
+@pytest.mark.unit
 def test_non_api_server_failure_uses_djangos_standard_response() -> None:
     """Delegate non-API unexpected failures to Django.
 
