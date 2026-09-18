@@ -272,7 +272,7 @@ class ActivationToken(models.Model):
         indexes = (
             models.Index(
                 fields=("subject_id", "used_at"),
-                name="accounts_activation_subject_used",
+                name="accounts_act_subject_used",
             ),
             models.Index(
                 fields=("issued_at", "id"),

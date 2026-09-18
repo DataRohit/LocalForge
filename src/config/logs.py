@@ -18,6 +18,7 @@ from contextlib import ExitStack
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import lru_cache
 from http import HTTPStatus
 from importlib import import_module
 from typing import TYPE_CHECKING, cast, override
@@ -148,6 +149,33 @@ http_request_duration = Histogram(
 )
 
 
+@lru_cache(maxsize=1024)
+def _is_sensitive_field_name(lowered: str) -> bool:
+    """Classify one normalized field name as sensitive.
+
+    Caches repeated names encountered while scanning structured records and assignment-like text,
+    preserving the complete credential vocabulary with bounded memory use.
+
+    Arguments:
+        lowered: Lowercase candidate field name.
+
+    Returns:
+        True when the field names credential-bearing content.
+
+    Raises:
+        None.
+    """
+    normalized = re.sub(r"[^a-z0-9]", "", lowered)
+    tokens = frozenset(re.findall(r"[a-z0-9]+", lowered))
+
+    return (
+        lowered in SENSITIVE_FIELD_NAMES
+        or SafeExceptionReporterFilter.hidden_settings.search(lowered) is not None
+        or bool(tokens & SENSITIVE_FIELD_TOKENS)
+        or any(fragment.replace("_", "") in normalized for fragment in SENSITIVE_FIELD_FRAGMENTS)
+    )
+
+
 def _is_sensitive_field(name: object) -> bool:
     """Identify a field whose value must not enter the log stream.
 
@@ -164,16 +192,7 @@ def _is_sensitive_field(name: object) -> bool:
     Raises:
         None.
     """
-    lowered = str(name).lower()
-    normalized = re.sub(r"[^a-z0-9]", "", lowered)
-    tokens = frozenset(re.findall(r"[a-z0-9]+", lowered))
-
-    return (
-        lowered in SENSITIVE_FIELD_NAMES
-        or SafeExceptionReporterFilter.hidden_settings.search(lowered) is not None
-        or bool(tokens & SENSITIVE_FIELD_TOKENS)
-        or any(fragment.replace("_", "") in normalized for fragment in SENSITIVE_FIELD_FRAGMENTS)
-    )
+    return _is_sensitive_field_name(str(name).lower())
 
 
 def _is_sensitive_pair(items: list[object]) -> bool:

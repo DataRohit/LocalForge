@@ -727,6 +727,32 @@ def test_complete_test_tasks_compose_core_and_security_timing_stages() -> None:
 
 
 @pytest.mark.unit
+def test_django_gate_runs_a_database_aware_system_check() -> None:
+    """Catch database-specific model failures before the runtime entrypoint.
+
+    Requires the host-compatible testing settings check to include the primary database while the
+    development settings retain their container-hostname-independent configuration validation.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the quality gate omits database-aware model checks.
+    """
+    sequence = _configured_tasks()["django-check"]["sequence"]
+    commands = [item["cmd"] for item in sequence]
+
+    assert commands == [
+        "python src/manage.py check",
+        "python src/manage.py check --database default",
+        "python src/manage.py makemigrations --check --dry-run",
+    ]
+
+
+@pytest.mark.unit
 def test_core_and_security_timing_tasks_preserve_their_distinct_invariants() -> None:
     """Keep coverage and wall-clock measurement concerns in separate stages.
 

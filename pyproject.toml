@@ -252,7 +252,7 @@ cmd = "python src/manage.py shell"
 help = "Run Django system and migration checks"
 sequence = [
     { cmd = "python src/manage.py check", env = { DJANGO_SETTINGS_MODULE = "config.settings.development" } },
-    { cmd = "python src/manage.py check", env = { DJANGO_SETTINGS_MODULE = "config.settings.testing" } },
+    { cmd = "python src/manage.py check --database default", env = { DJANGO_SETTINGS_MODULE = "config.settings.testing" } },
     { cmd = "python src/manage.py makemigrations --check --dry-run", env = { DJANGO_SETTINGS_MODULE = "config.settings.testing" } },
 ]
 
