@@ -5,19 +5,19 @@ every future consumer inherits, so connection lifecycle and error handling are w
 
 **Blocked by:** 21, 27.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The ASGI entrypoint routes by protocol type, sending HTTP to the framework's handler and WebSocket to the
+- [x] The ASGI entrypoint routes by protocol type, sending HTTP to the framework's handler and WebSocket to the
       project's router.
-- [ ] The framework application is initialised before any import that touches models, so the app registry is
+- [x] The framework application is initialised before any import that touches models, so the app registry is
       populated when consumers load.
-- [ ] A base consumer handles connect, disconnect, and receive, validates that incoming frames are JSON objects,
+- [x] A base consumer handles connect, disconnect, and receive, validates that incoming frames are JSON objects,
       and rejects anything else with a defined close code rather than raising.
-- [ ] Messages are exchanged as JSON with a declared envelope: a type field and a payload field.
-- [ ] An unknown message type is answered with an error frame, not a dropped connection.
-- [ ] Consumers are asynchronous throughout, and any database access uses the async-safe wrapper so the event loop
+- [x] Messages are exchanged as JSON with a declared envelope: a type field and a payload field.
+- [x] An unknown message type is answered with an error frame, not a dropped connection.
+- [x] Consumers are asynchronous throughout, and any database access uses the async-safe wrapper so the event loop
       is never blocked.
-- [ ] The origin of a connection is validated, so a browser page on another origin cannot open a socket.
-- [ ] The WebSocket route is reachable through the reverse proxy, with the upgrade headers passed through.
-- [ ] Tests connect, exchange a message, and disconnect cleanly, using the project's async test support.
-- [ ] The base consumer follows the documentation standard, including its attributes and the close codes it raises.
+- [x] The origin of a connection is validated, so a browser page on another origin cannot open a socket.
+- [x] The WebSocket route is reachable through the reverse proxy, with the upgrade headers passed through.
+- [x] Tests connect, exchange a message, and disconnect cleanly, using the project's async test support.
+- [x] The base consumer follows the documentation standard, including its attributes and the close codes it raises.

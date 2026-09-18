@@ -3706,6 +3706,10 @@ def test_login_observed_statuses_exactly_match_its_documented_contract(
         )
 
     throttle_address = f"2001:db8::{uuid.uuid4().int & 0xFFFF:x}"
+    monkeypatch.setattr(
+        "accounts.api_throttling.TEST_SERVER_TIME_MILLISECONDS",
+        1_800_000_050_000,
+    )
     with override_settings(
         API_ANONYMOUS_THROTTLE_RATE=high_rate,
         API_AUTHENTICATION_THROTTLE_RATE="1/minute",

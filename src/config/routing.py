@@ -4,9 +4,12 @@ Holds the URL patterns the WebSocket protocol dispatches on, empty until the not
 built, so the routing table has one home rather than growing inside the entry point.
 """
 
-from typing import TYPE_CHECKING
+from channels.routing import URLRouter
+from django.urls import path
 
-if TYPE_CHECKING:
-    from django.urls import URLPattern, URLResolver
+from notifications.websocket import ExactWebSocketOriginValidator, NotificationConsumer
 
-websocket_urlpatterns: list[URLPattern | URLResolver] = []
+websocket_urlpatterns = [
+    path("ws/notifications/", NotificationConsumer.as_asgi(), name="notification-websocket"),
+]
+websocket_application = ExactWebSocketOriginValidator(URLRouter(websocket_urlpatterns))

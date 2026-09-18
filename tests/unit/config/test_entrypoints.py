@@ -246,3 +246,6 @@ def test_the_websocket_routing_table_has_one_home() -> None:
         AssertionError: If the routing table is missing.
     """
     assert isinstance(routing.websocket_urlpatterns, list)
+    assert [str(pattern.pattern) for pattern in routing.websocket_urlpatterns] == [
+        "ws/notifications/"
+    ]

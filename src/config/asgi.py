@@ -10,7 +10,7 @@ import os
 from importlib import import_module
 from typing import TYPE_CHECKING, cast, override
 
-from channels.routing import ProtocolTypeRouter, URLRouter
+from channels.routing import ProtocolTypeRouter
 from django.conf import settings
 from django.contrib.staticfiles.handlers import ASGIStaticFilesHandler
 from django.core.asgi import get_asgi_application
@@ -101,6 +101,6 @@ if settings.API_DOCUMENTATION_ENABLED:
 application = ProtocolTypeRouter(
     {
         "http": http_application,
-        "websocket": URLRouter(routing_module.websocket_urlpatterns),
+        "websocket": routing_module.websocket_application,
     }
 )

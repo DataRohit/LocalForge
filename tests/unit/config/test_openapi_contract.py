@@ -955,11 +955,11 @@ def test_committed_openapi_artifact_is_deterministic_and_current() -> None:
 
 
 @pytest.mark.unit
-def test_websocket_contract_is_versioned_and_explicitly_planned() -> None:
-    """Publish the future socket contract without claiming Phase 5 verification.
+def test_websocket_contract_is_versioned_and_tracks_partial_runtime_verification() -> None:
+    """Publish the socket contract without claiming Phase 5 completion.
 
-    Requires the companion document to mark its state, name the shared envelope, list every
-    planned failure category, and avoid claiming a runtime route already exists.
+    Requires the companion document to name Ticket 38's verified route and shared envelope while
+    retaining every later failure category and reserving full verification for all four tickets.
 
     Arguments:
         None.
@@ -968,13 +968,15 @@ def test_websocket_contract_is_versioned_and_explicitly_planned() -> None:
         None.
 
     Raises:
-        AssertionError: If the planned contract is absent, incomplete, or overstated.
+        AssertionError: If the contract is absent, incomplete, or overstates verification.
     """
     contract = WEBSOCKET_ARTIFACT.read_text(encoding="utf-8")
     required_phrases = {
         "Version: 1",
-        "Status: planned",
-        "not runtime-verified",
+        "Status: partially runtime-verified",
+        "/ws/notifications/",
+        "Ticket 38 runtime-verifies",
+        "fully runtime-verified only after all four tickets pass",
         "WebSocket subprotocol header",
         '"type"',
         '"payload"',
@@ -996,4 +998,4 @@ def test_websocket_contract_is_versioned_and_explicitly_planned() -> None:
     }
 
     assert all(phrase in contract for phrase in required_phrases)
-    assert "runtime-verified" not in contract.replace("not runtime-verified", "")
+    assert "Status: runtime-verified" not in contract

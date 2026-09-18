@@ -76,6 +76,7 @@ Listed so scope creep is recognisable. None exists.
 | `src/config/cache.py` | Resilient general caching |
 | `src/accounts/login_throttle.py` | Authoritative primary-database login admission |
 | `src/accounts/` | The user model, manager, admin, migrations, and first-party account authentication endpoints |
+| `src/notifications/` | Authenticated WebSocket protocol, notification consumer, and user-targeted publisher |
 | `tests/integration/<package>/test_*.py` | One test per service integration, mirroring the package it covers |
 | `tests/conftest.py` | Per-worker namespace every externally allocated name is built from |
 | `tests/unit/conftest.py` | Guard refusing network access from the unit layer |
