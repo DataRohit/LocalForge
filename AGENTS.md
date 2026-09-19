@@ -19,7 +19,41 @@ at.
    phase gate in this platform. The map is at the bottom of this file. Guessing when `docs/` has the answer is the
    most expensive mistake available here — it produces work that has to be redone against the registry.
 3. **Pick up work from [.scratch/](./.scratch/README.md).** 52 tickets across 7 phases, each declaring its
-   blockers. Work the frontier: any ticket whose blockers are done. `/clear` between tickets.
+   blockers. Work the frontier: any ticket whose blockers are done. Keep one multi-ticket run in the same
+   orchestrator thread so ticket evidence and sequencing remain intact.
+
+## Agent topology
+
+The thread receiving the user's messages is the **orchestrator**. It stays independent of repository work: it
+defines the sequence, routes evidence and findings, enforces gates, and reports outcomes. It does not inspect
+implementation files, edit code, run repository commands, or perform audits.
+
+Initialize agents lazily, retain their IDs, and run one **non-overlapping ticket loop**:
+
+1. Launch one **coding agent** for the first ticket and retain its ID for the whole run. It owns discovery,
+   implementation, investigation, remediation, verification, documentation, and commits. Use standard
+   **GPT-5.6 Sol** (`gpt-5.6-sol`) with
+   `reasoning_effort: high` and `context_tier: long_context`.
+2. Wait until the coding agent returns passing verification and a complete audit package. No audit agent runs while
+   coding or remediation is active.
+3. After the first package exists, launch exactly two independent **audit agents concurrently** and retain both IDs
+   for the whole run: one **GPT-5.6 Terra** (`gpt-5.6-terra`) and one standard **GPT-5.6 Sol**
+   (`gpt-5.6-sol`), both with `reasoning_effort: high` and `context_tier: long_context`. Send them the identical
+   complete package. They review the entire ticket and remain read-only.
+4. Wait for both audit reports, then resume the same coding agent with both reports in full. The coding agent
+   validates every finding against repository evidence, remediates every legitimate one, and reruns affected gates.
+5. When remediation materially changes behavior, security, routing, protocol, payloads, close codes, or integration,
+   resume the same two audit agents concurrently with the revised identical package. Repeat steps 4 and 5 until both
+   reports contain no legitimate findings.
+6. Instruct the coding agent to create the ticket's single commit only after the audit loop is clean. Advance to the
+   next ticket only after the commit hash and verification evidence are reported, then resume the same coding agent.
+   The retained auditors stay idle until that agent returns the next complete package.
+
+At any moment, run either one coding agent or one concurrent audit pair, never both. Audit agents do not communicate
+with the coding agent or each other. Replace a permanently failed role once and retain the replacement for the
+remainder of the run.
+
+All repository agents are OpenAI-only. Never use a Fast or non-OpenAI model.
 
 ## Project
 
@@ -51,16 +85,6 @@ Exactly two, and there is no third.
 5. Pinned versions only. `latest` is forbidden, including Dockerfile base images.
 6. Use `uv run` for every Python command. Bare `python` here is 3.12.10, not the required 3.14.6.
 7. Keep the quality gate where it is: 100% branch coverage, Ruff `select = ["ALL"]`, mypy `strict`. Fix the code.
-8. **All repository subagents are OpenAI-only.** Pass `reasoning_effort: high` and
-   `context_tier: long_context` (the 1,000,000-token window) explicitly on every dispatch.
-    - Coding, implementation, remediation, exploration, research, and merge work uses the standard
-      **GPT-5.6 Sol** model (`gpt-5.6-sol`), never a Fast variant.
-    - Audit and review work uses **GPT-5.6 Terra** (`gpt-5.6-terra`) or standard **GPT-5.6 Sol**
-      (`gpt-5.6-sol`). Each ticket receives exactly two independent auditors concurrently: one Terra and one Sol,
-      using the same complete ticket-audit brief and evidence.
-    - Both auditors review the entire ticket; do not divide the review by area. Reconcile both reports against
-      authoritative repository evidence and remediate every legitimate finding before committing.
-    - Do not dispatch a non-OpenAI model.
 
 ## Scope
 
