@@ -16,6 +16,7 @@ from django.http.request import split_domain_port, validate_host
 
 from config.logs import request_identifier
 from config.security import allowed_cors_origin, request_origin_from_scope
+from notifications.delivery import notification_group_name
 
 if TYPE_CHECKING:
     from contextvars import Token
@@ -27,6 +28,9 @@ if TYPE_CHECKING:
         ASGISendEvent,
         Scope,
     )
+
+    from accounts.models import User
+    from notifications.delivery import NotificationChannelEvent
 
 MALFORMED_FRAME_CLOSE_CODE = 4400
 PERMISSION_DENIED_CLOSE_CODE = 4406
@@ -229,23 +233,26 @@ class NotificationConsumer(AsyncWebsocketConsumer):  # type: ignore[misc]
 
     Attributes:
         connection_request_id: Correlation identifier carried by error frames.
+        notification_group: Server-selected group for the authenticated account.
         request_identifier_token: Context token used to restore the previous correlation value.
 
     Members:
         connect: Correlate and accept the connection.
         disconnect: Restore correlation when the connection ends.
+        notification_message: Deliver one user-targeted notification.
         receive: Validate and dispatch one incoming frame.
     """
 
     connection_request_id: str
+    notification_group: str
     request_identifier_token: Token[str]
 
     @override
     async def connect(self) -> None:
         """Correlate and accept one notification connection.
 
-        Creates the request identifier before accepting so every subsequent frame and lifecycle
-        operation can share one safe correlation value.
+        Creates correlation, derives membership only from the authenticated immutable account
+        identifier, and completes the group join before accepting so immediate publication is safe.
 
         Arguments:
             None.
@@ -255,6 +262,9 @@ class NotificationConsumer(AsyncWebsocketConsumer):  # type: ignore[misc]
         """
         self.connection_request_id = str(uuid.uuid4())
         self.request_identifier_token = request_identifier.set(self.connection_request_id)
+        user = cast("User", self.scope["user"])
+        self.notification_group = notification_group_name(user.pk)
+        await self.channel_layer.group_add(self.notification_group, self.channel_name)
         accepted_subprotocol = self.scope.get("accepted_subprotocol")
         await self.accept(
             subprotocol=accepted_subprotocol if isinstance(accepted_subprotocol, str) else None
@@ -264,8 +274,8 @@ class NotificationConsumer(AsyncWebsocketConsumer):  # type: ignore[misc]
     async def disconnect(self, code: int) -> None:
         """Restore the prior correlation context after disconnect.
 
-        Ends the connection-owned context without interpreting the peer's code, leaving no request
-        identifier behind for another task reusing the same event-loop context.
+        Removes the server-selected membership before ending the connection-owned context, leaving
+        neither delivery state nor a request identifier for another task sharing the process.
 
         Arguments:
             code: Close code supplied by the WebSocket transport.
@@ -274,7 +284,42 @@ class NotificationConsumer(AsyncWebsocketConsumer):  # type: ignore[misc]
             None.
         """
         del code
-        request_identifier.reset(self.request_identifier_token)
+        try:
+            await self.channel_layer.group_discard(
+                self.notification_group,
+                self.channel_name,
+            )
+        finally:
+            request_identifier.reset(self.request_identifier_token)
+
+    async def notification_message(self, event: NotificationChannelEvent) -> None:
+        """Deliver one channel-layer notification through the public wire envelope.
+
+        Maps the internal dispatch event to exactly the versioned notification shape and performs
+        one socket send for each group delivery received by this connection.
+
+        Arguments:
+            event: User-targeted channel event from the synchronous publisher.
+
+        Returns:
+            None.
+
+        Raises:
+            None.
+        """
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "notification",
+                    "payload": {
+                        "event": event["event"],
+                        "data": event["data"],
+                    },
+                },
+                allow_nan=False,
+                separators=(",", ":"),
+            )
+        )
 
     @override
     async def receive(

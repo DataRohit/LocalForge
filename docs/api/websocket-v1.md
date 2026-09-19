@@ -4,10 +4,10 @@ Version: 1
 
 Status: partially runtime-verified
 
-Tickets 38 and 39 runtime-verify the route, host and origin admission, envelope validation, JWT subprotocol
-authentication, recoverable unknown-type error, credential rejection codes, malformed-frame close code, and clean
-connection lifecycle. User-targeted delivery, limits, throttling, and the complete failure contract remain planned
-until Tickets 40 and 41 finish.
+Tickets 38 through 40 runtime-verify the route, host and origin admission, envelope validation, JWT subprotocol
+authentication, recoverable unknown-type error, credential rejection codes, malformed-frame close code, clean
+connection lifecycle, and user-targeted delivery within and across processes. Limits, throttling, and the complete
+failure contract remain planned until Ticket 41 finishes.
 
 ## Authentication
 
@@ -37,7 +37,61 @@ Every text message is a JSON object with exactly these top-level fields:
 ```
 
 `"type"` is the stable message discriminator. `"payload"` is an object whose fields are defined by that message
-type. Ticket 40 owns the first notification payload and its cross-process delivery tests.
+type.
+
+## Notification frame
+
+The server delivers an addressed application event in exactly this shape:
+
+```json
+{
+  "type": "notification",
+  "payload": {
+    "event": "account.updated",
+    "data": {
+      "revision": 2
+    }
+  }
+}
+```
+
+`payload.event` is the stable application event name clients branch on. `payload.data` is the event-specific JSON
+object and is always an object, including when the event carries no fields.
+
+Every accepted socket joins one deterministic group named from only the authenticated account's immutable UUID.
+Mutable usernames and email addresses never participate, and no client frame can select, add, or replace group
+membership. The server leaves that group on disconnect.
+
+Synchronous views and tasks call
+`notifications.delivery.publish_notification(user_id, event, data)`. The helper owns group naming and
+channel-layer dispatch. One call delivers the frame once to every socket currently open for that account and to no
+socket owned by another account. Publishing when the account has no open socket, including after its last socket
+disconnects, is a safe no-op. Delivery through the dedicated channel layer is runtime-verified from a separate
+operating-system process.
+
+`user_id` must be an actual `uuid.UUID` instance. Strings, numeric values, bytes, `null`, and objects that merely
+expose a `hex` attribute are rejected with `InvalidNotificationRecipientError` before group derivation or
+channel-layer acquisition. The helper never parses or coerces recipient identifiers.
+
+The helper validates `event` and `data` against the declared JSON-native domain before channel dispatch. Supported
+values inside `data` are strings, finite numbers, booleans, `null`, arrays represented by Python lists, and objects
+represented by dictionaries. The `data` root itself must be a dictionary; arrays and scalar values are supported
+only beneath that root. Tuples and every other undeclared container or value type raise
+`InvalidNotificationDataError`; the helper never silently normalizes them. Every event name, object key, and
+string value must encode as UTF-8, so lone surrogate code points raise the same exception. No socket receives an
+event after any validation failure.
+
+The outbound consumer also disables the encoder's non-standard `NaN` and infinity spellings, so an internal caller
+cannot make it emit a frame a standards-compliant JSON parser rejects.
+
+Every object key at every nesting level must already be a string. The helper rejects integer, float, boolean,
+`null`, and other non-string mapping keys with `InvalidNotificationDataError`; it never applies Python's permissive
+JSON key coercion and never passes the original non-string key to the channel serializer.
+
+Notification integers use the inclusive range `-9223372036854775808` through `18446744073709551615`. These are the
+signed 64-bit minimum and unsigned 64-bit maximum preserved by the configured Channels Redis default MessagePack
+serializer. The first integers outside either boundary raise `InvalidNotificationDataError` before channel
+dispatch, just like other unsupported data, so callers never receive a transport-specific overflow.
 
 Binary frames, invalid JSON, JSON values that are not objects, envelopes with any missing or extra top-level field,
 non-string `"type"` values, and non-object `"payload"` values are malformed frames. No client-originated
@@ -102,9 +156,10 @@ close code remains authoritative.
 Ticket 38 establishes and runtime-verifies the route, envelope handling, exact-origin checks, recoverable
 unknown-type response, malformed-frame behavior, direct ASGI lifecycle, and live Traefik upgrade. Ticket 39
 runtime-verifies Host admission, the subprotocol credential classifications, primary account scope, async-safe
-lookup, query-string refusal, and application-log secrecy. Ticket 40 will define and verify notification delivery.
-Ticket 41 will enforce frame size, connection throttling, error frames, exact close codes, retry semantics, and
-correlated server-error handling.
+lookup, query-string refusal, and application-log secrecy. Ticket 40 runtime-verifies deterministic server-owned
+membership, same-user multi-socket fan-out, user isolation, exact cleanup, safe empty publication, and delivery
+from another operating-system process. Ticket 41 will enforce frame size, connection throttling, error frames,
+exact close codes, retry semantics, and correlated server-error handling.
 
 The document becomes fully runtime-verified only after all four tickets pass.
 

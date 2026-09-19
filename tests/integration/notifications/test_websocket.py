@@ -5,6 +5,7 @@ envelope validation, error responses, and disconnect cleanup are observed togeth
 """
 
 from collections.abc import Awaitable, Callable
+from types import SimpleNamespace
 from typing import cast
 from uuid import UUID
 
@@ -20,6 +21,7 @@ ALLOWED_ORIGIN = b"http://localhost:8080"
 RECEIVE_TIMEOUT_SECONDS = 10
 MALFORMED_FRAME_CLOSE_CODE = 4400
 PERMISSION_DENIED_CLOSE_CODE = 4406
+TEST_ACCOUNT_ID = UUID("018f22e2-7d42-7f74-9d8a-123456789abc")
 
 FrameSender = Callable[[WebsocketCommunicator], Awaitable[None]]
 type JsonValue = bool | int | float | str | list[JsonValue] | dict[str, JsonValue] | None
@@ -69,6 +71,7 @@ async def connect_notification_socket(
         headers=request_headers,
         subprotocols=subprotocols,
     )
+    communicator.scope["user"] = SimpleNamespace(pk=TEST_ACCOUNT_ID)
     connected, detail = cast("tuple[bool, str | int | None]", await communicator.connect())
 
     return communicator, connected, detail

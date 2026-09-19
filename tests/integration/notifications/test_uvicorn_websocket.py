@@ -13,7 +13,9 @@ import sys
 from contextlib import asynccontextmanager
 from http import HTTPStatus
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
+from uuid import UUID
 
 import pytest
 from channels.routing import ProtocolTypeRouter, URLRouter
@@ -26,6 +28,7 @@ from notifications.websocket import ExactWebSocketOriginValidator, NotificationC
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+    from asgiref.typing import ASGI3Application, ASGIReceiveCallable, ASGISendCallable, Scope
     from websockets.typing import Origin
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
@@ -34,16 +37,71 @@ SERVER_STOP_TIMEOUT_SECONDS = 10
 RECEIVE_TIMEOUT_SECONDS = 10
 PERMISSION_DENIED_CLOSE_CODE = 4406
 MALFORMED_FRAME_CLOSE_CODE = 4400
+TEST_ACCOUNT_ID = UUID("018f22e2-7d42-7f74-9d8a-123456789abc")
 
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.services("valkey-channels"),
 ]
 
+
+class FixedAccountScope:
+    """Install one immutable account identity for transport-only live tests.
+
+    Wraps an ASGI application and supplies the authenticated scope state Ticket 39 proves
+    independently, allowing these tests to isolate Uvicorn framing and protocol behavior.
+
+    Attributes:
+        application: Inner transport test application receiving the account scope.
+
+    Members:
+        __call__: Copy one scope, install the account identity, and delegate.
+    """
+
+    def __init__(self, application: ASGI3Application) -> None:
+        """Store the transport test application.
+
+        Keeps authentication replacement local to the test process while the deployed application
+        remains protected by the production JSON web token middleware.
+
+        Arguments:
+            application: Inner ASGI application receiving the test account.
+
+        Returns:
+            None.
+        """
+        self.application = application
+
+    async def __call__(
+        self,
+        scope: Scope,
+        receive: ASGIReceiveCallable,
+        send: ASGISendCallable,
+    ) -> None:
+        """Install the fixed account identity and delegate one connection.
+
+        Copies the incoming scope before adding the immutable primary key so no transport-owned
+        state is mutated in place.
+
+        Arguments:
+            scope: Incoming ASGI WebSocket scope.
+            receive: Callable yielding connection events.
+            send: Callable emitting connection events.
+
+        Returns:
+            None.
+        """
+        authenticated_scope = dict(scope)
+        authenticated_scope["user"] = SimpleNamespace(pk=TEST_ACCOUNT_ID)
+        await self.application(cast("Scope", authenticated_scope), receive, send)
+
+
 live_protocol_application = ProtocolTypeRouter(
     {
         "websocket": ExactWebSocketOriginValidator(
-            URLRouter([path("ws/notifications/", NotificationConsumer.as_asgi())])
+            FixedAccountScope(
+                URLRouter([path("ws/notifications/", NotificationConsumer.as_asgi())])
+            )
         )
     }
 )
