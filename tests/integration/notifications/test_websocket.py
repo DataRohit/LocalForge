@@ -9,9 +9,11 @@ from typing import cast
 from uuid import UUID
 
 import pytest
+from channels.routing import ProtocolTypeRouter, URLRouter
 from channels.testing import WebsocketCommunicator
+from django.urls import path
 
-from config.asgi import application
+from notifications.websocket import ExactWebSocketOriginValidator, NotificationConsumer
 
 ROUTE = "/ws/notifications/"
 ALLOWED_ORIGIN = b"http://localhost:8080"
@@ -22,9 +24,18 @@ PERMISSION_DENIED_CLOSE_CODE = 4406
 FrameSender = Callable[[WebsocketCommunicator], Awaitable[None]]
 type JsonValue = bool | int | float | str | list[JsonValue] | dict[str, JsonValue] | None
 
+application = ProtocolTypeRouter(
+    {
+        "websocket": ExactWebSocketOriginValidator(
+            URLRouter([path("ws/notifications/", NotificationConsumer.as_asgi())])
+        )
+    }
+)
+
 pytestmark = [
     pytest.mark.integration,
-    pytest.mark.services("valkey-channels"),
+    pytest.mark.services("postgres", "valkey-channels"),
+    pytest.mark.django_db(databases=["default", "replica"], transaction=True),
 ]
 
 
@@ -33,6 +44,7 @@ async def connect_notification_socket(
     origin: bytes = ALLOWED_ORIGIN,
     path: str = ROUTE,
     headers: list[tuple[bytes, bytes]] | None = None,
+    subprotocols: list[str] | None = None,
 ) -> tuple[WebsocketCommunicator, bool, str | int | None]:
     """Open the notification socket through the project ASGI application.
 
@@ -43,12 +55,20 @@ async def connect_notification_socket(
         origin: Origin header value used when no explicit header list is supplied.
         path: WebSocket path to request.
         headers: Complete ASGI header list, or ``None`` to build one origin header.
+        subprotocols: Optional WebSocket subprotocol values offered by the client.
 
     Returns:
         Communicator, handshake acceptance flag, and negotiated subprotocol or rejection code.
     """
-    request_headers = headers if headers is not None else [(b"origin", origin)]
-    communicator = WebsocketCommunicator(application, path, headers=request_headers)
+    request_headers = (
+        headers if headers is not None else [(b"host", b"localhost"), (b"origin", origin)]
+    )
+    communicator = WebsocketCommunicator(
+        application,
+        path,
+        headers=request_headers,
+        subprotocols=subprotocols,
+    )
     connected, detail = cast("tuple[bool, str | int | None]", await communicator.connect())
 
     return communicator, connected, detail
@@ -172,9 +192,13 @@ async def test_notification_route_accepts_an_allowed_origin() -> None:
 @pytest.mark.parametrize(
     "headers",
     [
-        [],
-        [(b"origin", b"http://untrusted.invalid")],
-        [(b"origin", ALLOWED_ORIGIN), (b"origin", ALLOWED_ORIGIN)],
+        [(b"host", b"localhost")],
+        [(b"host", b"localhost"), (b"origin", b"http://untrusted.invalid")],
+        [
+            (b"host", b"localhost"),
+            (b"origin", ALLOWED_ORIGIN),
+            (b"origin", ALLOWED_ORIGIN),
+        ],
     ],
     ids=["absent", "unlisted", "repeated"],
 )

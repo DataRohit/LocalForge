@@ -4,9 +4,10 @@ Version: 1
 
 Status: partially runtime-verified
 
-Ticket 38 runtime-verifies the route, exact-origin admission, envelope validation, recoverable unknown-type error,
-malformed-frame close code, and clean connection lifecycle. Authentication, user-targeted delivery, limits,
-throttling, and the complete failure contract remain planned until Tickets 39 through 41 finish.
+Tickets 38 and 39 runtime-verify the route, host and origin admission, envelope validation, JWT subprotocol
+authentication, recoverable unknown-type error, credential rejection codes, malformed-frame close code, and clean
+connection lifecycle. User-targeted delivery, limits, throttling, and the complete failure contract remain planned
+until Tickets 40 and 41 finish.
 
 ## Authentication
 
@@ -14,8 +15,15 @@ The client presents the same short-lived JWT access credential issued by the RES
 WebSocket subprotocol header. The query string is never an authentication transport. After successful validation,
 the server echoes the accepted subprotocol and places the active account in the connection scope.
 
-The notification socket is available at `/ws/notifications/`. Ticket 38 verifies the direct ASGI route and a live
-handshake through Traefik. Authentication remains planned until Ticket 39.
+The credential is the sole offered subprotocol. An absent list is `credential_absent`; multiple syntactically valid
+values, a refresh token, a password-revoked access token, or an otherwise invalid access token are
+`credential_malformed`. A syntactically invalid subprotocol header, including a non-ASCII value, is rejected by the
+pinned Uvicorn transport with HTTP `400` before ASGI dispatch. Account lookup uses the authoritative primary database
+through Channels' database-safe async wrapper. Inactive and unknown or deleted accounts remain distinct close
+classifications.
+
+The notification socket is available at `/ws/notifications/`. Tickets 38 and 39 verify the direct ASGI route,
+configured Host and Origin admission, subprotocol echo, and a live handshake through Traefik.
 
 ## Message envelope
 
@@ -69,7 +77,7 @@ All application close codes use the WebSocket private-use range.
 | ---: | --- | --- | --- |
 | 4400 | `malformed_frame` | A binary frame, invalid JSON, or structurally invalid envelope was received. | Fix the frame before retrying |
 | 4401 | `credential_absent` | No JWT subprotocol credential was supplied. | Obtain a credential before retrying |
-| 4402 | `credential_malformed` | The supplied credential cannot be decoded or authenticated. | Replace the credential before retrying |
+| 4402 | `credential_malformed` | The supplied credential is ambiguous, invalid, the wrong token type, or revoked by a password change. | Replace the credential before retrying |
 | 4403 | `credential_expired` | The supplied JWT access credential expired. | Refresh authentication, then retry |
 | 4404 | `account_inactive` | The credential resolves to an inactive account. | Do not retry until account activation |
 | 4405 | `account_not_found` | The credential names an unknown or deleted account. | Stop retrying with this credential |
@@ -81,18 +89,22 @@ All application close codes use the WebSocket private-use range.
 Ticket 38 runtime-verifies `4400` for every malformed-frame category above and `4406` for an absent or unlisted
 origin. Repeated `Origin` fields are syntactically invalid to the pinned Uvicorn WebSocket transport and are rejected
 with HTTP `400` before ASGI dispatch, so no application close frame can exist for that case. The other close codes
-remain planned. Authentication rejection closes the handshake because no trusted connection exists for an error
-frame. `malformed_frame`, `frame_too_large`, and `server_error` close because continuing cannot safely preserve
-protocol state. Ticket 41 may send a final error frame before closing only where the framework can do so reliably,
-but the close code remains authoritative.
+for frame limits and connection throttling remain planned. Ticket 39 runtime-verifies `4401` through `4405`, plus
+`4500` when authoritative account lookup is unavailable. Authentication and admission rejection complete only the
+minimum handshake needed to deliver the private close code; the protected router is never invoked and no application
+session is established.
+`malformed_frame`, `frame_too_large`, and `server_error` close because continuing cannot safely preserve protocol
+state. Ticket 41 may send a final error frame before closing only where the framework can do so reliably, but the
+close code remains authoritative.
 
 ## Verification state
 
 Ticket 38 establishes and runtime-verifies the route, envelope handling, exact-origin checks, recoverable
-unknown-type response, malformed-frame behavior, direct ASGI lifecycle, and live Traefik upgrade. Ticket 39 will
-verify the subprotocol credential classifications and prove credentials never enter logs. Ticket 40 will define and
-verify notification delivery. Ticket 41 will enforce frame size, connection throttling, error frames, exact close
-codes, retry semantics, and correlated server-error handling.
+unknown-type response, malformed-frame behavior, direct ASGI lifecycle, and live Traefik upgrade. Ticket 39
+runtime-verifies Host admission, the subprotocol credential classifications, primary account scope, async-safe
+lookup, query-string refusal, and application-log secrecy. Ticket 40 will define and verify notification delivery.
+Ticket 41 will enforce frame size, connection throttling, error frames, exact close codes, retry semantics, and
+correlated server-error handling.
 
 The document becomes fully runtime-verified only after all four tickets pass.
 

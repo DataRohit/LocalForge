@@ -16,8 +16,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import pytest
+from channels.routing import ProtocolTypeRouter, URLRouter
+from django.urls import path
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosedError
+
+from notifications.websocket import ExactWebSocketOriginValidator, NotificationConsumer
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -35,6 +39,14 @@ pytestmark = [
     pytest.mark.integration,
     pytest.mark.services("valkey-channels"),
 ]
+
+live_protocol_application = ProtocolTypeRouter(
+    {
+        "websocket": ExactWebSocketOriginValidator(
+            URLRouter([path("ws/notifications/", NotificationConsumer.as_asgi())])
+        )
+    }
+)
 
 
 def worker_server_port(worker_id: str) -> int:
@@ -94,7 +106,12 @@ async def wait_for_server(process: subprocess.Popen[str], port: int) -> None:
 
 
 @asynccontextmanager
-async def running_uvicorn(worker_id: str) -> AsyncIterator[str]:
+async def running_uvicorn(
+    worker_id: str,
+    application_target: str = (
+        "tests.integration.notifications.test_uvicorn_websocket:live_protocol_application"
+    ),
+) -> AsyncIterator[str]:
     """Run the pinned Uvicorn WebSocket backend for one test.
 
     Starts the real ASGI entry point with the same sans-I/O backend used by the container, yields
@@ -102,6 +119,7 @@ async def running_uvicorn(worker_id: str) -> AsyncIterator[str]:
 
     Arguments:
         worker_id: Pytest worker identifier used to choose an isolated port.
+        application_target: Import path of the ASGI application the child serves.
 
     Yields:
         Base WebSocket URI for the child server.
@@ -123,7 +141,7 @@ async def running_uvicorn(worker_id: str) -> AsyncIterator[str]:
                 sys.executable,
                 "-m",
                 "uvicorn",
-                "config.asgi:application",
+                application_target,
                 "--app-dir",
                 "src",
                 "--host",
@@ -160,7 +178,12 @@ async def running_uvicorn(worker_id: str) -> AsyncIterator[str]:
             raise AssertionError(message) from error
 
 
-async def observed_close_code(uri: str, *, origin: str, frame: str | None = None) -> int:
+async def observed_close_code(
+    uri: str,
+    *,
+    origin: str,
+    frame: str | None = None,
+) -> int:
     """Return the close code a real client observes from Uvicorn.
 
     Connects with one origin, optionally sends a literal frame, and waits for the deployed server
@@ -239,6 +262,51 @@ async def repeated_origin_status(uri: str) -> int:
     return int(status_line.split()[1])
 
 
+async def invalid_subprotocol_status(uri: str) -> int:
+    """Return Uvicorn's status for a syntactically invalid subprotocol.
+
+    Sends a non-ASCII protocol byte through a raw handshake so the pinned transport parser, rather
+    than a client library or ASGI communicator, owns the rejection under test.
+
+    Arguments:
+        uri: Complete WebSocket URI served by the child process.
+
+    Returns:
+        HTTP status code returned before ASGI dispatch.
+
+    Raises:
+        AssertionError: If the transport does not return a complete HTTP response.
+    """
+    port = int(uri.split(":", maxsplit=2)[2].split("/", maxsplit=1)[0])
+    reader, writer = await asyncio.open_connection("127.0.0.1", port)
+    request = (
+        "GET /ws/notifications/ HTTP/1.1\r\n"
+        f"Host: 127.0.0.1:{port}\r\n"
+        "Upgrade: websocket\r\n"
+        "Connection: Upgrade\r\n"
+        "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+        "Sec-WebSocket-Version: 13\r\n"
+        "Origin: http://localhost:8080\r\n"
+        "Sec-WebSocket-Protocol: invalid-\N{LATIN SMALL LETTER Y WITH DIAERESIS}\r\n"
+        "\r\n"
+    )
+
+    try:
+        writer.write(request.encode("latin-1"))
+        await writer.drain()
+        response = await asyncio.wait_for(
+            reader.readuntil(b"\r\n\r\n"),
+            timeout=RECEIVE_TIMEOUT_SECONDS,
+        )
+    finally:
+        writer.close()
+        await writer.wait_closed()
+
+    status_line = response.split(b"\r\n", maxsplit=1)[0]
+
+    return int(status_line.split()[1])
+
+
 @pytest.mark.asyncio
 async def test_uvicorn_exposes_origin_rejections(worker_id: str) -> None:
     """Deliver both deployed origin rejection forms through the real server.
@@ -261,6 +329,28 @@ async def test_uvicorn_exposes_origin_rejections(worker_id: str) -> None:
 
     assert origin_code == PERMISSION_DENIED_CLOSE_CODE
     assert ambiguous_origin_status == HTTPStatus.BAD_REQUEST
+
+
+@pytest.mark.asyncio
+async def test_uvicorn_rejects_invalid_subprotocol_before_authentication(worker_id: str) -> None:
+    """Reject non-ASCII subprotocol syntax before the production ASGI application.
+
+    Serves the deployed authentication stack and proves the pinned transport returns HTTP ``400``
+    before middleware can classify or log the invalid header.
+
+    Arguments:
+        worker_id: Pytest worker identifier isolating the child listener.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the invalid header reaches ASGI or receives another status.
+    """
+    async with running_uvicorn(worker_id, "config.asgi:application") as uri:
+        status = await invalid_subprotocol_status(uri)
+
+    assert status == HTTPStatus.BAD_REQUEST
 
 
 @pytest.mark.asyncio

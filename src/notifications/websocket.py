@@ -11,6 +11,8 @@ import uuid
 from typing import TYPE_CHECKING, Any, cast, override
 
 from channels.generic.websocket import AsyncWebsocketConsumer
+from django.conf import settings
+from django.http.request import split_domain_port, validate_host
 
 from config.logs import request_identifier
 from config.security import allowed_cors_origin, request_origin_from_scope
@@ -158,6 +160,67 @@ class ExactWebSocketOriginValidator:
         await self.application(scope, receive, send)
 
 
+class ExactWebSocketHostValidator:
+    """Admit WebSocket handshakes addressed to one allowed Django host.
+
+    Wraps an ASGI application and applies Django's host-pattern semantics to one unambiguous Host
+    header before origin or credential processing can reach the protected router.
+
+    Attributes:
+        application: Inner WebSocket admission stack reached after host validation.
+
+    Members:
+        __call__: Validate one connection host and delegate or close it.
+    """
+
+    def __init__(self, application: ASGI3Application) -> None:
+        """Store the WebSocket application protected by host admission.
+
+        Keeps the host policy at one outer seam so every socket follows the same configured
+        ``ALLOWED_HOSTS`` contract as HTTP without duplicating checks in consumers.
+
+        Arguments:
+            application: Inner ASGI application to call after successful admission.
+
+        Returns:
+            None.
+        """
+        self.application = application
+
+    async def __call__(
+        self,
+        scope: Scope,
+        receive: ASGIReceiveCallable,
+        send: ASGISendCallable,
+    ) -> None:
+        """Validate the connection host before origin and authentication.
+
+        Requires one syntactically valid Host header matching Django's configured allowlist and
+        otherwise delivers the authorization close code without decoding a credential.
+
+        Arguments:
+            scope: Incoming ASGI WebSocket scope.
+            receive: Callable yielding connection events.
+            send: Callable emitting connection events.
+
+        Returns:
+            None.
+        """
+        values = [
+            value
+            for name, value in cast("list[tuple[bytes, bytes]]", scope.get("headers", []))
+            if name.lower() == b"host"
+        ]
+        host = values[0].decode("latin-1") if len(values) == 1 else ""
+        domain, _ = split_domain_port(host.lower())
+        allowed_hosts = cast("list[str]", settings.ALLOWED_HOSTS)
+        if not domain or not validate_host(domain, allowed_hosts):
+            await close_rejected_handshake(receive, send, PERMISSION_DENIED_CLOSE_CODE)
+            return
+
+        await self.application(scope, receive, send)
+
+
 class NotificationConsumer(AsyncWebsocketConsumer):  # type: ignore[misc]
     """Serve the notification protocol over one asynchronous WebSocket connection.
 
@@ -192,7 +255,10 @@ class NotificationConsumer(AsyncWebsocketConsumer):  # type: ignore[misc]
         """
         self.connection_request_id = str(uuid.uuid4())
         self.request_identifier_token = request_identifier.set(self.connection_request_id)
-        await self.accept()
+        accepted_subprotocol = self.scope.get("accepted_subprotocol")
+        await self.accept(
+            subprotocol=accepted_subprotocol if isinstance(accepted_subprotocol, str) else None
+        )
 
     @override
     async def disconnect(self, code: int) -> None:
