@@ -66,6 +66,7 @@ def environment(directory: Path) -> dict[str, str]:
         "LOCALFORGE_WAIT_TIMEOUT": "5",
         "PROMETHEUS_MULTIPROC_DIR": str(directory / "prometheus"),
         "UVICORN_WORKERS": "3",
+        "UVICORN_WEBSOCKET_MAX_SIZE_BYTES": "131072",
     }
 
 
@@ -336,6 +337,7 @@ def test_metrics_are_aggregated_across_workers_without_plain_access_logs(tools: 
     assert "--no-access-log" in metrics
     assert "--log-level warning" in application
     assert "--log-level warning" in metrics
+    assert "--ws websockets-sansio --ws-max-size 131072" in application
     assert "--host 10.89.5.10 --port 8001 --workers 1" in metrics
 
 

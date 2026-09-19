@@ -7,16 +7,24 @@ built, so the routing table has one home rather than growing inside the entry po
 from channels.routing import URLRouter
 from django.urls import path
 
+from notifications.admission import WebSocketConnectionAdmissionMiddleware
 from notifications.authentication import JWTSubprotocolAuthMiddleware
 from notifications.websocket import (
     ExactWebSocketHostValidator,
     ExactWebSocketOriginValidator,
     NotificationConsumer,
+    WebSocketFailureBoundary,
 )
 
 websocket_urlpatterns = [
     path("ws/notifications/", NotificationConsumer.as_asgi(), name="notification-websocket"),
 ]
-websocket_application = ExactWebSocketHostValidator(
-    ExactWebSocketOriginValidator(JWTSubprotocolAuthMiddleware(URLRouter(websocket_urlpatterns)))
+websocket_application = WebSocketFailureBoundary(
+    ExactWebSocketHostValidator(
+        ExactWebSocketOriginValidator(
+            JWTSubprotocolAuthMiddleware(
+                WebSocketConnectionAdmissionMiddleware(URLRouter(websocket_urlpatterns))
+            )
+        )
+    )
 )

@@ -23,7 +23,7 @@ viable fallback.
 Two CVEs were fixed in Daphne 4.2.2 (2026-06-03), both affecting `< 4.2.2`. Any pin below that is vulnerable:
 
 | CVE | Advisory | Severity | Issue |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | CVE-2026-44545 | GHSA-rrc9-mx66-ffcm | Medium, CVSS 5.3, CWE-770 | Unbounded WebSocket message/frame memory, denial of service |
 | CVE-2026-44546 | GHSA-xh68-hfp5-5x5m | Low, CVSS 3.7, CWE-444 | WebSocket handshake header smuggling via autobahn's `splitlines()` |
 
@@ -38,6 +38,16 @@ changelog does add Python 3.13/3.14 support, but the activity signal alone disqu
 
 The image must install the `websockets` extra; without it Uvicorn accepts no WebSocket upgrade and Channels fails at
 runtime rather than at startup.
+
+Ticket 41 sets Uvicorn's environment-driven assembled-message ceiling to 131,072 bytes through `--ws-max-size`.
+The application contract is separately fixed at 65,536 bytes, so the first range reaches ASGI and receives the
+private `frame_too_large` close while anything above the transport ceiling is rejected by Uvicorn with standard
+close code `1009` before application dispatch.
+
+Uvicorn also owns observable standard outcomes outside the application enumeration: malformed protocol framing
+closes `1002`, invalid UTF-8 text closes `1007`, keepalive timeout closes `1011`, and graceful shutdown or restart
+closes `1012`. Invalid handshake syntax returns HTTP `400`. None can carry a LocalForge private close code or
+request identifier because the transport produces it before or outside ASGI handling.
 
 **Daphne is nevertheless a development dependency.** Measured 2026-09-14 on Channels 4.3.2:
 `channels/testing/__init__.py` imports `ChannelsLiveServerTestCase`, which imports `daphne.testing`, so

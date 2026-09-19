@@ -6,6 +6,7 @@ set -euo pipefail
 WAIT_SERVICES="${LOCALFORGE_WAIT_SERVICES:-postgres}"
 WAIT_TIMEOUT="${LOCALFORGE_WAIT_TIMEOUT:-120}"
 WORKERS="${UVICORN_WORKERS:-2}"
+WEBSOCKET_MAX_SIZE="${UVICORN_WEBSOCKET_MAX_SIZE_BYTES:?WebSocket transport limit is required}"
 child=""
 metrics_child=""
 
@@ -75,7 +76,8 @@ uvicorn config.asgi:application \
   --workers "${WORKERS}" \
   --log-level warning \
   --no-access-log \
-  --ws websockets-sansio &
+  --ws websockets-sansio \
+  --ws-max-size "${WEBSOCKET_MAX_SIZE}" &
 child=$!
 
 set +e

@@ -18,6 +18,8 @@ from django.core.management import call_command
 from django.urls import URLPattern, URLResolver
 from jsonschema.validators import Draft202012Validator  # type: ignore[import-untyped]
 
+from notifications.protocol import WebSocketOutcome
+
 REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[3]
 OPENAPI_ARTIFACT: Final = REPOSITORY_ROOT / "docs" / "api" / "openapi-v1.yaml"
 WEBSOCKET_ARTIFACT: Final = REPOSITORY_ROOT / "docs" / "api" / "websocket-v1.md"
@@ -955,11 +957,11 @@ def test_committed_openapi_artifact_is_deterministic_and_current() -> None:
 
 
 @pytest.mark.unit
-def test_websocket_contract_is_versioned_and_tracks_partial_runtime_verification() -> None:
-    """Publish the socket contract without claiming Phase 5 completion.
+def test_websocket_contract_is_versioned_and_runtime_verified() -> None:
+    """Publish the complete runtime-verified socket contract.
 
-    Requires the companion document to name Ticket 38's verified route and shared envelope while
-    retaining every later failure category and reserving full verification for all four tickets.
+    Requires the companion document to name the route, shared envelope, every failure category,
+    both message limits, connection admission, and completed four-ticket verification.
 
     Arguments:
         None.
@@ -973,29 +975,21 @@ def test_websocket_contract_is_versioned_and_tracks_partial_runtime_verification
     contract = WEBSOCKET_ARTIFACT.read_text(encoding="utf-8")
     required_phrases = {
         "Version: 1",
-        "Status: partially runtime-verified",
+        "Status: runtime-verified",
         "/ws/notifications/",
-        "Ticket 38 runtime-verifies",
-        "fully runtime-verified only after all four tickets pass",
+        "All four WebSocket tickets are runtime-verified.",
         "WebSocket subprotocol header",
+        "65,536 bytes",
+        "131,072 bytes",
+        "30/minute",
+        "epoch-aligned fixed window",
         '"type"',
         '"payload"',
         '"code"',
         '"message"',
         '"details"',
         '"request_id"',
-        "credential_absent",
-        "credential_malformed",
-        "credential_expired",
-        "account_inactive",
-        "account_not_found",
-        "permission_denied",
-        "malformed_frame",
-        "unknown_message_type",
-        "frame_too_large",
-        "connection_throttled",
-        "server_error",
     }
 
     assert all(phrase in contract for phrase in required_phrases)
-    assert "Status: runtime-verified" not in contract
+    assert all(outcome.code in contract for outcome in WebSocketOutcome)

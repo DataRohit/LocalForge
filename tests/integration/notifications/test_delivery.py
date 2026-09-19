@@ -21,6 +21,7 @@ from redis import asyncio as aioredis
 from accounts.jwt_authentication import PrimaryRefreshToken
 from config.asgi import application
 from notifications.delivery import JsonValue, notification_group_name, publish_notification
+from notifications.protocol import WebSocketOutcome
 
 if TYPE_CHECKING:
     from accounts.models import User
@@ -268,7 +269,7 @@ async def test_client_cannot_select_another_accounts_group(
         )
         rejection = await communicator.receive_json_from(timeout=RECEIVE_TIMEOUT_SECONDS)
         assert rejection["type"] == "error"
-        assert rejection["payload"]["code"] == "unknown_message_type"
+        assert rejection["payload"]["code"] == WebSocketOutcome.PERMISSION_DENIED.code
 
         await asyncio.to_thread(
             publish_notification,

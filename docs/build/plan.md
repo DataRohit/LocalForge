@@ -256,7 +256,7 @@ One at a time, each with its own test in `tests/integration/`. A batched failure
 | --- | --- | --- | --- |
 | 6a | PostgreSQL primary | `docker exec django-uv5n2 python manage.py migrate --check`, then `showmigrations` | exit `0`, nothing unapplied |
 | 6b | Replica routing | A test asserting reads use `replica` and writes use `default` | routing correct; `allow_migrate` returns `True` only for `default` |
-| 6c | Channels over Valkey | Two `WebsocketCommunicator` instances in one group | a message sent by one arrives at the other |
+| 6c | Channels over Valkey | Two authenticated sockets in one user group, plus cross-process admission and delivery checks | one publication reaches both; connection rate is shared |
 | 6d | Celery | `docker exec celery-worker-cw8rt celery -A config inspect ping`, then a round-trip task | `pong`, and the task completes |
 | 6e | Cache | Write and read through `django.core.cache`; `valkey-cli -n 0 DBSIZE` | value round-trips; DB 0 non-empty and DB 1 untouched |
 | 6f | Object storage | Upload through Django's storage API, fetch back from the S3 endpoint | byte-identical |

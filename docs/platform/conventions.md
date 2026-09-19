@@ -200,6 +200,9 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `DJANGO_API_AUTHENTICATED_READ_THROTTLE_RATE` | `django-uv5n2` | shared cache-backed account and address-account composite scope for authenticated reads | `120/minute` | no | yes |
 | `DJANGO_API_ANONYMOUS_THROTTLE_RATE` | `django-uv5n2` | shared cache-backed address scope for anonymous API use | `60/minute` | no | yes |
 | `DJANGO_API_BOUNDARY_ADDRESS_THROTTLE_RATE` | `django-uv5n2` | broad pre-framework source scope for every versioned API request | `600/minute` | no | yes |
+| `DJANGO_WEBSOCKET_APPLICATION_MAX_MESSAGE_BYTES` | `django-uv5n2` | exact complete-message ceiling enforced by the notification consumer before frame decoding | `65536` | no | yes |
+| `DJANGO_WEBSOCKET_CONNECTION_THROTTLE_RATE` | `django-uv5n2` | shared authenticated-user WebSocket connection admissions per epoch-aligned fixed window | `30/minute` | no | yes |
+| `DJANGO_WEBSOCKET_CONNECTION_ADMISSION_TIMEOUT_SECONDS` | `django-uv5n2` | maximum wait for the authoritative shared connection-admission decision | `5` | no | yes |
 | `DJANGO_JWT_ACCESS_TOKEN_LIFETIME_SECONDS` | `django-uv5n2` | JSON web token access lifetime | `300` | no | yes |
 | `DJANGO_JWT_REFRESH_TOKEN_LIFETIME_SECONDS` | `django-uv5n2` | JSON web token refresh lifetime, longer than access | `86400` | no | yes |
 | `DJANGO_TOKEN_LOGIN_ACCOUNT_THROTTLE_RATE` | `django-uv5n2` | strict atomic token-login admissions per primary-resolved account identity in one rolling window | `5/minute` | no | yes |
@@ -222,6 +225,7 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `LOCALFORGE_WAIT_SERVICES` | `django-uv5n2` | services the entrypoint waits for before migrating, space-separated. Deliberately outside a vendor prefix, like the backup schedules | `postgres valkey-cache` | no | no |
 | `LOCALFORGE_WAIT_TIMEOUT` | `django-uv5n2` | seconds the entrypoint waits before giving up on a dependency | `120` | no | no |
 | `UVICORN_WORKERS` | `django-uv5n2` | ASGI worker count | `2` | no | no |
+| `UVICORN_WEBSOCKET_MAX_SIZE_BYTES` | `django-uv5n2` | transport-level assembled WebSocket message ceiling, larger than the application contract | `131072` | no | yes |
 | `POSTGRES_DB` | `postgres-pg3ka` | database name | `localforge` | no | yes |
 | `POSTGRES_USER` | `postgres-pg3ka` | superuser role | `localforge_app` | no | yes |
 | `POSTGRES_PASSWORD` | `postgres-pg3ka` | superuser password | `<GENERATED>` | **yes** | yes |

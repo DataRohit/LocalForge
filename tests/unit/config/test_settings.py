@@ -29,6 +29,9 @@ if TYPE_CHECKING:
 
 SETTINGS_DIRECTORY = Path(str(settings_package.__file__)).resolve().parent
 BODY_LIMIT_PROBE_BYTES = 2048
+WEBSOCKET_APPLICATION_LIMIT_BYTES = 64 * 1024
+WEBSOCKET_TRANSPORT_LIMIT_BYTES = 128 * 1024
+WEBSOCKET_ADMISSION_TIMEOUT_SECONDS = 5.0
 
 REQUIRED_ENVIRONMENT = {
     "DJANGO_SECRET_KEY": secrets.token_urlsafe(32),
@@ -45,6 +48,10 @@ REQUIRED_ENVIRONMENT = {
     "DJANGO_API_AUTHENTICATED_READ_THROTTLE_RATE": "120/minute",
     "DJANGO_API_ANONYMOUS_THROTTLE_RATE": "60/minute",
     "DJANGO_API_BOUNDARY_ADDRESS_THROTTLE_RATE": "600/minute",
+    "DJANGO_WEBSOCKET_APPLICATION_MAX_MESSAGE_BYTES": "65536",
+    "DJANGO_WEBSOCKET_CONNECTION_THROTTLE_RATE": "30/minute",
+    "DJANGO_WEBSOCKET_CONNECTION_ADMISSION_TIMEOUT_SECONDS": "5",
+    "UVICORN_WEBSOCKET_MAX_SIZE_BYTES": "131072",
     "DJANGO_JWT_ACCESS_TOKEN_LIFETIME_SECONDS": "300",
     "DJANGO_JWT_REFRESH_TOKEN_LIFETIME_SECONDS": "86400",
     "DJANGO_JWT_SIGNING_KEY": secrets.token_urlsafe(32),
@@ -517,6 +524,83 @@ def test_api_request_body_limit_comes_from_the_environment() -> None:
 
     assert module.API_REQUEST_BODY_MAX_BYTES == BODY_LIMIT_PROBE_BYTES
     assert module.FILE_UPLOAD_MAX_MEMORY_SIZE == BODY_LIMIT_PROBE_BYTES
+
+
+@pytest.mark.unit
+def test_websocket_limits_and_admission_come_from_the_environment() -> None:
+    """Load the exact application, transport, rate, and timeout settings.
+
+    Executes shared settings against the committed defaults so the runtime and protocol contract
+    cannot drift into literals owned only by the entrypoint or consumer.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any WebSocket setting is absent or misparsed.
+    """
+    module = _execute_module_in_isolation("base", REQUIRED_ENVIRONMENT)
+
+    assert module.WEBSOCKET_APPLICATION_MAX_MESSAGE_BYTES == WEBSOCKET_APPLICATION_LIMIT_BYTES
+    assert module.UVICORN_WEBSOCKET_MAX_SIZE_BYTES == WEBSOCKET_TRANSPORT_LIMIT_BYTES
+    assert module.WEBSOCKET_CONNECTION_THROTTLE_RATE == "30/minute"
+    assert (
+        module.WEBSOCKET_CONNECTION_ADMISSION_TIMEOUT_SECONDS == WEBSOCKET_ADMISSION_TIMEOUT_SECONDS
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        (
+            {"DJANGO_WEBSOCKET_APPLICATION_MAX_MESSAGE_BYTES": "65535"},
+            "must be exactly 65536",
+        ),
+        (
+            {"UVICORN_WEBSOCKET_MAX_SIZE_BYTES": "65536"},
+            "must exceed DJANGO_WEBSOCKET_APPLICATION_MAX_MESSAGE_BYTES",
+        ),
+        (
+            {"DJANGO_WEBSOCKET_CONNECTION_THROTTLE_RATE": "none"},
+            "must be a positive count/period",
+        ),
+        (
+            {"DJANGO_WEBSOCKET_CONNECTION_ADMISSION_TIMEOUT_SECONDS": "0"},
+            "must be finite and positive",
+        ),
+    ],
+    ids=[
+        "application-limit",
+        "transport-limit",
+        "connection-rate",
+        "admission-timeout",
+    ],
+)
+def test_invalid_websocket_settings_fail_at_startup(
+    overrides: dict[str, str],
+    message: str,
+) -> None:
+    """Reject every invalid WebSocket operational setting during import.
+
+    Executes shared settings with one invalid value at a time so application startup cannot defer
+    a limit, rate, or timeout configuration error until the first connection.
+
+    Arguments:
+        overrides: Invalid environment values applied to the complete settings environment.
+        message: Stable configuration error fragment expected from settings.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If invalid configuration reaches runtime.
+    """
+    with pytest.raises(ImproperlyConfigured, match=message):
+        _execute_module_in_isolation("base", REQUIRED_ENVIRONMENT | overrides)
 
 
 @pytest.mark.unit

@@ -175,6 +175,12 @@ outage, but `/health/` reports `readiness: not_ready` and returns `503`. Compose
 so an unavailable instance leaves proxy rotation without being killed or restarted merely because one dependency
 is temporarily down.
 
+**WebSocket admission uses the dedicated channel instance.** After Host, Origin, and JSON web token authentication,
+the application applies the configured per-account fixed-window connection rate through one atomic Valkey script.
+All Django workers share the count; store timeout or loss fails closed. Complete messages are limited to 65,536
+bytes in the application, while Uvicorn independently rejects messages above its configured 131,072-byte transport
+ceiling before ASGI dispatch.
+
 ## 3. Dashboards
 
 Every service either exposes a native UI or is given a companion.

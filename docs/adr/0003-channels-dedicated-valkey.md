@@ -34,8 +34,13 @@ fork is carried.
 
 The layer is configured with a **host list** rather than a single address, so moving to a clustered or replicated
 instance later is a configuration change and not a code change, and with a `prefix` of `localforge`, so every
-channel and group pub/sub name on the instance is attributable to this application. The pub/sub layer keeps no
-Redis keys, so an operator looks for these with `PUBSUB CHANNELS`, not `SCAN`.
+channel and group pub/sub name on the instance is attributable to this application. The pub/sub layer itself keeps
+no Redis keys, so an operator looks for those with `PUBSUB CHANNELS`, not `SCAN`.
+
+Ticket 41 also places bounded `localforge:websocket-admission:<uuid>` counters on this dedicated instance. They use
+an atomic server-timed fixed-window script and expire just after their active window; unlike group subscriptions,
+these admission keys are visible through `SCAN`. Keeping them beside channel traffic makes connection admission
+shared across workers without exposing it to cache eviction.
 
 ## Subscribing is made a delivery barrier
 

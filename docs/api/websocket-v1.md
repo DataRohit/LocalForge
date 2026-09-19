@@ -2,12 +2,10 @@
 
 Version: 1
 
-Status: partially runtime-verified
+Status: runtime-verified
 
-Tickets 38 through 40 runtime-verify the route, host and origin admission, envelope validation, JWT subprotocol
-authentication, recoverable unknown-type error, credential rejection codes, malformed-frame close code, clean
-connection lifecycle, and user-targeted delivery within and across processes. Limits, throttling, and the complete
-failure contract remain planned until Ticket 41 finishes.
+Tickets 38 through 41 runtime-verify the route, admission policies, envelope validation, authentication,
+user-targeted delivery, size limits, throttling, failure containment, and every application error and close outcome.
 
 ## Authentication
 
@@ -95,8 +93,37 @@ dispatch, just like other unsupported data, so callers never receive a transport
 
 Binary frames, invalid JSON, JSON values that are not objects, envelopes with any missing or extra top-level field,
 non-string `"type"` values, and non-object `"payload"` values are malformed frames. No client-originated
-application message type is accepted in version 1. A syntactically valid envelope with an unsupported `"type"`
-receives an error frame while the connection remains open.
+application operation is accepted in version 1. A syntactically valid envelope with an unsupported `"type"`
+receives an error frame while the connection remains open. A `"subscribe"` message is recognized only to return
+the recoverable `permission_denied` error: membership remains server-owned and the socket stays open.
+
+## Message size limits
+
+The application accepts complete text or binary messages up to exactly 65,536 bytes. Text size is its UTF-8 byte
+length. The first byte above that boundary closes with `frame_too_large` before binary classification, JSON
+decoding, or message dispatch. A message exactly at the boundary continues through ordinary protocol validation.
+
+Uvicorn independently limits an assembled WebSocket message to 131,072 bytes through
+`UVICORN_WEBSOCKET_MAX_SIZE_BYTES`. A message at that boundary reaches ASGI and is therefore closed by the smaller
+application limit. The first byte above the transport limit is rejected by Uvicorn with standard WebSocket close
+code `1009` before ASGI receives a message, so no application error frame or private close code can exist for that
+case.
+
+## Connection admission
+
+After Host, Origin, and JWT authentication but before consumer startup or group membership, the server records one
+connection attempt for the authenticated immutable user ID. The default
+`DJANGO_WEBSOCKET_CONNECTION_THROTTLE_RATE` is `30/minute`.
+
+The policy is an epoch-aligned fixed window using time from the dedicated Channels Valkey instance. At most thirty
+authenticated attempts are admitted in each sixty-second window; rejected attempts do not increment the count.
+Disconnecting does not refund an attempt. The key expires just after the active window boundary, and the first
+attempt in the next window resets the stored window and count. The same atomic script and key are shared by every
+Django worker and process.
+
+Admission has the separate `DJANGO_WEBSOCKET_CONNECTION_ADMISSION_TIMEOUT_SECONDS` bound. Limit exhaustion closes
+with `connection_throttled`. Timeout or channel-store failure is logged with the connection request identifier and
+fails closed with `server_error`; the server never silently admits without shared state.
 
 ## Error frame
 
@@ -116,52 +143,95 @@ Recoverable application errors use the REST error envelope inside the message pa
 }
 ```
 
-The error-frame codes are:
+The following table is rendered from `notifications.protocol.WebSocketOutcome`, the application authority:
 
-| Code | Meaning | Connection |
+| Code | Message | Connection |
 | --- | --- | --- |
-| `unknown_message_type` | The JSON object names no supported client message type. | Remains open; runtime-verified by Ticket 38 |
-| `permission_denied` | The authenticated account may not perform a recoverable operation. | Remains open |
+| `unknown_message_type` | The message type is not supported. | Remains open |
+| `permission_denied` | The operation is not permitted. | Remains open |
+
+A prohibited client-selected subscription returns:
+
+```json
+{
+  "type": "error",
+  "payload": {
+    "code": "permission_denied",
+    "message": "The operation is not permitted.",
+    "details": {
+      "type": ["The authenticated account cannot perform this operation."]
+    },
+    "request_id": "00000000-0000-4000-8000-000000000000"
+  }
+}
+```
 
 ## Close codes
 
-All application close codes use the WebSocket private-use range.
+All application close codes use the WebSocket private-use range. The table is rendered from
+`notifications.protocol.WebSocketOutcome`, including its retry guidance:
 
 | Close code | Stable code | Meaning | Retry guidance |
 | ---: | --- | --- | --- |
-| 4400 | `malformed_frame` | A binary frame, invalid JSON, or structurally invalid envelope was received. | Fix the frame before retrying |
-| 4401 | `credential_absent` | No JWT subprotocol credential was supplied. | Obtain a credential before retrying |
-| 4402 | `credential_malformed` | The supplied credential is ambiguous, invalid, the wrong token type, or revoked by a password change. | Replace the credential before retrying |
-| 4403 | `credential_expired` | The supplied JWT access credential expired. | Refresh authentication, then retry |
-| 4404 | `account_inactive` | The credential resolves to an inactive account. | Do not retry until account activation |
-| 4405 | `account_not_found` | The credential names an unknown or deleted account. | Stop retrying with this credential |
-| 4406 | `permission_denied` | Origin or connection authorization failed. | Retry only after correcting authorization |
-| 4407 | `frame_too_large` | The received frame exceeded the configured limit. | Reduce the frame before retrying |
-| 4408 | `connection_throttled` | The account exceeded the configured connection rate. | Retry after the server-defined interval |
-| 4500 | `server_error` | An unexpected consumer failure was contained and correlated. | Retry with bounded backoff |
+| 4400 | `malformed_frame` | The frame is malformed. | Fix the frame before reconnecting. |
+| 4401 | `credential_absent` | A credential is required. | Obtain an access credential before reconnecting. |
+| 4402 | `credential_malformed` | The credential is invalid. | Replace the credential before reconnecting. |
+| 4403 | `credential_expired` | The credential has expired. | Refresh authentication before reconnecting. |
+| 4404 | `account_inactive` | The account is inactive. | Reconnect only after the account is activated. |
+| 4405 | `account_not_found` | The account does not exist. | Do not reconnect with this credential. |
+| 4406 | `permission_denied` | The operation is not permitted. | Correct authorization before retrying. |
+| 4407 | `frame_too_large` | The frame is too large. | Reduce the frame before reconnecting. |
+| 4408 | `connection_throttled` | The connection rate limit was exceeded. | Retry after the active fixed window expires. |
+| 4500 | `server_error` | The server could not continue the connection. | Reconnect with bounded backoff. |
 
-Ticket 38 runtime-verifies `4400` for every malformed-frame category above and `4406` for an absent or unlisted
-origin. Repeated `Origin` fields are syntactically invalid to the pinned Uvicorn WebSocket transport and are rejected
-with HTTP `400` before ASGI dispatch, so no application close frame can exist for that case. The other close codes
-for frame limits and connection throttling remain planned. Ticket 39 runtime-verifies `4401` through `4405`, plus
-`4500` when authoritative account lookup is unavailable. Authentication and admission rejection complete only the
-minimum handshake needed to deliver the private close code; the protected router is never invoked and no application
-session is established.
-`malformed_frame`, `frame_too_large`, and `server_error` close because continuing cannot safely preserve protocol
-state. Ticket 41 may send a final error frame before closing only where the framework can do so reliably, but the
-close code remains authoritative.
+### Transport-owned outcomes
+
+The pinned Uvicorn `websockets-sansio` transport can reject a connection or close an established socket without an
+application error frame. These outcomes remain separate from `WebSocketOutcome`, which is the authority only for
+LocalForge application codes.
+
+| Outcome | Meaning | Retry guidance |
+| ---: | --- | --- |
+| 1002 | Malformed WebSocket protocol frame | Fix framing before reconnecting. |
+| 1007 | Invalid UTF-8 in a text message | Fix text encoding before reconnecting. |
+| 1009 | Message exceeds the Uvicorn transport limit | Reduce the message before reconnecting. |
+| 1011 | Keepalive ping timeout | Reconnect with bounded backoff and investigate network health. |
+| 1012 | Server shutdown or restart | Reconnect with bounded backoff. |
+| HTTP 400 | Invalid WebSocket handshake syntax | Fix the handshake before reconnecting. |
+| HTTP 404 | Host does not match the Traefik route | Use the configured host before reconnecting. |
+
+Code `1002` includes an unmasked client frame or other framing violation. Code `1007` is emitted while the transport
+decodes a text message, before ASGI receives it. Code `1009` applies above the configured 131,072-byte transport
+limit. Code `1011` is emitted when the client does not answer Uvicorn's keepalive ping within its configured timeout;
+the deployed interval and timeout retain Uvicorn's pinned 20-second defaults. Code `1012` is emitted to established
+sockets during graceful server shutdown or restart.
+
+HTTP `400` includes repeated `Origin` fields and syntactically invalid subprotocol headers rejected during the
+handshake. A Host mismatch at the public Traefik entry point cannot select the application router and returns HTTP
+`404`; a Host mismatch sent directly to Uvicorn reaches application admission and closes `4406`. Transport-owned
+outcomes carry no application request ID and no private application close code because they occur before or outside
+ASGI handling.
+
+Authentication, admission, and authorization rejection complete only enough handshake to deliver the private
+close code; the protected consumer does not start. `malformed_frame`, `frame_too_large`, and `server_error` close
+because continuing cannot safely preserve protocol state.
+
+An unexpected consumer exception is contained by the outer WebSocket failure boundary. The boundary emits only
+`server_error`, logs a fixed message carrying the same UUID request identifier used by error frames, and records no
+exception traceback, credential, JWT, payload, or secret. Consumer group cleanup runs before the boundary closes,
+including exception and cancellation paths. The consumer claims cleanup ownership before awaiting group addition,
+so cancellation after the channel layer records local or remote membership still performs one idempotent discard.
 
 ## Verification state
 
-Ticket 38 establishes and runtime-verifies the route, envelope handling, exact-origin checks, recoverable
-unknown-type response, malformed-frame behavior, direct ASGI lifecycle, and live Traefik upgrade. Ticket 39
-runtime-verifies Host admission, the subprotocol credential classifications, primary account scope, async-safe
-lookup, query-string refusal, and application-log secrecy. Ticket 40 runtime-verifies deterministic server-owned
-membership, same-user multi-socket fan-out, user isolation, exact cleanup, safe empty publication, and delivery
-from another operating-system process. Ticket 41 will enforce frame size, connection throttling, error frames,
-exact close codes, retry semantics, and correlated server-error handling.
+Ticket 38 establishes the route, envelope, origin checks, malformed-frame handling, and live upgrade. Ticket 39
+establishes Host admission, JWT subprotocol classifications, authoritative account scope, query-string refusal,
+and credential secrecy. Ticket 40 establishes deterministic server-owned membership, fan-out, isolation, cleanup,
+strict notification publication, and cross-process delivery. Ticket 41 establishes the central outcome
+enumeration, recoverable permission response, both message limits, shared connection admission, store-failure
+handling, correlated exception containment, and exact cleanup on disconnect, cancellation, and failure.
 
-The document becomes fully runtime-verified only after all four tickets pass.
+All four WebSocket tickets are runtime-verified.
 
 ## Sources
 

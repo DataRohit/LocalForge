@@ -6,6 +6,7 @@ and installs the authenticated user without exposing credentials to URLs or appl
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, cast, override
 from uuid import UUID
 
@@ -19,7 +20,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from rest_framework_simplejwt.utils import get_md5_hash_password
 
 from accounts.models import User
-from notifications.websocket import close_rejected_handshake
+from config.logs import REQUEST_ID_META_KEY
+from notifications.protocol import WebSocketOutcome, close_rejected_handshake
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -31,41 +33,36 @@ if TYPE_CHECKING:
     )
     from rest_framework_simplejwt.tokens import Token
 
-CREDENTIAL_ABSENT_CLOSE_CODE = 4401
-CREDENTIAL_MALFORMED_CLOSE_CODE = 4402
-CREDENTIAL_EXPIRED_CLOSE_CODE = 4403
-ACCOUNT_INACTIVE_CLOSE_CODE = 4404
-ACCOUNT_NOT_FOUND_CLOSE_CODE = 4405
-SERVER_ERROR_CLOSE_CODE = 4500
+logger = logging.getLogger(__name__)
 
 
 class WebSocketAuthenticationError(Exception):
     """Carry one client-visible authentication rejection classification.
 
-    Inherits from ``Exception`` and stores only a close code, deliberately excluding the credential
-    and package exception text so rejection handling cannot leak either into logs.
+    Inherits from ``Exception`` and stores only the central outcome, deliberately excluding the
+    credential and package exception text so rejection handling cannot leak either into logs.
 
     Attributes:
-        close_code: Private-use WebSocket close code returned to the client.
+        outcome: Central WebSocket failure outcome returned to the client.
 
     Members:
         None beyond those inherited from ``Exception``.
     """
 
-    def __init__(self, close_code: int) -> None:
+    def __init__(self, outcome: WebSocketOutcome) -> None:
         """Create one safe authentication rejection.
 
         Retains the machine-readable close classification without an exception message, keeping
         encoded credentials and decoder diagnostics outside representations.
 
         Arguments:
-            close_code: Private-use close code for the rejected connection.
+            outcome: Central authentication rejection outcome.
 
         Returns:
             None.
         """
         super().__init__()
-        self.close_code = close_code
+        self.outcome = outcome
 
 
 class WebSocketJWTAuthentication(JWTAuthentication):
@@ -102,14 +99,14 @@ class WebSocketJWTAuthentication(JWTAuthentication):
             return AccessToken(cast("Token", raw_token))
         except ExpiredTokenError as error:
             expired = AccessToken(cast("Token", raw_token), verify=False)
-            close_code = (
-                CREDENTIAL_EXPIRED_CLOSE_CODE
+            outcome = (
+                WebSocketOutcome.CREDENTIAL_EXPIRED
                 if expired.payload.get(api_settings.TOKEN_TYPE_CLAIM) == AccessToken.token_type
-                else CREDENTIAL_MALFORMED_CLOSE_CODE
+                else WebSocketOutcome.CREDENTIAL_MALFORMED
             )
-            raise WebSocketAuthenticationError(close_code) from error
+            raise WebSocketAuthenticationError(outcome) from error
         except (OSError, OverflowError, TokenError, TypeError, ValueError) as error:
-            raise WebSocketAuthenticationError(CREDENTIAL_MALFORMED_CLOSE_CODE) from error
+            raise WebSocketAuthenticationError(WebSocketOutcome.CREDENTIAL_MALFORMED) from error
 
     @override
     def get_user(self, validated_token: Token) -> User:  # type: ignore[override]
@@ -130,24 +127,24 @@ class WebSocketJWTAuthentication(JWTAuthentication):
         """
         user_id = validated_token.payload.get(api_settings.USER_ID_CLAIM)
         if not isinstance(user_id, str):
-            raise WebSocketAuthenticationError(CREDENTIAL_MALFORMED_CLOSE_CODE)
+            raise WebSocketAuthenticationError(WebSocketOutcome.CREDENTIAL_MALFORMED)
 
         try:
             parsed_user_id = UUID(user_id)
         except ValueError as error:
-            raise WebSocketAuthenticationError(CREDENTIAL_MALFORMED_CLOSE_CODE) from error
+            raise WebSocketAuthenticationError(WebSocketOutcome.CREDENTIAL_MALFORMED) from error
 
         try:
             user = User.objects.using("default").get(**{api_settings.USER_ID_FIELD: parsed_user_id})
         except User.DoesNotExist as error:
-            raise WebSocketAuthenticationError(ACCOUNT_NOT_FOUND_CLOSE_CODE) from error
+            raise WebSocketAuthenticationError(WebSocketOutcome.ACCOUNT_NOT_FOUND) from error
 
         if not user.is_active:
-            raise WebSocketAuthenticationError(ACCOUNT_INACTIVE_CLOSE_CODE)
+            raise WebSocketAuthenticationError(WebSocketOutcome.ACCOUNT_INACTIVE)
 
         expected_password_hash = get_md5_hash_password(user.password)
         if validated_token.payload.get(api_settings.REVOKE_TOKEN_CLAIM) != expected_password_hash:
-            raise WebSocketAuthenticationError(CREDENTIAL_MALFORMED_CLOSE_CODE)
+            raise WebSocketAuthenticationError(WebSocketOutcome.CREDENTIAL_MALFORMED)
 
         return user
 
@@ -191,10 +188,20 @@ class JWTSubprotocolAuthMiddleware(AuthMiddleware):  # type: ignore[misc]
         try:
             await self.resolve_scope(authenticated_scope)
         except WebSocketAuthenticationError as error:
-            await close_rejected_handshake(receive, send, error.close_code)
+            await close_rejected_handshake(receive, send, error.outcome)
             return
         except DjangoDatabaseError:
-            await close_rejected_handshake(receive, send, SERVER_ERROR_CLOSE_CODE)
+            logger.log(
+                logging.ERROR,
+                "websocket authentication store unavailable",
+                extra={
+                    REQUEST_ID_META_KEY: cast(
+                        "str",
+                        authenticated_scope["connection_request_id"],
+                    )
+                },
+            )
+            await close_rejected_handshake(receive, send, WebSocketOutcome.SERVER_ERROR)
             return
 
         await self.inner(authenticated_scope, receive, send)
@@ -218,9 +225,9 @@ class JWTSubprotocolAuthMiddleware(AuthMiddleware):  # type: ignore[misc]
         """
         subprotocols = scope.get("subprotocols")
         if not isinstance(subprotocols, list) or not subprotocols:
-            raise WebSocketAuthenticationError(CREDENTIAL_ABSENT_CLOSE_CODE)
+            raise WebSocketAuthenticationError(WebSocketOutcome.CREDENTIAL_ABSENT)
         if len(subprotocols) != 1 or not isinstance(subprotocols[0], str) or not subprotocols[0]:
-            raise WebSocketAuthenticationError(CREDENTIAL_MALFORMED_CLOSE_CODE)
+            raise WebSocketAuthenticationError(WebSocketOutcome.CREDENTIAL_MALFORMED)
 
         credential = subprotocols[0]
         authentication = WebSocketJWTAuthentication()

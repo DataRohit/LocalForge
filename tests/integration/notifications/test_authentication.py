@@ -8,6 +8,7 @@ import json
 import logging
 from datetime import timedelta
 from typing import TYPE_CHECKING, cast
+from uuid import UUID
 
 import pytest
 from channels.db import database_sync_to_async
@@ -20,7 +21,9 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from accounts.jwt_authentication import PrimaryRefreshToken
 from config.asgi import application
+from config.logs import REQUEST_ID_META_KEY
 from notifications.authentication import JWTSubprotocolAuthMiddleware
+from notifications.protocol import WebSocketOutcome
 from notifications.websocket import ExactWebSocketHostValidator, ExactWebSocketOriginValidator
 
 if TYPE_CHECKING:
@@ -31,14 +34,6 @@ if TYPE_CHECKING:
 ROUTE = "/ws/notifications/"
 HEADERS = [(b"host", b"localhost"), (b"origin", b"http://localhost:8080")]
 RECEIVE_TIMEOUT_SECONDS = 10
-CREDENTIAL_ABSENT_CLOSE_CODE = 4401
-CREDENTIAL_MALFORMED_CLOSE_CODE = 4402
-CREDENTIAL_EXPIRED_CLOSE_CODE = 4403
-ACCOUNT_INACTIVE_CLOSE_CODE = 4404
-ACCOUNT_NOT_FOUND_CLOSE_CODE = 4405
-PERMISSION_DENIED_CLOSE_CODE = 4406
-SERVER_ERROR_CLOSE_CODE = 4500
-
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.services("postgres", "valkey-channels"),
@@ -91,7 +86,10 @@ async def connect_with_subprotocols(
     return communicator, connected, detail
 
 
-async def assert_rejected(subprotocols: list[str] | None, expected_code: int) -> None:
+async def assert_rejected(
+    subprotocols: list[str] | None,
+    outcome: WebSocketOutcome,
+) -> None:
     """Assert one credential shape closes with its documented code.
 
     Observes the minimal accepted handshake followed by the private-use close frame, then completes
@@ -99,7 +97,7 @@ async def assert_rejected(subprotocols: list[str] | None, expected_code: int) ->
 
     Arguments:
         subprotocols: Protocol values offered by the rejected client.
-        expected_code: Close code the server must deliver.
+        outcome: Central close outcome the server must deliver.
 
     Returns:
         None.
@@ -113,7 +111,7 @@ async def assert_rejected(subprotocols: list[str] | None, expected_code: int) ->
     assert accepted is None
     output = await communicator.receive_output(timeout=RECEIVE_TIMEOUT_SECONDS)
     assert output["type"] == "websocket.close"
-    assert output["code"] == expected_code
+    assert output["code"] == outcome.required_close_code()
     await communicator.disconnect()
 
 
@@ -149,7 +147,7 @@ async def test_valid_access_token_is_echoed_and_connection_is_accepted(
         assert accepted == access
         await communicator.send_json_to({"type": "unsupported", "payload": {}})
         response = await communicator.receive_json_from(timeout=RECEIVE_TIMEOUT_SECONDS)
-        assert response["payload"]["code"] == "unknown_message_type"
+        assert response["payload"]["code"] == WebSocketOutcome.UNKNOWN_MESSAGE_TYPE.code
     finally:
         await communicator.disconnect()
 
@@ -167,9 +165,12 @@ async def test_missing_and_malformed_credentials_are_distinct() -> None:
     Returns:
         None.
     """
-    await assert_rejected(None, CREDENTIAL_ABSENT_CLOSE_CODE)
-    await assert_rejected(["not-a-json-web-token"], CREDENTIAL_MALFORMED_CLOSE_CODE)
-    await assert_rejected(["first", "second"], CREDENTIAL_MALFORMED_CLOSE_CODE)
+    await assert_rejected(None, WebSocketOutcome.CREDENTIAL_ABSENT)
+    await assert_rejected(
+        ["not-a-json-web-token"],
+        WebSocketOutcome.CREDENTIAL_MALFORMED,
+    )
+    await assert_rejected(["first", "second"], WebSocketOutcome.CREDENTIAL_MALFORMED)
 
 
 @pytest.mark.asyncio
@@ -189,8 +190,8 @@ async def test_signed_malformed_account_claims_are_rejected() -> None:
     malformed_identity = AccessToken()
     malformed_identity["user_id"] = "not-a-uuid"
 
-    await assert_rejected([str(missing_identity)], CREDENTIAL_MALFORMED_CLOSE_CODE)
-    await assert_rejected([str(malformed_identity)], CREDENTIAL_MALFORMED_CLOSE_CODE)
+    await assert_rejected([str(missing_identity)], WebSocketOutcome.CREDENTIAL_MALFORMED)
+    await assert_rejected([str(malformed_identity)], WebSocketOutcome.CREDENTIAL_MALFORMED)
 
 
 @pytest.mark.asyncio
@@ -233,7 +234,7 @@ async def test_host_rejection_precedes_credential_processing(
     assert connected
     assert accepted is None
     output = await communicator.receive_output(timeout=RECEIVE_TIMEOUT_SECONDS)
-    assert output["code"] == PERMISSION_DENIED_CLOSE_CODE
+    assert output["code"] == WebSocketOutcome.PERMISSION_DENIED.required_close_code()
     await communicator.disconnect()
 
 
@@ -350,7 +351,7 @@ async def test_expired_access_token_has_its_own_close_code(
         access = await issue_access_token(account)
 
     with freeze_time(issued_at + timedelta(seconds=settings.JWT_ACCESS_TOKEN_LIFETIME_SECONDS + 1)):
-        await assert_rejected([access], CREDENTIAL_EXPIRED_CLOSE_CODE)
+        await assert_rejected([access], WebSocketOutcome.CREDENTIAL_EXPIRED)
 
 
 @pytest.mark.asyncio
@@ -381,7 +382,7 @@ async def test_expired_refresh_token_remains_a_wrong_type(
     with freeze_time(
         issued_at + timedelta(seconds=settings.JWT_REFRESH_TOKEN_LIFETIME_SECONDS + 1)
     ):
-        await assert_rejected([str(refresh)], CREDENTIAL_MALFORMED_CLOSE_CODE)
+        await assert_rejected([str(refresh)], WebSocketOutcome.CREDENTIAL_MALFORMED)
 
 
 @pytest.mark.asyncio
@@ -421,8 +422,8 @@ async def test_inactive_and_deleted_accounts_are_distinct(
     deleted_access = await issue_access_token(deleted)
     await database_sync_to_async(deleted.delete)(using="default")
 
-    await assert_rejected([inactive_access], ACCOUNT_INACTIVE_CLOSE_CODE)
-    await assert_rejected([deleted_access], ACCOUNT_NOT_FOUND_CLOSE_CODE)
+    await assert_rejected([inactive_access], WebSocketOutcome.ACCOUNT_INACTIVE)
+    await assert_rejected([deleted_access], WebSocketOutcome.ACCOUNT_NOT_FOUND)
 
 
 @pytest.mark.asyncio
@@ -451,8 +452,8 @@ async def test_revoked_access_and_refresh_credentials_are_malformed(
     await database_sync_to_async(account.set_password)("replacement-password")
     await database_sync_to_async(account.save)(using="default", update_fields=["password"])
 
-    await assert_rejected([access], CREDENTIAL_MALFORMED_CLOSE_CODE)
-    await assert_rejected([str(refresh)], CREDENTIAL_MALFORMED_CLOSE_CODE)
+    await assert_rejected([access], WebSocketOutcome.CREDENTIAL_MALFORMED)
+    await assert_rejected([str(refresh)], WebSocketOutcome.CREDENTIAL_MALFORMED)
 
 
 @pytest.mark.asyncio
@@ -493,7 +494,7 @@ async def test_query_string_credential_is_never_used(
     assert connected
     assert accepted is None
     output = await communicator.receive_output(timeout=RECEIVE_TIMEOUT_SECONDS)
-    assert output["code"] == CREDENTIAL_ABSENT_CLOSE_CODE
+    assert output["code"] == WebSocketOutcome.CREDENTIAL_ABSENT.required_close_code()
     await communicator.disconnect()
 
 
@@ -536,7 +537,7 @@ async def test_credential_never_enters_application_logs(
             using="default",
             update_fields=["password"],
         )
-        await assert_rejected([access], CREDENTIAL_MALFORMED_CLOSE_CODE)
+        await assert_rejected([access], WebSocketOutcome.CREDENTIAL_MALFORMED)
 
     assert access not in caplog.text
     assert all(access not in repr(record.__dict__) for record in caplog.records)
@@ -547,6 +548,7 @@ async def test_credential_never_enters_application_logs(
 async def test_primary_lookup_failure_is_a_server_error(
     django_user_model: type[User],
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
     error_type: type[Exception],
 ) -> None:
     """Separate authoritative database loss from credential rejection.
@@ -557,6 +559,7 @@ async def test_primary_lookup_failure_is_a_server_error(
     Arguments:
         django_user_model: Configured account model used to create the token owner.
         monkeypatch: Fixture inducing the primary lookup failure.
+        caplog: Fixture capturing the correlated failure record.
         error_type: Django database exception raised by the lookup seam.
 
     Returns:
@@ -594,4 +597,16 @@ async def test_primary_lookup_failure_is_a_server_error(
         staticmethod(fail_lookup),
     )
 
-    await assert_rejected([access], SERVER_ERROR_CLOSE_CODE)
+    with caplog.at_level(logging.ERROR):
+        await assert_rejected([access], WebSocketOutcome.SERVER_ERROR)
+
+    records = [
+        record
+        for record in caplog.records
+        if record.getMessage() == "websocket authentication store unavailable"
+    ]
+    assert len(records) == 1
+    UUID(cast("str", records[0].__dict__[REQUEST_ID_META_KEY]))
+    assert records[0].exc_info is None
+    assert access not in caplog.text
+    assert "Traceback" not in caplog.text

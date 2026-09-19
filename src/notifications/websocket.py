@@ -6,7 +6,9 @@ and unsupported message types behind one asynchronous consumer interface.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import uuid
 from typing import TYPE_CHECKING, Any, cast, override
 
@@ -14,16 +16,15 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from django.conf import settings
 from django.http.request import split_domain_port, validate_host
 
-from config.logs import request_identifier
+from config.logs import REQUEST_ID_META_KEY, request_identifier
 from config.security import allowed_cors_origin, request_origin_from_scope
 from notifications.delivery import notification_group_name
 
 if TYPE_CHECKING:
-    from contextvars import Token
-
     from asgiref.typing import (
         ASGI3Application,
         ASGIReceiveCallable,
+        ASGIReceiveEvent,
         ASGISendCallable,
         ASGISendEvent,
         Scope,
@@ -32,15 +33,16 @@ if TYPE_CHECKING:
     from accounts.models import User
     from notifications.delivery import NotificationChannelEvent
 
-MALFORMED_FRAME_CLOSE_CODE = 4400
-PERMISSION_DENIED_CLOSE_CODE = 4406
+from notifications.protocol import (
+    WebSocketOutcome,
+    close_rejected_handshake,
+    websocket_error_frame,
+)
+
+logger = logging.getLogger(__name__)
+
 ENVELOPE_FIELDS = frozenset({"type", "payload"})
 JSON_FRAME_ERRORS = (json.JSONDecodeError, RecursionError, ValueError)
-UNKNOWN_MESSAGE_TYPE_CODE = "unknown_message_type"
-UNKNOWN_MESSAGE_TYPE_MESSAGE = "The message type is not supported."
-UNKNOWN_MESSAGE_TYPE_DETAILS = {
-    "type": ["No handler is registered for this message type."],
-}
 
 
 def _reject_json_constant(value: str) -> None:
@@ -85,29 +87,6 @@ def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
         decoded[name] = value
 
     return decoded
-
-
-async def close_rejected_handshake(
-    receive: ASGIReceiveCallable,
-    send: ASGISendCallable,
-    code: int,
-) -> None:
-    """Complete only enough handshake to deliver an application close code.
-
-    Waits for the connection event, accepts no protected application behavior, and closes
-    immediately so a real WebSocket client can observe the documented private-use rejection code.
-
-    Arguments:
-        receive: Callable yielding the initial connection event.
-        send: Callable emitting handshake and close events.
-        code: Application close code the client must receive.
-
-    Returns:
-        None.
-    """
-    await receive()
-    await send(cast("ASGISendEvent", {"type": "websocket.accept"}))
-    await send(cast("ASGISendEvent", {"type": "websocket.close", "code": code}))
 
 
 class ExactWebSocketOriginValidator:
@@ -158,7 +137,7 @@ class ExactWebSocketOriginValidator:
         """
         origin = request_origin_from_scope(scope)
         if allowed_cors_origin(origin.value) is None:
-            await close_rejected_handshake(receive, send, PERMISSION_DENIED_CLOSE_CODE)
+            await close_rejected_handshake(receive, send, WebSocketOutcome.PERMISSION_DENIED)
             return
 
         await self.application(scope, receive, send)
@@ -219,10 +198,144 @@ class ExactWebSocketHostValidator:
         domain, _ = split_domain_port(host.lower())
         allowed_hosts = cast("list[str]", settings.ALLOWED_HOSTS)
         if not domain or not validate_host(domain, allowed_hosts):
-            await close_rejected_handshake(receive, send, PERMISSION_DENIED_CLOSE_CODE)
+            await close_rejected_handshake(receive, send, WebSocketOutcome.PERMISSION_DENIED)
             return
 
         await self.application(scope, receive, send)
+
+
+class WebSocketFailureBoundary:
+    """Contain unexpected WebSocket failures with correlation and a stable close code.
+
+    Wraps the complete admission stack, owns one request identifier for the connection, propagates
+    cancellation, and converts other exceptions into a secret-free log plus the server-error close.
+
+    Attributes:
+        application: Inner WebSocket admission and consumer application.
+
+    Members:
+        __call__: Correlate, delegate, contain failures, and restore context.
+    """
+
+    def __init__(self, application: ASGI3Application) -> None:
+        """Store the protected WebSocket application.
+
+        Keeps correlation and containment outside every admission layer and consumer so no
+        application failure bypasses the same boundary.
+
+        Arguments:
+            application: Inner application whose failures are contained.
+
+        Returns:
+            None.
+        """
+        self.application = application
+
+    async def __call__(
+        self,
+        scope: Scope,
+        receive: ASGIReceiveCallable,
+        send: ASGISendCallable,
+    ) -> None:
+        """Run one connection inside the correlated failure boundary.
+
+        Tracks handshake and disconnect state so an unexpected failure receives the server-error
+        close only while a client can still observe it, without turning cancellation into failure.
+
+        Arguments:
+            scope: Incoming ASGI WebSocket scope.
+            receive: Callable yielding connection events.
+            send: Callable emitting connection events.
+
+        Returns:
+            None.
+
+        Raises:
+            CancelledError: If the caller cancels the connection application task.
+        """
+        identifier = str(uuid.uuid4())
+        correlated_scope = dict(scope)
+        correlated_scope["connection_request_id"] = identifier
+        identifier_token = request_identifier.set(identifier)
+        accepted = False
+        closed = False
+        connect_received = False
+        disconnected = False
+
+        async def tracked_receive() -> ASGIReceiveEvent:
+            """Track whether connection or disconnect input has arrived.
+
+            Delegates the next event unchanged while retaining only lifecycle state needed to decide
+            whether a later server-error close can still be delivered.
+
+            Arguments:
+                None.
+
+            Returns:
+                Next ASGI receive event.
+            """
+            nonlocal connect_received, disconnected
+            event = await receive()
+            event_type = event["type"]
+            connect_received = connect_received or event_type == "websocket.connect"
+            disconnected = disconnected or event_type == "websocket.disconnect"
+
+            return event
+
+        async def tracked_send(event: ASGISendEvent) -> None:
+            """Track accepted and closed output before delegating it.
+
+            Records lifecycle state before sending so even a transport error leaves containment with
+            the most conservative view of what the client may have observed.
+
+            Arguments:
+                event: ASGI WebSocket output event.
+
+            Returns:
+                None.
+            """
+            nonlocal accepted, closed
+            accepted = accepted or event["type"] == "websocket.accept"
+            closed = closed or event["type"] == "websocket.close"
+            await send(event)
+
+        try:
+            await self.application(
+                cast("Scope", correlated_scope),
+                cast("ASGIReceiveCallable", tracked_receive),
+                tracked_send,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001
+            logger.log(
+                logging.ERROR,
+                "websocket connection failed",
+                extra={REQUEST_ID_META_KEY: identifier},
+            )
+            if not closed and not disconnected:
+                try:
+                    if not connect_received:
+                        await tracked_receive()
+                    if not accepted:
+                        await tracked_send(cast("ASGISendEvent", {"type": "websocket.accept"}))
+                    await tracked_send(
+                        cast(
+                            "ASGISendEvent",
+                            {
+                                "type": "websocket.close",
+                                "code": WebSocketOutcome.SERVER_ERROR.required_close_code(),
+                            },
+                        )
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.log(
+                        logging.ERROR,
+                        "websocket server-error close could not be sent",
+                        extra={REQUEST_ID_META_KEY: identifier},
+                    )
+        finally:
+            request_identifier.reset(identifier_token)
 
 
 class NotificationConsumer(AsyncWebsocketConsumer):  # type: ignore[misc]
@@ -233,19 +346,46 @@ class NotificationConsumer(AsyncWebsocketConsumer):  # type: ignore[misc]
 
     Attributes:
         connection_request_id: Correlation identifier carried by error frames.
+        notification_group_joined: Whether this connection currently owns group membership.
         notification_group: Server-selected group for the authenticated account.
-        request_identifier_token: Context token used to restore the previous correlation value.
 
     Members:
+        __call__: Guarantee group cleanup on every lifecycle exit.
         connect: Correlate and accept the connection.
-        disconnect: Restore correlation when the connection ends.
+        disconnect: Remove group membership when the connection ends.
         notification_message: Deliver one user-targeted notification.
         receive: Validate and dispatch one incoming frame.
     """
 
     connection_request_id: str
     notification_group: str
-    request_identifier_token: Token[str]
+    notification_group_joined: bool
+
+    @override
+    async def __call__(
+        self,
+        scope: Scope,
+        receive: ASGIReceiveCallable,
+        send: ASGISendCallable,
+    ) -> None:
+        """Run one consumer instance with unconditional membership cleanup.
+
+        Delegates the normal Channels lifecycle and discards any joined group when disconnect,
+        cancellation, or an unexpected handler exception ends the application task.
+
+        Arguments:
+            scope: Correlated authenticated WebSocket scope.
+            receive: Callable yielding connection events.
+            send: Callable emitting connection events.
+
+        Returns:
+            None.
+        """
+        self.notification_group_joined = False
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            await self._leave_notification_group()
 
     @override
     async def connect(self) -> None:
@@ -260,10 +400,10 @@ class NotificationConsumer(AsyncWebsocketConsumer):  # type: ignore[misc]
         Returns:
             None.
         """
-        self.connection_request_id = str(uuid.uuid4())
-        self.request_identifier_token = request_identifier.set(self.connection_request_id)
+        self.connection_request_id = cast("str", self.scope["connection_request_id"])
         user = cast("User", self.scope["user"])
         self.notification_group = notification_group_name(user.pk)
+        self.notification_group_joined = True
         await self.channel_layer.group_add(self.notification_group, self.channel_name)
         accepted_subprotocol = self.scope.get("accepted_subprotocol")
         await self.accept(
@@ -274,8 +414,8 @@ class NotificationConsumer(AsyncWebsocketConsumer):  # type: ignore[misc]
     async def disconnect(self, code: int) -> None:
         """Restore the prior correlation context after disconnect.
 
-        Removes the server-selected membership before ending the connection-owned context, leaving
-        neither delivery state nor a request identifier for another task sharing the process.
+        Removes the server-selected membership without interpreting the peer's close code, leaving
+        no delivery state behind for another connection.
 
         Arguments:
             code: Close code supplied by the WebSocket transport.
@@ -284,13 +424,43 @@ class NotificationConsumer(AsyncWebsocketConsumer):  # type: ignore[misc]
             None.
         """
         del code
-        try:
-            await self.channel_layer.group_discard(
+        await self._leave_notification_group()
+
+    async def _leave_notification_group(self) -> None:
+        """Discard this connection's server-selected group exactly once.
+
+        Shields one discard to completion before relinquishing cleanup ownership or propagating
+        cancellation, while keeping final ``__call__`` cleanup harmless after a successful leave.
+
+        Arguments:
+            None.
+
+        Returns:
+            None.
+
+        Raises:
+            CancelledError: After an in-flight discard completes successfully.
+        """
+        if not self.notification_group_joined:
+            return
+
+        discard_task = asyncio.create_task(
+            self.channel_layer.group_discard(
                 self.notification_group,
                 self.channel_name,
             )
-        finally:
-            request_identifier.reset(self.request_identifier_token)
+        )
+        cancellation: asyncio.CancelledError | None = None
+        while not discard_task.done():
+            try:
+                await asyncio.shield(discard_task)
+            except asyncio.CancelledError as error:
+                cancellation = error
+
+        discard_task.result()
+        self.notification_group_joined = False
+        if cancellation is not None:
+            raise cancellation
 
     async def notification_message(self, event: NotificationChannelEvent) -> None:
         """Deliver one channel-layer notification through the public wire envelope.
@@ -342,8 +512,24 @@ class NotificationConsumer(AsyncWebsocketConsumer):  # type: ignore[misc]
             None.
         """
         del kwargs
+        try:
+            message_size = (
+                len(bytes_data)
+                if bytes_data is not None
+                else len(text_data.encode("utf-8"))
+                if text_data is not None
+                else 0
+            )
+        except UnicodeEncodeError:
+            await self.close(code=WebSocketOutcome.MALFORMED_FRAME.required_close_code())
+            return
+
+        if message_size > settings.WEBSOCKET_APPLICATION_MAX_MESSAGE_BYTES:
+            await self.close(code=WebSocketOutcome.FRAME_TOO_LARGE.required_close_code())
+            return
+
         if bytes_data is not None or text_data is None:
-            await self.close(code=MALFORMED_FRAME_CLOSE_CODE)
+            await self.close(code=WebSocketOutcome.MALFORMED_FRAME.required_close_code())
             return
 
         try:
@@ -353,14 +539,20 @@ class NotificationConsumer(AsyncWebsocketConsumer):  # type: ignore[misc]
                 object_pairs_hook=_unique_json_object,
             )
         except JSON_FRAME_ERRORS:
-            await self.close(code=MALFORMED_FRAME_CLOSE_CODE)
+            await self.close(code=WebSocketOutcome.MALFORMED_FRAME.required_close_code())
             return
 
         if not self._is_valid_envelope(decoded):
-            await self.close(code=MALFORMED_FRAME_CLOSE_CODE)
+            await self.close(code=WebSocketOutcome.MALFORMED_FRAME.required_close_code())
             return
 
-        await self._send_unknown_message_type()
+        envelope = cast("dict[str, Any]", decoded)
+        outcome = (
+            WebSocketOutcome.PERMISSION_DENIED
+            if envelope["type"] == "subscribe"
+            else WebSocketOutcome.UNKNOWN_MESSAGE_TYPE
+        )
+        await self._send_error(outcome)
 
     @staticmethod
     def _is_valid_envelope(decoded: object) -> bool:
@@ -382,29 +574,27 @@ class NotificationConsumer(AsyncWebsocketConsumer):  # type: ignore[misc]
 
         return isinstance(envelope["type"], str) and isinstance(envelope["payload"], dict)
 
-    async def _send_unknown_message_type(self) -> None:
-        """Return the recoverable unsupported-message response.
+    async def _send_error(self, outcome: WebSocketOutcome) -> None:
+        """Return one recoverable application error response.
 
-        Reuses the REST error payload fields and keeps the socket open, allowing a client to correct
-        its next frame without reconnecting.
+        Renders the central error contract and keeps the socket open, allowing a client to correct
+        authorization or message type without reconnecting.
 
         Arguments:
-            None.
+            outcome: Recoverable failure contract member to send.
 
         Returns:
             None.
+
+        Raises:
+            ValueError: If the selected outcome does not support an error frame.
         """
         await self.send(
             text_data=json.dumps(
-                {
-                    "type": "error",
-                    "payload": {
-                        "code": UNKNOWN_MESSAGE_TYPE_CODE,
-                        "message": UNKNOWN_MESSAGE_TYPE_MESSAGE,
-                        "details": UNKNOWN_MESSAGE_TYPE_DETAILS,
-                        "request_id": self.connection_request_id,
-                    },
-                },
+                websocket_error_frame(
+                    outcome,
+                    self.connection_request_id,
+                ),
                 separators=(",", ":"),
             )
         )
