@@ -56,6 +56,18 @@ The server delivers an addressed application event in exactly this shape:
 `payload.event` is the stable application event name clients branch on. `payload.data` is the event-specific JSON
 object and is always an object, including when the event carries no fields.
 
+The username-change background task emits this completion event after its email delivery succeeds:
+
+```json
+{
+  "type": "notification",
+  "payload": {
+    "event": "account.username_changed",
+    "data": {}
+  }
+}
+```
+
 Every accepted socket joins one deterministic group named from only the authenticated account's immutable UUID.
 Mutable usernames and email addresses never participate, and no client frame can select, add, or replace group
 membership. The server leaves that group on disconnect.
@@ -232,8 +244,10 @@ and credential secrecy. Ticket 40 establishes deterministic server-owned members
 strict notification publication, and cross-process delivery. Ticket 41 establishes the central outcome
 enumeration, recoverable permission response, both message limits, shared connection admission, store-failure
 handling, correlated exception containment, and exact cleanup on disconnect, cancellation, and failure.
+Ticket 46 establishes the request-to-worker path for `account.username_changed`, safe publication from synchronous
+task code, offline-client no-op behavior, and containment of channel publication failure after completed work.
 
-All four WebSocket tickets are runtime-verified.
+All five WebSocket tickets are runtime-verified.
 
 ## Sources
 
@@ -243,3 +257,4 @@ All four WebSocket tickets are runtime-verified.
 - [Ticket 39: WebSocket authentication](../../.scratch/phase-5-websockets/39-websocket-authentication.md)
 - [Ticket 40: notification group broadcast](../../.scratch/phase-5-websockets/40-notification-channel-group-broadcast.md)
 - [Ticket 41: WebSocket error and close codes](../../.scratch/phase-5-websockets/41-websocket-error-and-close-codes.md)
+- [Ticket 46: background-to-WebSocket event fan-out](../../.scratch/phase-6-async-services/46-background-to-websocket-fanout.md)

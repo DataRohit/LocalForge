@@ -358,6 +358,11 @@ account ID, retry with bounded backoff, and accept harmless duplicate security n
 All request-side publication occurs after primary transaction commit and cannot change the public response. The
 dispatch boundary contains eager task retry signals and queued publication failures with type-only logs.
 
+After a username-change email succeeds, its worker task synchronously publishes
+`account.username_changed` with `{}` to the account's immutable notification group. An offline account is a safe
+no-op. Channel-layer failure is contained after the completed task work and produces only a type-only error record,
+so the email task does not retry or fail because live notification delivery is temporarily unavailable.
+
 ### 4.2 The two required modes
 
 | Mode | Command | Env file | Hostnames |

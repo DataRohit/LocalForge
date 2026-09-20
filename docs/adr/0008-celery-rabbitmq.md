@@ -212,6 +212,20 @@ testing, eager propagation can surface Celery's `Retry` after the first rejected
 queued execution performs the complete retry lifecycle. Neither path can replace an already committed `204` response
 with a mail-shaped server error.
 
+## Ticket 46 task notification fan-out
+
+Recorded 2026-09-20. The username-change notification task synchronously calls the existing strict notification
+publisher after its credential-free email succeeds. It addresses the immutable account UUID and emits
+`account.username_changed` with an empty data object through the existing notification frame; no second WebSocket
+route, group convention, event loop, or envelope is introduced.
+
+An account with no open socket remains a successful publication no-op. Channel-layer failure is a secondary
+delivery failure after the task's primary work completed, so the task boundary contains it and records only the
+exception type. Development runtime verification stopped the dedicated Channels Valkey instance, observed the email
+task finish successfully, recovered the channel service, and retrieved the type-only `ConnectionError` record from
+Loki. The bounded cross-process integration path covers the authenticated username-change request, RabbitMQ, a real
+worker process, the Channels layer, and an authenticated notification socket.
+
 ## Considered options
 
 **django-q2 1.11.1** (2026-08-26) — the strongest alternative: active, Python 3.14 classifier, and a scheduler

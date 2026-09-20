@@ -961,7 +961,8 @@ def test_websocket_contract_is_versioned_and_runtime_verified() -> None:
     """Publish the complete runtime-verified socket contract.
 
     Requires the companion document to name the route, shared envelope, every failure category,
-    both message limits, connection admission, and completed four-ticket verification.
+    both message limits, connection admission, the task completion event, and five-ticket
+    verification.
 
     Arguments:
         None.
@@ -977,7 +978,8 @@ def test_websocket_contract_is_versioned_and_runtime_verified() -> None:
         "Version: 1",
         "Status: runtime-verified",
         "/ws/notifications/",
-        "All four WebSocket tickets are runtime-verified.",
+        "All five WebSocket tickets are runtime-verified.",
+        "account.username_changed",
         "WebSocket subprotocol header",
         "65,536 bytes",
         "131,072 bytes",

@@ -112,6 +112,7 @@ convention = "google"
 "src/config/settings/*.py" = ["F403"]
 "src/config/celery.py" = ["A002"]
 "src/accounts/password_management.py" = ["BLE001"]
+"src/accounts/tasks.py" = ["BLE001"]
 "src/accounts/username_management.py" = ["BLE001"]
 "src/manage.py" = ["PLC0415"]
 "**/migrations/*.py" = ["D", "E501", "RUF012"]
@@ -124,6 +125,7 @@ convention = "google"
 "tests/unit/test_harness.py" = ["S101", "S603"]
 "tests/unit/scripts/test_django_entrypoint.py" = ["S101", "S603"]
 "tests/integration/config/test_worker_service.py" = ["S603"]
+"tests/integration/notifications/test_task_fanout.py" = ["S603"]
 ".github/scripts/validate_commit_message.py" = ["C901", "INP001", "PLR0912"]
 
 [tool.ruff.format]

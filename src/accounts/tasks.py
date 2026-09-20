@@ -4,6 +4,7 @@ Registers account-message delivery with the project Celery application so web re
 mail work while testing can retain the repository's eager task seam.
 """
 
+import logging
 import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
@@ -27,6 +28,9 @@ from accounts.username_tokens import (
 )
 from config.celery import app
 from config.email import send_application_email
+from notifications.delivery import publish_notification
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from typing import Protocol
@@ -878,6 +882,18 @@ def deliver_username_changed_email(account_id: object) -> bool:
         "Your LocalForge username changed",
         "Your username was changed.",
     ):
+        try:
+            publish_notification(
+                uuid.UUID(cast("str", account_id)),
+                "account.username_changed",
+                {},
+            )
+        except Exception as error:
+            logger.log(
+                logging.ERROR,
+                "Username notification publication failed",
+                extra={"notification_error_type": type(error).__name__},
+            )
         return True
 
     raise AccountEmailDeliveryError

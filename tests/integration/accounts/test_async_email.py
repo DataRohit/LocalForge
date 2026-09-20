@@ -6,6 +6,7 @@ including identifier-only payloads, bounded retry, permanent failure, and delete
 
 from __future__ import annotations
 
+import logging
 import secrets
 import uuid
 from typing import TYPE_CHECKING, cast
@@ -238,3 +239,134 @@ def test_credential_bearing_email_tasks_preserve_their_no_retry_contract() -> No
     assert send_activation_email.autoretry_for == ()
     assert send_password_reset_email.autoretry_for == ()
     assert send_username_reset_email.autoretry_for == ()
+
+
+@pytest.mark.integration
+@pytest.mark.services("postgres", "valkey-cache")
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
+def test_username_notification_task_publishes_the_completion_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Publish one contract-shaped event after the username notice succeeds.
+
+    Replaces only the email and channel boundaries and requires the task to address the immutable
+    account UUID with the documented event and empty data object.
+
+    Arguments:
+        monkeypatch: Fixture capturing external email and channel operations.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If delivery does not publish exactly one safe completion event.
+    """
+    account = User.objects.db_manager("default").create_user(
+        f"fanout-task-{uuid.uuid4().hex}",
+        f"fanout-task-{uuid.uuid4().hex}@localforge.invalid",
+        secrets.token_urlsafe(24),
+        is_active=True,
+    )
+    published: list[tuple[uuid.UUID, str, dict[str, object]]] = []
+    monkeypatch.setattr(account_tasks, "send_application_email", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        account_tasks,
+        "publish_notification",
+        lambda user_id, event, data: published.append((user_id, event, data)),
+    )
+
+    delivered = send_username_changed_email(str(account.pk))
+
+    assert delivered is True
+    assert published == [(account.pk, "account.username_changed", {})]
+
+
+@pytest.mark.integration
+@pytest.mark.services("postgres", "valkey-cache")
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
+def test_username_notification_publish_failure_does_not_fail_the_task(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Contain channel-layer failure after successful email delivery.
+
+    Raises a marker-bearing publication error and requires task success plus a type-only record,
+    preserving completed background work without leaking account or exception data.
+
+    Arguments:
+        monkeypatch: Fixture replacing the external email and channel boundaries.
+        caplog: Fixture collecting the contained publication failure.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If channel failure changes task success or leaks marker text.
+    """
+    account = User.objects.db_manager("default").create_user(
+        f"fanout-failure-{uuid.uuid4().hex}",
+        f"fanout-failure-{uuid.uuid4().hex}@localforge.invalid",
+        secrets.token_urlsafe(24),
+        is_active=True,
+    )
+    marker = f"fanout-marker-{account.pk}"
+    monkeypatch.setattr(account_tasks, "send_application_email", lambda *_args, **_kwargs: True)
+
+    def fail_publication(*_arguments: object, **_keywords: object) -> None:
+        """Raise one channel-layer failure carrying unsafe text.
+
+        Replaces only the synchronous channel boundary and embeds a marker in the exception so the
+        task's type-only failure record can be verified.
+
+        Arguments:
+            *_arguments: Positional publication fields ignored by this boundary.
+            **_keywords: Keyword publication fields ignored by this boundary.
+
+        Returns:
+            Never returns.
+
+        Raises:
+            RuntimeError: Always, with marker text that must not be logged.
+        """
+        raise RuntimeError(marker)
+
+    monkeypatch.setattr(account_tasks, "publish_notification", fail_publication)
+
+    with caplog.at_level(logging.ERROR, logger=account_tasks.__name__):
+        delivered = send_username_changed_email(str(account.pk))
+
+    assert delivered is True
+    assert caplog.records[-1].getMessage() == "Username notification publication failed"
+    assert vars(caplog.records[-1])["notification_error_type"] == "RuntimeError"
+    assert marker not in caplog.text
+
+
+@pytest.mark.integration
+@pytest.mark.services("postgres", "valkey-cache", "valkey-channels")
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
+def test_username_notification_with_no_open_socket_is_a_no_op(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Complete notification publication when the account has no connected socket.
+
+    Uses the real channel layer with no group subscriber and requires successful task completion,
+    proving background work never treats an offline client as an error.
+
+    Arguments:
+        monkeypatch: Fixture replacing only the external email boundary.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If absent sockets make the task fail.
+    """
+    account = User.objects.db_manager("default").create_user(
+        f"fanout-offline-{uuid.uuid4().hex}",
+        f"fanout-offline-{uuid.uuid4().hex}@localforge.invalid",
+        secrets.token_urlsafe(24),
+        is_active=True,
+    )
+    monkeypatch.setattr(account_tasks, "send_application_email", lambda *_args, **_kwargs: True)
+
+    assert send_username_changed_email(str(account.pk)) is True
