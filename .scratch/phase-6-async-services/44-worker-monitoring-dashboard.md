@@ -16,13 +16,13 @@ the queue is doing without reading logs.
 - [Service inventory](../../docs/platform/service-inventory.md)
 - [Kubernetes mapping](../../docs/platform/kubernetes-mapping.md)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The dashboard runs from the same built image with the registry name and is reachable from the host.
-- [ ] Access requires basic authentication from a generated credential, supplied through the prefixed environment
+- [x] The dashboard runs from the same built image with the registry name and is reachable from the host.
+- [x] Access requires basic authentication from a generated credential, supplied through the prefixed environment
       variable the tool reads.
-- [ ] The unauthenticated API mode is not enabled.
-- [ ] Registered workers, active tasks, queue lengths, and recent task outcomes are all visible.
-- [ ] The dashboard starts only after the broker is healthy and does not block the worker if it is down.
-- [ ] It is excluded from the testing environment, which runs headless.
-- [ ] It sits on the application network only and is not exposed through the edge proxy without authentication.
+- [x] The unauthenticated API mode is not enabled.
+- [x] Registered workers, active tasks, queue lengths, and recent task outcomes are all visible.
+- [x] The dashboard starts only after the broker is healthy and does not block the worker if it is down.
+- [x] It is excluded from the testing environment, which runs headless.
+- [x] It sits on the application network only and is not exposed through the edge proxy without authentication.

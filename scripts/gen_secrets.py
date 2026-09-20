@@ -286,6 +286,26 @@ def compose_result_backend(values: Mapping[str, str]) -> str:
     return f"redis://:{password}@{host}:{port}/{database}"
 
 
+def compose_flower_broker_api(values: Mapping[str, str]) -> str:
+    """Compose Flower's authenticated RabbitMQ management API URL.
+
+    Reuses the broker credential and registered management endpoint so Flower can report queue
+    depth without introducing another password or embedding one in Compose.
+
+    Arguments:
+        values: Variables resolved so far for this environment.
+
+    Returns:
+        The HTTP URL Flower uses for RabbitMQ management queries.
+    """
+    user = values["RABBITMQ_DEFAULT_USER"]
+    password = values["RABBITMQ_DEFAULT_PASS"]
+    host = values["RABBITMQ_HOST"]
+    port = values["RABBITMQ_MANAGEMENT_PORT"]
+
+    return f"http://{user}:{password}@{host}:{port}/api/"
+
+
 def compose_dashboard_auth(values: Mapping[str, str]) -> str:
     """Compose the edge proxy's basic-authentication entry.
 
@@ -347,6 +367,12 @@ COMPOSED_VERIFIERS: Mapping[str, Callable[[Mapping[str, str], str], bool]] = {
 }
 
 COMPOSED_INPUTS: Mapping[str, tuple[str, ...]] = {
+    "FLOWER_BROKER_API": (
+        "RABBITMQ_DEFAULT_USER",
+        "RABBITMQ_DEFAULT_PASS",
+        "RABBITMQ_HOST",
+        "RABBITMQ_MANAGEMENT_PORT",
+    ),
     "TRAEFIK_DASHBOARD_AUTH": ("TRAEFIK_DASHBOARD_PASSWORD",),
 }
 
@@ -354,6 +380,7 @@ COMPOSED_INPUTS: Mapping[str, tuple[str, ...]] = {
 COMPOSED_VALUES: Mapping[str, Callable[[Mapping[str, str]], str]] = {
     "CELERY_BROKER_URL": compose_broker_url,
     "CELERY_RESULT_BACKEND": compose_result_backend,
+    "FLOWER_BROKER_API": compose_flower_broker_api,
     "TRAEFIK_DASHBOARD_AUTH": compose_dashboard_auth,
 }
 

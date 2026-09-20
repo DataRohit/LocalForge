@@ -261,6 +261,28 @@ def test_development_inventory_includes_the_registered_scheduler() -> None:
     assert "celery-beat-cb4hq" in platform.PROBELESS_CONTAINERS
 
 
+def test_development_inventory_includes_the_registered_worker_dashboard() -> None:
+    """Audit Flower with the persistent development project.
+
+    Requires ownership and health checks to include the authenticated dashboard under the shared
+    application image while the testing inventory remains headless.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If Flower is absent, misowned, or added to testing.
+    """
+    assert "flower-fl9zd" in platform.DEVELOPMENT_CONTAINERS
+    assert platform.CONTAINER_PROJECTS["flower-fl9zd"] == "localforge-dev"
+    assert platform.CONTAINER_IMAGES["flower-fl9zd"] == "localforge/django:0.1.0"
+    assert "flower-fl9zd" not in platform.PROBELESS_CONTAINERS
+    assert "flower-fl9zd" not in platform.TESTING_CONTAINERS
+
+
 def test_help_publishes_the_complete_stable_command_surface(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

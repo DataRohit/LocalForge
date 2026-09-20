@@ -230,6 +230,42 @@ def test_development_scheduler_is_one_database_backed_application_image_process(
     assert "celery-beat-cb4hq" not in merged(TESTING_FILE)["services"]
 
 
+@pytest.mark.unit
+def test_flower_is_an_authenticated_development_only_application_companion() -> None:
+    """Expose queue monitoring on the registered host port without edge publication.
+
+    Requires Flower to reuse the application image, read its prefixed authentication and broker
+    API variables, wait only for RabbitMQ, and stay absent from the headless testing environment.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If Flower is unauthenticated, misnetworked, or coupled to worker health.
+    """
+    development = merged(DEVELOPMENT_FILE)["services"]
+    flower = development["flower-fl9zd"]
+
+    assert flower["container_name"] == "flower-fl9zd"
+    assert flower["image"] == "localforge/django:0.1.0"
+    assert flower["ports"] == ["5555:5555"]
+    assert set(flower["networks"]) == {"app-net-na6hy", "access-net-ha4mz"}
+    assert flower["command"][0:4] == ["celery", "-A", "config", "flower"]
+    assert flower["depends_on"] == {"rabbitmq-rq4sx": {"condition": "service_healthy"}}
+    assert "labels" not in flower
+    assert "healthcheck" in flower
+    health = " ".join(flower["healthcheck"]["test"])
+    assert "FLOWER_BASIC_AUTH" in health
+    assert "Authorization" in health
+    assert "unauthenticated" not in " ".join(flower["command"]).lower()
+    assert "flower-fl9zd" not in merged(TESTING_FILE)["services"]
+    worker_command = " ".join(development["celery-worker-cw8rt"]["command"])
+    assert "--events" in worker_command
+
+
 def registry_rows(heading: str) -> set[str]:
     """Read one registry table out of the conventions document.
 

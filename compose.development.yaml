@@ -721,6 +721,7 @@ services:
       - --concurrency=${CELERY_WORKER_CONCURRENCY}
       - --prefetch-multiplier=${CELERY_WORKER_PREFETCH_MULTIPLIER}
       - --queues=${CELERY_DEFAULT_QUEUE},${CELERY_SLOW_QUEUE}
+      - --events
 
     depends_on:
       django-uv5n2:
@@ -776,6 +777,54 @@ services:
         condition: service_healthy
       valkey-cache-vc5tn:
         condition: service_healthy
+
+  flower-fl9zd:
+    image: localforge/django:0.1.0
+    build:
+      context: .
+      dockerfile: docker/django/Dockerfile
+      target: runtime
+    container_name: flower-fl9zd
+    hostname: flower-fl9zd
+    restart: unless-stopped
+
+    env_file:
+      - .env.development
+
+    ports:
+      - "5555:5555"
+
+    networks:
+      - app-net-na6hy
+      - access-net-ha4mz
+
+    command:
+      - celery
+      - -A
+      - config
+      - flower
+      - --port=5555
+
+    depends_on:
+      rabbitmq-rq4sx:
+        condition: service_healthy
+
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import base64,os,urllib.request;
+          credential=base64.b64encode(os.environ["FLOWER_BASIC_AUTH"].encode()).decode();
+          request=urllib.request.Request(
+          "http://127.0.0.1:5555/",
+          headers={"Authorization":f"Basic {credential}"});
+          urllib.request.urlopen(request,timeout=5).read()
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 45s
 
 networks:
   edge-net-ne2vk:

@@ -734,8 +734,8 @@ def test_host_mode_reaches_every_service_through_the_loopback_interface(reposito
 def test_the_composed_urls_follow_the_credentials_they_are_built_from(repository: Path) -> None:
     """Keep a composed URL consistent with its parts.
 
-    Confirms the broker and result URLs embed the generated credentials and the environment's own
-    hosts, so a URL can never disagree with the variables beside it.
+    Confirms broker, result, and dashboard API URLs embed generated credentials and the
+    environment's own hosts, so a URL cannot disagree with the variables beside it.
 
     Arguments:
         repository: Temporary repository holding the manifest.
@@ -755,6 +755,10 @@ def test_the_composed_urls_follow_the_credentials_they_are_built_from(repository
     )
     assert values["CELERY_RESULT_BACKEND"] == (
         f"redis://:{values['VALKEY_CACHE_PASSWORD']}@127.0.0.1:26379/{values['VALKEY_RESULTS_DB']}"
+    )
+    assert values["FLOWER_BROKER_API"] == (
+        f"http://{values['RABBITMQ_DEFAULT_USER']}:{values['RABBITMQ_DEFAULT_PASS']}"
+        f"@127.0.0.1:{values['RABBITMQ_MANAGEMENT_PORT']}/api/"
     )
 
 
@@ -1196,6 +1200,7 @@ def test_each_generator_produces_a_distinct_value_of_the_right_shape() -> None:
     [
         ("CELERY_BROKER_URL", "RABBITMQ_DEFAULT_PASS"),
         ("CELERY_RESULT_BACKEND", "VALKEY_CACHE_PASSWORD"),
+        ("FLOWER_BROKER_API", "RABBITMQ_DEFAULT_PASS"),
     ],
 )
 def test_a_composed_url_left_disagreeing_with_its_parts_is_refused(
@@ -1293,6 +1298,7 @@ def test_a_composed_url_is_rebuilt_once_it_is_removed(repository: Path) -> None:
     gen_secrets.main([], root=repository, version_control=FakeVersionControl())
     values = values_in(repository, ".env.development")
     del values["CELERY_BROKER_URL"]
+    del values["FLOWER_BROKER_API"]
     del values["RABBITMQ_DEFAULT_PASS"]
     (repository / ".env.development").write_text(
         gen_secrets.render_env_text(values),
@@ -1303,6 +1309,7 @@ def test_a_composed_url_is_rebuilt_once_it_is_removed(repository: Path) -> None:
     after = values_in(repository, ".env.development")
 
     assert after["RABBITMQ_DEFAULT_PASS"] in after["CELERY_BROKER_URL"]
+    assert after["RABBITMQ_DEFAULT_PASS"] in after["FLOWER_BROKER_API"]
 
 
 @pytest.mark.unit
@@ -1331,6 +1338,7 @@ def test_a_forced_run_rebuilds_a_composed_url(repository: Path) -> None:
     after = values_in(repository, ".env.development")
 
     assert after["RABBITMQ_DEFAULT_PASS"] in after["CELERY_BROKER_URL"]
+    assert after["RABBITMQ_DEFAULT_PASS"] in after["FLOWER_BROKER_API"]
     assert after["VALKEY_CACHE_PASSWORD"] in after["CELERY_RESULT_BACKEND"]
 
 
@@ -2083,7 +2091,10 @@ def test_the_documented_exit_codes_are_the_ones_implemented() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("url", ["CELERY_BROKER_URL", "CELERY_RESULT_BACKEND"])
+@pytest.mark.parametrize(
+    "url",
+    ["CELERY_BROKER_URL", "CELERY_RESULT_BACKEND", "FLOWER_BROKER_API"],
+)
 @pytest.mark.parametrize("placeholder", ["", gen_secrets.GENERATED_PLACEHOLDER])
 def test_a_composed_value_holding_no_real_value_is_derived_rather_than_refused(
     repository: Path,
@@ -2121,6 +2132,34 @@ def test_a_composed_value_holding_no_real_value_is_derived_rather_than_refused(
     assert code == gen_secrets.EXIT_OK
     assert after[url] not in gen_secrets.INVALID_VALUES
     assert after["RABBITMQ_DEFAULT_PASS"] in after["CELERY_BROKER_URL"]
+
+
+@pytest.mark.unit
+def test_flower_broker_api_reuses_the_registered_broker_credential() -> None:
+    """Compose the dashboard's queue-depth endpoint without another credential.
+
+    Supplies harmless broker components and requires the exact RabbitMQ management API URL Flower
+    reads, proving Compose never needs to embed the password or endpoint.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the composed URL omits or changes a broker component.
+    """
+    values = {
+        "RABBITMQ_DEFAULT_USER": "localforge_broker",
+        "RABBITMQ_DEFAULT_PASS": "generated-password",
+        "RABBITMQ_HOST": "rabbitmq-rq4sx",
+        "RABBITMQ_MANAGEMENT_PORT": "15672",
+    }
+
+    assert gen_secrets.compose_flower_broker_api(values) == (
+        "http://localforge_broker:generated-password@rabbitmq-rq4sx:15672/api/"
+    )
 
 
 @pytest.mark.unit

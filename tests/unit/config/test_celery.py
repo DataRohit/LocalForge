@@ -12,6 +12,7 @@ import pytest
 from celery import Task, signals
 from celery.exceptions import SoftTimeLimitExceeded, TimeLimitExceeded
 from celery.loaders import base as loaders
+from celery.worker.request import Request as CeleryRequest
 from django.conf import settings
 from django.views.debug import SafeExceptionReporterFilter
 from kombu.exceptions import KombuError
@@ -789,3 +790,122 @@ def test_the_queue_does_not_take_over_the_projects_logging() -> None:
         AssertionError: If the queue would hijack the root logger.
     """
     assert queue.app.conf.worker_hijack_root_logger is False
+
+
+@pytest.mark.unit
+def test_workers_publish_safe_runtime_events_without_task_sent_payloads() -> None:
+    """Expose worker state to Flower without publishing caller arguments at send time.
+
+    Requires worker execution events for active and completed task visibility while preserving the
+    Ticket 22 prohibition on task-sent events that capture arguments before redaction.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If Flower has no worker events or sent-event credential risk returns.
+    """
+    assert queue.app.conf.worker_send_task_events is True
+    assert queue.app.conf.task_send_sent_event is False
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("event_type", "fields", "expected"),
+    [
+        (
+            "task-succeeded",
+            {"result": "credential-result-marker", "runtime": 0.1},
+            {"result": "str", "runtime": 0.1},
+        ),
+        (
+            "task-retried",
+            {"exception": "credential-exception-marker", "traceback": "credential-trace-marker"},
+            {"exception": queue.REDACTED, "traceback": None},
+        ),
+        (
+            "task-failed",
+            {"exception": "credential-exception-marker", "traceback": "credential-trace-marker"},
+            {"exception": queue.REDACTED, "traceback": None},
+        ),
+        (
+            "task-started",
+            {"pid": 1234},
+            {"pid": 1234},
+        ),
+    ],
+)
+def test_worker_request_sanitizes_native_event_payloads(
+    event_type: str,
+    fields: dict[str, object],
+    expected: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reduce result and failure details before the event dispatcher sees them.
+
+    Calls the custom request boundary with credential markers and captures the base event call,
+    proving Flower receives state transitions without result values, exception text, or tracebacks.
+
+    Arguments:
+        event_type: Celery event name under test.
+        fields: Native event fields before sanitization.
+        expected: Fields permitted to reach the dispatcher.
+        monkeypatch: Fixture replacing the external event dispatcher.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any sensitive event detail survives or safe fields change.
+    """
+    sent: list[tuple[str, dict[str, object]]] = []
+
+    def capture(
+        _request: CeleryRequest,
+        captured_type: str,
+        **captured_fields: object,
+    ) -> None:
+        """Capture one sanitized event instead of publishing it.
+
+        Replaces only Celery's external event dispatcher and records the fields the custom request
+        permits to cross that boundary.
+
+        Arguments:
+            _request: Request instance issuing the event.
+            captured_type: Event name sent to the dispatcher.
+            **captured_fields: Sanitized event fields.
+
+        Returns:
+            None.
+        """
+        sent.append((captured_type, captured_fields))
+
+    monkeypatch.setattr(CeleryRequest, "send_event", capture)
+    request = object.__new__(queue.SanitizedRequest)
+
+    request.send_event(event_type, **fields)
+
+    assert sent == [(event_type, expected)]
+    assert "credential-" not in str(sent)
+
+
+@pytest.mark.unit
+def test_every_project_task_uses_the_sanitized_worker_request() -> None:
+    """Attach the safe event boundary to the project task base.
+
+    Confirms every autodiscovered task inherits the custom request class, preventing one app from
+    bypassing event sanitization by relying on the Celery default.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the application task base uses another worker request.
+    """
+    assert queue.LoggedTask.Request == "config.celery:SanitizedRequest"

@@ -51,6 +51,7 @@ DEVELOPMENT_FOUNDATION = (
 DEVELOPMENT_AFTER_DJANGO = (
     "celery-worker-cw8rt",
     "celery-beat-cb4hq",
+    "flower-fl9zd",
     "traefik-tk2jp",
     "pgadmin-pa7fe",
     "cadvisor-cv8mh",
@@ -84,6 +85,7 @@ CONTAINER_IMAGES = {
     "rabbitmq-rq4sx": "rabbitmq:4.3.5-management",
     "celery-worker-cw8rt": "localforge/django:0.1.0",
     "celery-beat-cb4hq": "localforge/django:0.1.0",
+    "flower-fl9zd": "localforge/django:0.1.0",
     "mailpit-mp6gb": "axllent/mailpit:v1.31.1",
     "seaweedfs-sw9cr": "chrislusf/seaweedfs:4.46",
     "prometheus-pm5db": "prom/prometheus:v3.14.0",

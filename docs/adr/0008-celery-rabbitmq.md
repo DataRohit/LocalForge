@@ -169,6 +169,25 @@ Token issue timestamps retain subsecond precision while signed password and user
 seconds and remain valid at the exact configured timeout. Cleanup therefore applies a one-second precision cushion to
 all three account-token cutoffs and deletes only rows strictly beyond the inclusive bearer boundary.
 
+## Ticket 44 worker dashboard
+
+Recorded 2026-09-20. `flower-fl9zd` reuses the application image, listens only on the application and host-access
+networks, publishes port 5555, and has no edge-proxy labels. It starts after RabbitMQ only, so dashboard failure or
+absence cannot block worker startup or execution, and it is excluded from the headless testing environment.
+
+Flower reads generated `FLOWER_BASIC_AUTH` directly and keeps unauthenticated API mode disabled. Queue depth uses a
+composed `FLOWER_BROKER_API` built from the existing RabbitMQ credential and registered management port, introducing
+no second broker secret and no inline Compose credential.
+
+Workers emit execution events while `task_send_sent_event` remains false. Publish-time argument redaction therefore
+protects task history without reintroducing the pre-redaction task-sent event. A custom worker request boundary
+reduces successful results to their type name and replaces retry/failure exception text with the redaction marker plus
+a null traceback before the event dispatcher runs; logging filters cannot protect this separate channel.
+
+Runtime verification observed unauthenticated API rejection, the registered worker, one active task, both consumed
+queues, a successful recent outcome, and continued worker health and task execution while Flower was stopped.
+Adversarial runtime results were stored as `str`, failure exceptions as `********`, and failure tracebacks as null.
+
 ## Considered options
 
 **django-q2 1.11.1** (2026-08-26) — the strongest alternative: active, Python 3.14 classifier, and a scheduler

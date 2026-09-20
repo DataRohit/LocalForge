@@ -135,6 +135,13 @@ worker does not consume. Task logs retain only exception types, never arbitrary 
 task cannot starve ordinary work because the configured concurrency may not fall below two, and the operational slow
 probe cannot exceed the worker soft time limit even when executed eagerly.
 
+`flower-fl9zd` reads worker execution events and the authenticated RabbitMQ management API to show registered workers,
+active tasks, default and slow queue depths, and recent outcomes. Basic authentication applies to the UI and API;
+unauthenticated API mode is not enabled. Flower depends only on the broker, sits on the application and access
+networks, carries no edge labels, and is excluded from testing. Before event dispatch, successful results become type
+names and retry/failure exception plus traceback fields are redacted, so task history cannot recover a value hidden
+from arguments or logs.
+
 Ticket 43 makes `celery-beat-cb4hq` operationally responsible for running SimpleJWT's upstream
 `flushexpiredtokens` command once daily. The command's delete is routed to `default`, the authoritative primary;
 Ticket 30 proves expired outstanding and cascaded blacklist rows are removed without touching unexpired rows, but

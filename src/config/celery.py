@@ -13,6 +13,7 @@ from typing import Any, cast, override
 
 from celery import Celery, Task, signals
 from celery.exceptions import SoftTimeLimitExceeded, TimeLimitExceeded
+from celery.worker.request import Request as CeleryRequest
 from kombu import Exchange, Producer, Queue
 from kombu.exceptions import KombuError
 
@@ -120,6 +121,43 @@ class DeadLetterRecord:
     task_name: str
 
 
+class SanitizedRequest(CeleryRequest):  # type: ignore[misc]
+    """Worker request boundary that removes sensitive native event details.
+
+    Inherits from ``CeleryRequest`` and preserves event names plus safe operational fields while
+    reducing successful results to type names and blanking retry or failure diagnostics.
+
+    Attributes:
+        None beyond those inherited from ``Request``.
+
+    Members:
+        send_event: Sanitize one native task event before dispatch.
+    """
+
+    @override
+    def send_event(self, type: str, **fields: Any) -> None:
+        """Sanitize one native task event before dispatch.
+
+        Retains state transitions, task identity, runtime, and process fields while ensuring Flower
+        cannot recover caller values from results, exceptions, or tracebacks.
+
+        Arguments:
+            type: Celery event name.
+            **fields: Native event fields supplied by the worker request.
+
+        Returns:
+            None.
+        """
+        sanitized = dict(fields)
+        if type == "task-succeeded" and "result" in sanitized:
+            sanitized["result"] = sanitized["result"].__class__.__name__
+        elif type in {"task-retried", "task-failed"}:
+            sanitized["exception"] = REDACTED
+            sanitized["traceback"] = None
+
+        super().send_event(type, **sanitized)
+
+
 def publish_dead_letter(record: DeadLetterRecord) -> None:
     """Publish one scrubbed terminal task record to the durable dead-letter queue.
 
@@ -177,6 +215,7 @@ class LoggedTask(Task):  # type: ignore[misc]
         retry_backoff_max: Ceiling the doubling stops at.
         retry_jitter: Whether the wait is spread, so a shared outage does not retry in lockstep.
         max_retries: Attempts after the first, after which the task fails for good.
+        Request: Worker request class sanitizing the native event stream.
 
     Members:
         on_failure: Record a task that has run out of retries.
@@ -188,6 +227,7 @@ class LoggedTask(Task):  # type: ignore[misc]
     retry_backoff_max = RETRY_BACKOFF_MAX_SECONDS
     retry_jitter = True
     max_retries = MAX_RETRIES
+    Request = "config.celery:SanitizedRequest"
 
     @override
     def on_failure(

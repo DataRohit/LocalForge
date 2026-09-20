@@ -45,6 +45,7 @@ dependencies = [
     "djangorestframework-simplejwt==5.5.1",
     "drf-spectacular>=0.30.0",
     "drf-spectacular-sidecar>=2026.9.1",
+    "flower>=2.1.0",
     "psycopg[binary,pool]>=3.3.5",
     "redis>=8.1.0",
     "uvicorn[standard]>=0.52.4",
@@ -109,6 +110,7 @@ convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 "src/config/settings/*.py" = ["F403"]
+"src/config/celery.py" = ["A002"]
 "src/manage.py" = ["PLC0415"]
 "**/migrations/*.py" = ["D", "E501", "RUF012"]
 "scripts/*.py" = ["T201", "TC003"]
