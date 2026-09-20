@@ -3,7 +3,18 @@
 **What to build:** `/jwt/create/`, `/jwt/refresh/`, and `/jwt/verify/` — the primary authentication scheme, issuing
 short-lived access tokens and longer-lived refresh tokens that can be rotated and revoked.
 
-**Blocked by:** 27, 18.
+**Blocked by:**
+
+- [27](27-api-foundation-and-error-envelope.md)
+- [18](../phase-2-project-foundation/18-custom-user-model.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [First-party account endpoints ADR](../../docs/adr/0017-first-party-account-endpoints.md)
+- [API error contract ADR](../../docs/adr/0018-api-error-contract.md)
+- [Platform conventions](../../docs/platform/conventions.md)
 
 **Status:** done
 
@@ -26,4 +37,5 @@ short-lived access tokens and longer-lived refresh tokens that can be rotated an
       time, blacklist after rotation, and use of a token belonging to a deleted account.
 - [x] SimpleJWT's upstream `flushexpiredtokens` command is integration-tested against the authoritative primary:
       expired outstanding and cascaded blacklist rows are removed while unexpired rows remain. Daily execution is
-      an explicit Ticket 43 scheduler responsibility and is deliberately not scheduled by Ticket 30.
+      an explicit [Ticket 43](../phase-6-async-services/43-periodic-task-scheduler.md) scheduler responsibility and
+      is deliberately not scheduled by [Ticket 30](30-json-web-token-endpoints.md).

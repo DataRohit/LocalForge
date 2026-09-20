@@ -4,7 +4,18 @@
 volume with the registry names, on two isolated project namespaces that can run at the same time, with no
 Docker-generated defaults anywhere.
 
-**Blocked by:** 02.
+**Blocked by:**
+
+- [02](02-secret-generation-env-files.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build prerequisites](../../docs/build/prerequisites.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Service inventory](../../docs/platform/service-inventory.md)
+- [Architecture decision index](../../docs/adr/README.md)
 
 **Status:** done
 

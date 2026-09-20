@@ -3,7 +3,18 @@
 **What to build:** proof that the pieces work together against the real services — real database, real cache, real
 broker, real channel layer, real object storage — covering every documented route and every documented status code.
 
-**Blocked by:** 47.
+**Blocked by:**
+
+- [47](47-unit-test-suite.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Ticket index and phase gates](../README.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Service inventory](../../docs/platform/service-inventory.md)
+- [Documentation standard](../../docs/platform/documentation-standard.md)
 
 **Status:** ready-for-agent
 

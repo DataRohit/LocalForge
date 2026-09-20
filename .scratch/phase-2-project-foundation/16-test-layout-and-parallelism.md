@@ -3,7 +3,17 @@
 **What to build:** a test suite structure that mirrors the application, runs in parallel by default, and cannot
 hang. A developer can run the whole suite, one layer of it, or one module, and get a result quickly.
 
-**Blocked by:** 13.
+**Blocked by:**
+
+- [13](13-dependency-baseline.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Documentation standard](../../docs/platform/documentation-standard.md)
+- [Architecture decision index](../../docs/adr/README.md)
 
 **Status:** done
 
@@ -21,5 +31,5 @@ hang. A developer can run the whole suite, one layer of it, or one module, and g
 - [x] Database setup reuses the test database between runs where safe, and the reuse can be disabled with a flag.
 - [x] Coverage remains enforced at the existing threshold with branch coverage, and the parallel run reports the
       same coverage as a serial run.
-- [x] Test modules follow the documentation standard from ticket 15.
+- [x] Test modules follow the documentation standard from [ticket 15](15-documentation-standards-enforcement.md).
 - [x] A deliberately failing test is added, observed to fail, and removed, proving the harness reports correctly.

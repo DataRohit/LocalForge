@@ -4,7 +4,18 @@
 stack produces two healthy nodes, both reachable from the host on separate ports, with the standby confirmed to be
 in recovery and streaming.
 
-**Blocked by:** 03.
+**Blocked by:**
+
+- [03](03-compose-foundation-networks-volumes.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build prerequisites](../../docs/build/prerequisites.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Service inventory](../../docs/platform/service-inventory.md)
+- [Architecture decision index](../../docs/adr/README.md)
 
 **Status:** done
 

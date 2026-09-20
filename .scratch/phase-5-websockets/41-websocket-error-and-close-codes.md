@@ -3,7 +3,18 @@
 **What to build:** a documented, tested contract for every way a socket can fail, so a client can distinguish
 "retry later" from "your credential is dead, stop retrying" without guessing.
 
-**Blocked by:** 40.
+**Blocked by:**
+
+- [40](40-notification-channel-group-broadcast.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [WebSocket contract](../../docs/api/websocket-v1.md)
+- [Channels ADR](../../docs/adr/0003-channels-dedicated-valkey.md)
+- [API error contract ADR](../../docs/adr/0018-api-error-contract.md)
+- [WebSocket authentication ADR](../../docs/adr/0019-websocket-authentication.md)
 
 **Status:** done
 

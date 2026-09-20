@@ -3,7 +3,18 @@
 **What to build:** Django able to enqueue a task onto the broker and read its result back, with the application
 object discovered automatically so tasks defined in any app are registered.
 
-**Blocked by:** 07, 17.
+**Blocked by:**
+
+- [07](../phase-1-infrastructure/07-message-broker.md)
+- [17](../phase-2-project-foundation/17-application-image-and-entrypoint.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Service inventory](../../docs/platform/service-inventory.md)
+- [Architecture decision index](../../docs/adr/README.md)
 
 **Status:** done
 

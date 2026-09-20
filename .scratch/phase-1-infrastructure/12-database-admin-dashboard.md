@@ -3,7 +3,18 @@
 **What to build:** a browser UI where a developer can inspect both database nodes without installing a client, with
 both servers already registered on first launch.
 
-**Blocked by:** 04.
+**Blocked by:**
+
+- [04](04-postgresql-primary-standby.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build prerequisites](../../docs/build/prerequisites.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Service inventory](../../docs/platform/service-inventory.md)
+- [Architecture decision index](../../docs/adr/README.md)
 
 **Status:** done
 

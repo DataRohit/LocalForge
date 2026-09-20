@@ -3,7 +3,18 @@
 **What to build:** `/token/login/` and `/token/logout/` — a client exchanges credentials for a token, uses it on
 subsequent requests, and destroys it on logout.
 
-**Blocked by:** 27, 18.
+**Blocked by:**
+
+- [27](27-api-foundation-and-error-envelope.md)
+- [18](../phase-2-project-foundation/18-custom-user-model.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [First-party account endpoints ADR](../../docs/adr/0017-first-party-account-endpoints.md)
+- [API error contract ADR](../../docs/adr/0018-api-error-contract.md)
+- [Platform conventions](../../docs/platform/conventions.md)
 
 **Status:** done
 

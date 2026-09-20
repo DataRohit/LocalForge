@@ -3,7 +3,18 @@
 **What to build:** `/users/resend_activation/` and the activation confirmation it drives — a new account is
 unusable until the owner proves they control the email address.
 
-**Blocked by:** 31, 24.
+**Blocked by:**
+
+- [31](31-user-registration-and-profile.md)
+- [24](../phase-3-infrastructure-integration/24-email-backend-integration.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [First-party account endpoints ADR](../../docs/adr/0017-first-party-account-endpoints.md)
+- [API error contract ADR](../../docs/adr/0018-api-error-contract.md)
+- [Platform conventions](../../docs/platform/conventions.md)
 
 **Status:** done
 
@@ -29,7 +40,8 @@ unusable until the owner proves they control the email address.
       SMTP, duplicate or redelivered tasks cannot send again, and a failed or interrupted attempt recovers through
       resend with a newly issued token.
 - [x] Used-token classification survives account deletion through an immutable token subject and nullable account
-      reference; Ticket 43 owns deletion after the token lifetime has elapsed.
+      reference; [Ticket 43](../phase-6-async-services/43-periodic-task-scheduler.md) owns deletion after the token
+      lifetime has elapsed.
 - [x] Integration tests cover the full loop against the mail capture service, plus every rejection case using
       frozen time for expiry.
 

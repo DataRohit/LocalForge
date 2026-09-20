@@ -4,7 +4,17 @@
 carries no comments, every module, class, and callable carries a structured docstring, and CI fails when one is
 missing or malformed.
 
-**Blocked by:** 13.
+**Blocked by:**
+
+- [13](13-dependency-baseline.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Documentation standard](../../docs/platform/documentation-standard.md)
+- [Architecture decision index](../../docs/adr/README.md)
 
 **Status:** done
 

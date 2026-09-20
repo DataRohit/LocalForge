@@ -3,7 +3,20 @@
 **What to build:** a completed background task pushing a live update to the user who triggered it, closing the loop
 between the queue and the socket without the client polling.
 
-**Blocked by:** 42, 40.
+**Blocked by:**
+
+- [42](42-background-worker-service.md)
+- [40](../phase-5-websockets/40-notification-channel-group-broadcast.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [Celery and RabbitMQ ADR](../../docs/adr/0008-celery-rabbitmq.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Service inventory](../../docs/platform/service-inventory.md)
+- [Kubernetes mapping](../../docs/platform/kubernetes-mapping.md)
+- [WebSocket contract](../../docs/api/websocket-v1.md)
 
 **Status:** ready-for-agent
 

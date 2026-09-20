@@ -3,7 +3,18 @@
 **What to build:** a running S3-compatible endpoint with a pre-created bucket and credentials, so uploads have
 somewhere to go. A developer can list the bucket with any S3 client and browse stored files in a web UI.
 
-**Blocked by:** 03.
+**Blocked by:**
+
+- [03](03-compose-foundation-networks-volumes.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build prerequisites](../../docs/build/prerequisites.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Service inventory](../../docs/platform/service-inventory.md)
+- [Architecture decision index](../../docs/adr/README.md)
 
 **Status:** done
 

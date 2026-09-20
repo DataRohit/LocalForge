@@ -3,7 +3,17 @@
 **What to build:** proof that the status codes no view ever raises still behave correctly and still return the
 envelope. These are the codes integrators hit and nobody tests.
 
-**Blocked by:** 27.
+**Blocked by:**
+
+- [27](27-api-foundation-and-error-envelope.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [First-party account endpoints ADR](../../docs/adr/0017-first-party-account-endpoints.md)
+- [API error contract ADR](../../docs/adr/0018-api-error-contract.md)
+- [Platform conventions](../../docs/platform/conventions.md)
 
 **Status:** done
 
@@ -23,5 +33,6 @@ envelope. These are the codes integrators hit and nobody tests.
 - [x] Request body size is bounded, and an oversized body is rejected with a defined code rather than consuming
       memory.
 - [x] Malformed JSON returns a bad-request envelope rather than a server error.
-- [x] The durable, complete status-code registry/matrix required by ticket 36 is established, with every framework
-      and middleware status above mapped to the real route and trigger that reaches it.
+- [x] The durable, complete status-code registry/matrix required by
+      [ticket 36](36-exhaustive-openapi-documentation.md) is established, with every framework and middleware
+      status above mapped to the real route and trigger that reaches it.

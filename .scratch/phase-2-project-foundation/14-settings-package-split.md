@@ -4,7 +4,17 @@
 environment, so development and testing differ by declaration rather than by conditional logic, and every value
 comes from the environment.
 
-**Blocked by:** 13.
+**Blocked by:**
+
+- [13](13-dependency-baseline.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Documentation standard](../../docs/platform/documentation-standard.md)
+- [Architecture decision index](../../docs/adr/README.md)
 
 **Status:** done
 

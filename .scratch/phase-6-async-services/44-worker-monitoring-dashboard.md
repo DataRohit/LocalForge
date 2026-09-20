@@ -3,7 +3,18 @@
 **What to build:** a browser UI showing live workers, queue depth, and task history, so a developer can see what
 the queue is doing without reading logs.
 
-**Blocked by:** 42.
+**Blocked by:**
+
+- [42](42-background-worker-service.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [Celery and RabbitMQ ADR](../../docs/adr/0008-celery-rabbitmq.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Service inventory](../../docs/platform/service-inventory.md)
+- [Kubernetes mapping](../../docs/platform/kubernetes-mapping.md)
 
 **Status:** ready-for-agent
 

@@ -3,7 +3,18 @@
 **What to build:** a deliberate pass over the finished platform looking for the failures that only show up under
 adversarial or degraded conditions, with every finding either fixed or recorded as an accepted risk.
 
-**Blocked by:** 49.
+**Blocked by:**
+
+- [49](49-dual-mode-test-execution.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Ticket index and phase gates](../README.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Service inventory](../../docs/platform/service-inventory.md)
+- [Documentation standard](../../docs/platform/documentation-standard.md)
 
 **Status:** ready-for-agent
 

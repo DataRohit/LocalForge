@@ -3,7 +3,18 @@
 **What to build:** `/users/set_password/`, `/users/reset_password/`, and `/users/reset_password_confirm/` — an
 authenticated user changes their password, and a locked-out user recovers by email.
 
-**Blocked by:** 31, 24.
+**Blocked by:**
+
+- [31](31-user-registration-and-profile.md)
+- [24](../phase-3-infrastructure-integration/24-email-backend-integration.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [First-party account endpoints ADR](../../docs/adr/0017-first-party-account-endpoints.md)
+- [API error contract ADR](../../docs/adr/0018-api-error-contract.md)
+- [Platform conventions](../../docs/platform/conventions.md)
 
 **Status:** done
 
@@ -40,8 +51,9 @@ authenticated user changes their password, and a locked-out user recovers by ema
   account dimensions. Exact invalid bodies record no admission; PostgreSQL loss fails closed.
 - Delivery claims one SMTP attempt durably, expires with the reset token, and revalidates locked account and token
   state. SMTP failure recovers through another reset request.
-- Used records remain classification tombstones after account deletion. Ticket 43 owns bounded cleanup after the
-  configured maximum age.
+- Used records remain classification tombstones after account deletion.
+  [Ticket 43](../phase-6-async-services/43-periodic-task-scheduler.md) owns bounded cleanup after the configured
+  maximum age.
 - Reset confirmation runs exact-shape and account-independent password validation before admission. It authenticates
   and locks the bearer and account before running the complete validator set against the real locked account, so
   malformed, foreign, expired, and used classification cannot depend on account attributes. Account-independent

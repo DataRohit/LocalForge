@@ -4,7 +4,22 @@
 response example per status code — including the codes produced by middleware and content negotiation. The schema
 is verified against real behaviour, not written from intent.
 
-**Blocked by:** 28, 31, 32, 33, 34, 35.
+**Blocked by:**
+
+- [28](28-framework-and-middleware-status-codes.md)
+- [31](31-user-registration-and-profile.md)
+- [32](32-account-activation-and-resend.md)
+- [33](33-password-management-endpoints.md)
+- [34](34-username-management-endpoints.md)
+- [35](35-throttling-permissions-security-headers.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [First-party account endpoints ADR](../../docs/adr/0017-first-party-account-endpoints.md)
+- [API error contract ADR](../../docs/adr/0018-api-error-contract.md)
+- [Platform conventions](../../docs/platform/conventions.md)
 
 **Status:** done
 

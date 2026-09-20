@@ -3,7 +3,18 @@
 **What to build:** `/users/` and `/users/me/` — anyone can register, an authenticated caller can read and update
 their own account, and nobody can read or modify anyone else's.
 
-**Blocked by:** 29, 30.
+**Blocked by:**
+
+- [29](29-token-authentication-endpoints.md)
+- [30](30-json-web-token-endpoints.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [First-party account endpoints ADR](../../docs/adr/0017-first-party-account-endpoints.md)
+- [API error contract ADR](../../docs/adr/0018-api-error-contract.md)
+- [Platform conventions](../../docs/platform/conventions.md)
 
 **Status:** done
 

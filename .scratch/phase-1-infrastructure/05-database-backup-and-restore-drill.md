@@ -4,7 +4,18 @@
 runs on its own schedule, retains a bounded history, and a documented drill restores a backup into a scratch
 instance and finds the expected data.
 
-**Blocked by:** 04.
+**Blocked by:**
+
+- [04](04-postgresql-primary-standby.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build prerequisites](../../docs/build/prerequisites.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Service inventory](../../docs/platform/service-inventory.md)
+- [Architecture decision index](../../docs/adr/README.md)
 
 **Status:** done
 
@@ -21,4 +32,5 @@ instance and finds the expected data.
 - [x] A restore drill is documented and performed once: restore into a scratch instance and confirm a known row.
 - [x] Backup logs are written to the container's standard streams so the log collector can pick them up without
       further configuration. The end-to-end assertion that a backup line is retrievable from log storage belongs to
-      ticket 11, which introduces the collector and the store; this ticket cannot assert it because neither exists.
+      [ticket 11](11-metrics-and-log-aggregation.md), which introduces the collector and the store; this ticket
+      cannot assert it because neither exists.

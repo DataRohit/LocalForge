@@ -3,7 +3,19 @@
 **What to build:** Django reading from the standby and writing to the primary, automatically, with migrations
 always going to the primary. A developer can see in the query log which connection served which statement.
 
-**Blocked by:** 04, 17, 18.
+**Blocked by:**
+
+- [04](../phase-1-infrastructure/04-postgresql-primary-standby.md)
+- [17](../phase-2-project-foundation/17-application-image-and-entrypoint.md)
+- [18](../phase-2-project-foundation/18-custom-user-model.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Service inventory](../../docs/platform/service-inventory.md)
+- [Architecture decision index](../../docs/adr/README.md)
 
 **Status:** done
 

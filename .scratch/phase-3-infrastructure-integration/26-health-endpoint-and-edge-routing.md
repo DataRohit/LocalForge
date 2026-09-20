@@ -4,7 +4,23 @@
 the state of every backing service, and the reverse proxy routes to the application and uses it to take an
 unhealthy instance out of rotation.
 
-**Blocked by:** 10, 19, 20, 21, 22, 23, 24.
+**Blocked by:**
+
+- [10](../phase-1-infrastructure/10-edge-reverse-proxy.md)
+- [19](19-database-and-replica-routing.md)
+- [20](20-cache-integration.md)
+- [21](21-channel-layer-integration.md)
+- [22](22-task-queue-integration.md)
+- [23](23-object-storage-integration.md)
+- [24](24-email-backend-integration.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Service inventory](../../docs/platform/service-inventory.md)
+- [Architecture decision index](../../docs/adr/README.md)
 
 **Status:** done
 
@@ -24,7 +40,8 @@ unhealthy instance out of rotation.
       `Host: localforge.localhost`, which must appear in the allowed hosts and, for browser use, in the trusted
       origins beside the existing `http://localhost:8080`.
 - [x] The proxy declares the application as a dependency, so the startup order matches the tier the inventory
-      assigns it. Ticket 10 left `traefik-tk2jp` without one because no backend existed to depend on yet.
+      assigns it. [Ticket 10](../phase-1-infrastructure/10-edge-reverse-proxy.md) left `traefik-tk2jp` without one
+      because no backend existed to depend on yet.
 - [x] The proxy uses the health endpoint for its own backend health checking, and an instance failing it stops
       receiving traffic.
 - [x] The container health check uses the same endpoint, so Compose ordering and proxy routing agree.

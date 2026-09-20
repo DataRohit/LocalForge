@@ -3,7 +3,18 @@
 **What to build:** a running message broker with its own virtual host, a dedicated user, durable storage, and a
 management UI a developer can log into to watch queues.
 
-**Blocked by:** 03.
+**Blocked by:**
+
+- [03](03-compose-foundation-networks-volumes.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build prerequisites](../../docs/build/prerequisites.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Service inventory](../../docs/platform/service-inventory.md)
+- [Architecture decision index](../../docs/adr/README.md)
 
 **Status:** done
 

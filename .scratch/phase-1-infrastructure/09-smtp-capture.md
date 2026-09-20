@@ -3,7 +3,18 @@
 **What to build:** a local SMTP sink that accepts every message the application sends and exposes them in a web UI
 and a REST API, so mail can be asserted on in tests and read by a human.
 
-**Blocked by:** 03.
+**Blocked by:**
+
+- [03](03-compose-foundation-networks-volumes.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build prerequisites](../../docs/build/prerequisites.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Service inventory](../../docs/platform/service-inventory.md)
+- [Architecture decision index](../../docs/adr/README.md)
 
 **Status:** done
 

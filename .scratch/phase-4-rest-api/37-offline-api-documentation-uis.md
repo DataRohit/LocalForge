@@ -3,7 +3,17 @@
 **What to build:** Swagger UI and ReDoc served from the application itself, working with no internet connection,
 so a developer can read and exercise the API from a browser on an air-gapped machine.
 
-**Blocked by:** 36.
+**Blocked by:**
+
+- [36](36-exhaustive-openapi-documentation.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [First-party account endpoints ADR](../../docs/adr/0017-first-party-account-endpoints.md)
+- [API error contract ADR](../../docs/adr/0018-api-error-contract.md)
+- [Platform conventions](../../docs/platform/conventions.md)
 
 **Status:** done
 

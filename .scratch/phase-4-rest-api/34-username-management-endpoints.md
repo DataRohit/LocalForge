@@ -3,7 +3,18 @@
 **What to build:** `/users/set_username/`, `/users/reset_username/`, and `/users/reset_username_confirm/` — the
 same shape as the password flows, applied to the login identifier.
 
-**Blocked by:** 31, 24.
+**Blocked by:**
+
+- [31](31-user-registration-and-profile.md)
+- [24](../phase-3-infrastructure-integration/24-email-backend-integration.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [First-party account endpoints ADR](../../docs/adr/0017-first-party-account-endpoints.md)
+- [API error contract ADR](../../docs/adr/0018-api-error-contract.md)
+- [Platform conventions](../../docs/platform/conventions.md)
 
 **Status:** done
 

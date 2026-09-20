@@ -3,7 +3,18 @@
 **What to build:** a reverse proxy that discovers application containers automatically and routes traffic to them,
 with a dashboard a developer can log into to see the live routing table.
 
-**Blocked by:** 03.
+**Blocked by:**
+
+- [03](03-compose-foundation-networks-volumes.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build prerequisites](../../docs/build/prerequisites.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Service inventory](../../docs/platform/service-inventory.md)
+- [Architecture decision index](../../docs/adr/README.md)
 
 **Status:** done
 

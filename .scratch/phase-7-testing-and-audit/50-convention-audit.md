@@ -3,7 +3,18 @@
 **What to build:** an automated check that the running stack matches the naming, volume, and network rules, so a
 drifted name is caught mechanically rather than by reading a Compose file.
 
-**Blocked by:** 49.
+**Blocked by:**
+
+- [49](49-dual-mode-test-execution.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Ticket index and phase gates](../README.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Service inventory](../../docs/platform/service-inventory.md)
+- [Documentation standard](../../docs/platform/documentation-standard.md)
 
 **Status:** ready-for-agent
 

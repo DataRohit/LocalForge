@@ -3,7 +3,18 @@
 **What to build:** an authenticated client receiving messages addressed to it. On connect the socket joins a group
 derived from the authenticated user, and anything published to that group arrives — including from another process.
 
-**Blocked by:** 39.
+**Blocked by:**
+
+- [39](39-websocket-authentication.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [WebSocket contract](../../docs/api/websocket-v1.md)
+- [Channels ADR](../../docs/adr/0003-channels-dedicated-valkey.md)
+- [API error contract ADR](../../docs/adr/0018-api-error-contract.md)
+- [WebSocket authentication ADR](../../docs/adr/0019-websocket-authentication.md)
 
 **Status:** done
 

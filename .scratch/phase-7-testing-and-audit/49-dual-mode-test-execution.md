@@ -4,7 +4,18 @@
 developer's machine against published ports — because a suite that only passes one way hides environment-specific
 failures.
 
-**Blocked by:** 48.
+**Blocked by:**
+
+- [48](48-integration-test-suite.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Ticket index and phase gates](../README.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Service inventory](../../docs/platform/service-inventory.md)
+- [Documentation standard](../../docs/platform/documentation-standard.md)
 
 **Status:** ready-for-agent
 

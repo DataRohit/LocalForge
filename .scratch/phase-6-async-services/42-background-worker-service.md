@@ -3,7 +3,18 @@
 **What to build:** a worker container consuming from the broker and executing tasks, observable in metrics and
 logs, and safe to stop and start without losing work.
 
-**Blocked by:** 22.
+**Blocked by:**
+
+- [22](../phase-3-infrastructure-integration/22-task-queue-integration.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [Celery and RabbitMQ ADR](../../docs/adr/0008-celery-rabbitmq.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Service inventory](../../docs/platform/service-inventory.md)
+- [Kubernetes mapping](../../docs/platform/kubernetes-mapping.md)
 
 **Status:** ready-for-agent
 

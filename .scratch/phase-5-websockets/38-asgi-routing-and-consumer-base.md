@@ -3,7 +3,19 @@
 **What to build:** the application serving HTTP and WebSocket on one ASGI entrypoint, with a base consumer class
 every future consumer inherits, so connection lifecycle and error handling are written once.
 
-**Blocked by:** 21, 27.
+**Blocked by:**
+
+- [21](../phase-3-infrastructure-integration/21-channel-layer-integration.md)
+- [27](../phase-4-rest-api/27-api-foundation-and-error-envelope.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [WebSocket contract](../../docs/api/websocket-v1.md)
+- [Channels ADR](../../docs/adr/0003-channels-dedicated-valkey.md)
+- [API error contract ADR](../../docs/adr/0018-api-error-contract.md)
+- [WebSocket authentication ADR](../../docs/adr/0019-websocket-authentication.md)
 
 **Status:** done
 

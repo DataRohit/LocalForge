@@ -4,7 +4,17 @@
 fields the account endpoints need: a unique username, a unique email, and an active flag that gates login until the
 account is activated.
 
-**Blocked by:** 14.
+**Blocked by:**
+
+- [14](14-settings-package-split.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Documentation standard](../../docs/platform/documentation-standard.md)
+- [Architecture decision index](../../docs/adr/README.md)
 
 **Status:** done
 
@@ -20,6 +30,6 @@ account is activated.
 - [x] The model is registered in the admin with the sensitive fields read-only or excluded.
 - [x] The initial migration is generated and applies cleanly against an empty database.
 - [x] The migration check reports no missing migrations.
-- [x] Model, manager, and admin all follow the documentation standard from ticket 15.
+- [x] Model, manager, and admin all follow the documentation standard from [ticket 15](15-documentation-standards-enforcement.md).
 - [x] Unit tests cover creation, superuser creation, the case-insensitive uniqueness constraints, email
       normalisation, and the inactive-by-default rule.

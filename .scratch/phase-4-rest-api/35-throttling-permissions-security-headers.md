@@ -3,7 +3,17 @@
 **What to build:** the cross-cutting protections every route inherits — rate limits that actually stop abuse,
 permissions that default to closed, and the response headers a browser needs to defend the client.
 
-**Blocked by:** 31.
+**Blocked by:**
+
+- [31](31-user-registration-and-profile.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [First-party account endpoints ADR](../../docs/adr/0017-first-party-account-endpoints.md)
+- [API error contract ADR](../../docs/adr/0018-api-error-contract.md)
+- [Platform conventions](../../docs/platform/conventions.md)
 
 **Status:** done
 
@@ -12,7 +22,8 @@ permissions that default to closed, and the response headers a browser needs to 
 - [x] Rate-limited responses return the too-many-requests code in the standard envelope, with a `Retry-After`
       header.
 - [x] Throttle state is shared across application instances rather than per process. General reusable scopes live
-      in cache; Ticket 29's security admission remains in the authoritative PostgreSQL primary and is not moved.
+      in cache; [Ticket 29](29-token-authentication-endpoints.md)'s security admission remains in the authoritative
+      PostgreSQL primary and is not moved.
 - [x] Throttling keys on both the client address and the account, so one abusive client cannot lock out an entire
       shared address, and one account cannot evade the limit by changing address.
 - [x] Identified requests use account plus `(address, account)` composite dimensions in one all-or-nothing Valkey

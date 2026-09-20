@@ -4,7 +4,18 @@
 what to install if it cannot. Running it prints a pass/fail table covering every tool, version floor, and resource
 the build needs, and exits non-zero when a required item is missing.
 
-**Blocked by:** None (can start immediately).
+**Blocked by:**
+
+- None (can start immediately).
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build prerequisites](../../docs/build/prerequisites.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Service inventory](../../docs/platform/service-inventory.md)
+- [Architecture decision index](../../docs/adr/README.md)
 
 **Status:** done
 

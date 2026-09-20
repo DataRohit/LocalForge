@@ -4,7 +4,17 @@
 suite. Starting the container waits for its dependencies, applies migrations, collects static files, and serves
 under the ASGI server — in that order, with the port opening last.
 
-**Blocked by:** 14.
+**Blocked by:**
+
+- [14](14-settings-package-split.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Documentation standard](../../docs/platform/documentation-standard.md)
+- [Architecture decision index](../../docs/adr/README.md)
 
 **Status:** done
 

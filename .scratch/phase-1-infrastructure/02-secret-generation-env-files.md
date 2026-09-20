@@ -4,7 +4,18 @@
 environment files for both environments, containing strong unique secrets that nobody typed by hand. Re-running it
 is safe and does not invalidate a running stack.
 
-**Blocked by:** 01.
+**Blocked by:**
+
+- [01](01-preflight-prerequisite-gate.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build prerequisites](../../docs/build/prerequisites.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Service inventory](../../docs/platform/service-inventory.md)
+- [Architecture decision index](../../docs/adr/README.md)
 
 **Status:** done
 

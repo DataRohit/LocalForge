@@ -3,7 +3,18 @@
 **What to build:** file uploads landing in the S3-compatible bucket rather than on a container filesystem, so any
 application instance can serve any file and nothing is lost when a container is replaced.
 
-**Blocked by:** 08, 17.
+**Blocked by:**
+
+- [08](../phase-1-infrastructure/08-object-storage.md)
+- [17](../phase-2-project-foundation/17-application-image-and-entrypoint.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Service inventory](../../docs/platform/service-inventory.md)
+- [Architecture decision index](../../docs/adr/README.md)
 
 **Status:** done
 

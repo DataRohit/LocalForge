@@ -3,7 +3,20 @@
 **What to build:** a working observability stack. A developer opens one UI and sees container, database, cache, and
 broker metrics on dashboards that were provisioned from files, plus every container's logs queryable by label.
 
-**Blocked by:** 04, 06, 07.
+**Blocked by:**
+
+- [04](04-postgresql-primary-standby.md)
+- [06](06-valkey-cache-and-channel-layer.md)
+- [07](07-message-broker.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build prerequisites](../../docs/build/prerequisites.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Service inventory](../../docs/platform/service-inventory.md)
+- [Architecture decision index](../../docs/adr/README.md)
 
 **Status:** done
 
@@ -17,8 +30,9 @@ broker metrics on dashboards that were provisioned from files, plus every contai
       be unreachable from outside its container while appearing perfectly healthy.
 - [x] The log collector reads the Docker socket read-only and ships every container's logs with useful labels.
 - [x] Log storage is queryable and a line emitted by a container is retrievable within thirty seconds. This also
-      closes criterion 10 of ticket 05 and the request-log criterion of ticket 10: verify a line from
-      `pgbackrest-pb2wj` and one from `traefik-tk2jp` are both retrievable.
+      closes criterion 10 of [ticket 05](05-database-backup-and-restore-drill.md) and the request-log criterion of
+      [ticket 10](10-edge-reverse-proxy.md): verify a line from `pgbackrest-pb2wj` and one from `traefik-tk2jp`
+      are both retrievable.
 - [x] Data sources and dashboards are provisioned from mounted files, so wiping the visualization volume loses
       nothing.
 - [x] The visualization UI requires the generated admin credential.

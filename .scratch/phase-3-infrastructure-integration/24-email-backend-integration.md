@@ -4,7 +4,18 @@
 assertable through its API, with the testing environment defaulting to an in-memory backend so the suite needs no
 mail container.
 
-**Blocked by:** 09, 17.
+**Blocked by:**
+
+- [09](../phase-1-infrastructure/09-smtp-capture.md)
+- [17](../phase-2-project-foundation/17-application-image-and-entrypoint.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Service inventory](../../docs/platform/service-inventory.md)
+- [Architecture decision index](../../docs/adr/README.md)
 
 **Status:** done
 

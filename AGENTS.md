@@ -18,42 +18,43 @@ at.
 2. **When in doubt, read [docs/](./docs/).** It is authoritative for every tool choice, name, port, variable, and
    phase gate in this platform. The map is at the bottom of this file. Guessing when `docs/` has the answer is the
    most expensive mistake available here — it produces work that has to be redone against the registry.
-3. **Pick up work from [.scratch/](./.scratch/README.md).** 52 tickets across 7 phases, each declaring its
-   blockers. Work the frontier: any ticket whose blockers are done. Keep one multi-ticket run in the same
-   orchestrator thread so ticket evidence and sequencing remain intact.
+3. **Pick up work from the canonical [.scratch ticket index](./.scratch/README.md#ticket-index).** Resolve a ticket
+   number through that exact link or a `NN-*.md` file search, then follow its blocker and governing-source links.
+   Never synthesize a ticket filename from its title. Work the frontier: any ticket whose blockers are done. Keep
+   one multi-ticket run in the same orchestrator thread so ticket evidence and sequencing remain intact.
+4. **Treat [`.agents/`](./.agents/) as read-only.** Its skills are installed instructions, not project files.
+   Agents may read and invoke them, but must never create, update, move, rename, or delete anything under
+   `.agents/`. Put project-specific safeguards in `AGENTS.md`, `.scratch/`, `docs/`, or another project-owned path.
+5. **Resolve repository paths before reading them.** Follow an exact link or path when one exists. When only a
+   number, title, symbol, or description is available, discover the path with repository search before opening it.
+   Never turn prose into a guessed filename, directory, symbol, command, variable, service name, or configuration
+   key. If a lookup fails, search the repository instead of trying another invented variant.
 
 ## Agent topology
 
-The thread receiving the user's messages is the **orchestrator**. It stays independent of repository work: it
-defines the sequence, routes evidence and findings, enforces gates, and reports outcomes. It does not inspect
-implementation files, edit code, run repository commands, or perform audits.
+The thread receiving the user's messages is the **orchestrator and coder**. It owns all repository discovery,
+implementation, investigation, remediation, commands, verification, documentation, commits, sequencing, and
+reporting. Never launch or use a subagent for coding or any repository mutation.
 
-Initialize agents lazily, retain their IDs, and run one **non-overlapping ticket loop**:
+Use subagents only for independent, read-only ticket audits after the main thread has completed the ticket,
+passed its verification, and prepared a complete audit package:
 
-1. Launch one **coding agent** for the first ticket and retain its ID for the whole run. It owns discovery,
-   implementation, investigation, remediation, verification, documentation, and commits. Use standard
-   **GPT-5.6 Sol** (`gpt-5.6-sol`) with
+1. After the first package exists, launch exactly two audit agents concurrently and retain both IDs for the whole
+   run: one **GPT-5.6 Terra** (`gpt-5.6-terra`) and one standard **GPT-5.6 Sol** (`gpt-5.6-sol`), both with
    `reasoning_effort: high` and `context_tier: long_context`.
-2. Wait until the coding agent returns passing verification and a complete audit package. No audit agent runs while
-   coding or remediation is active.
-3. After the first package exists, launch exactly two independent **audit agents concurrently** and retain both IDs
-   for the whole run: one **GPT-5.6 Terra** (`gpt-5.6-terra`) and one standard **GPT-5.6 Sol**
-   (`gpt-5.6-sol`), both with `reasoning_effort: high` and `context_tier: long_context`. Send them the identical
-   complete package. They review the entire ticket and remain read-only.
-4. Wait for both audit reports, then resume the same coding agent with both reports in full. The coding agent
-   validates every finding against repository evidence, remediates every legitimate one, and reruns affected gates.
-5. When remediation materially changes behavior, security, routing, protocol, payloads, close codes, or integration,
-   resume the same two audit agents concurrently with the revised identical package. Repeat steps 4 and 5 until both
-   reports contain no legitimate findings.
-6. Instruct the coding agent to create the ticket's single commit only after the audit loop is clean. Advance to the
-   next ticket only after the commit hash and verification evidence are reported, then resume the same coding agent.
-   The retained auditors stay idle until that agent returns the next complete package.
+2. Send both auditors the identical complete package. They review the entire ticket, remain read-only, make no
+   edits, and do not communicate with each other.
+3. The main thread validates every finding against repository evidence, remediates every legitimate finding, and
+   reruns affected gates.
+4. When remediation materially changes behavior, security, routing, protocol, payloads, close codes, or integration,
+   resume the same two auditors concurrently with the revised identical package. Repeat until both reports contain
+   no legitimate findings.
+5. The main thread creates the ticket's single commit only after the audit loop is clean, then implements the next
+   ticket while the retained auditors stay idle.
 
-At any moment, run either one coding agent or one concurrent audit pair, never both. Audit agents do not communicate
-with the coding agent or each other. Replace a permanently failed role once and retain the replacement for the
-remainder of the run.
-
-All repository agents are OpenAI-only. Never use a Fast or non-OpenAI model.
+Never run audit agents while the main thread is changing the repository. Replace a permanently failed auditor once
+and retain the replacement for the remainder of the run. All audit agents are OpenAI-only. Never use a Fast or
+non-OpenAI model.
 
 ## Project
 
@@ -213,7 +214,7 @@ These predate this work.
 | Markdown     | markdownlint-cli2, 120-character lines outside tables and code                            |
 | Line endings | LF, enforced by pre-commit                                                                |
 | Commits      | `COMMIT_CONVENTION.md`; a `commit-msg` hook validates the format                          |
-| `.agents/`   | Skills. Excluded from all linting, typing, and test discovery. Put no project files there |
+| `.agents/`   | Read-only installed skills; never create, update, move, rename, or delete them            |
 | ADRs         | `docs/adr/NNNN-slug.md`, per `.agents/skills/domain-modeling/ADR-FORMAT.md`               |
 
 ## Where things live

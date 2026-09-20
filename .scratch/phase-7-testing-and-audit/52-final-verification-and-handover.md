@@ -3,7 +3,19 @@
 **What to build:** the closing pass that proves the whole platform works from nothing, and leaves the documentation
 matching what was actually built.
 
-**Blocked by:** 50, 51.
+**Blocked by:**
+
+- [50](50-convention-audit.md)
+- [51](51-security-and-reliability-audit.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Ticket index and phase gates](../README.md)
+- [Build plan](../../docs/build/plan.md)
+- [Platform conventions](../../docs/platform/conventions.md)
+- [Service inventory](../../docs/platform/service-inventory.md)
+- [Documentation standard](../../docs/platform/documentation-standard.md)
 
 **Status:** ready-for-agent
 

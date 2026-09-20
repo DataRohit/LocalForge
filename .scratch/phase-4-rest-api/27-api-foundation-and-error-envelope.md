@@ -3,7 +3,17 @@
 **What to build:** the shared API layer every route sits on — routing, content negotiation, pagination, and a
 single error shape that every failure returns, so a client parses one envelope instead of three.
 
-**Blocked by:** 26.
+**Blocked by:**
+
+- [26](../phase-3-infrastructure-integration/26-health-endpoint-and-edge-routing.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [First-party account endpoints ADR](../../docs/adr/0017-first-party-account-endpoints.md)
+- [API error contract ADR](../../docs/adr/0018-api-error-contract.md)
+- [Platform conventions](../../docs/platform/conventions.md)
 
 **Status:** done
 

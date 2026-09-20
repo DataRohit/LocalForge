@@ -3,7 +3,19 @@
 **What to build:** WebSocket connections that carry an authenticated user, established from the same credentials
 the REST API issues, so a consumer knows who is connected and an anonymous socket is refused.
 
-**Blocked by:** 38, 30.
+**Blocked by:**
+
+- [38](38-asgi-routing-and-consumer-base.md)
+- [30](../phase-4-rest-api/30-json-web-token-endpoints.md)
+
+**Governing sources:**
+
+- [Root instructions](../../AGENTS.md)
+- [Build plan](../../docs/build/plan.md)
+- [WebSocket contract](../../docs/api/websocket-v1.md)
+- [Channels ADR](../../docs/adr/0003-channels-dedicated-valkey.md)
+- [API error contract ADR](../../docs/adr/0018-api-error-contract.md)
+- [WebSocket authentication ADR](../../docs/adr/0019-websocket-authentication.md)
 
 **Status:** done
 
