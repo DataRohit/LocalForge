@@ -188,6 +188,30 @@ Runtime verification observed unauthenticated API rejection, the registered work
 queues, a successful recent outcome, and continued worker health and task execution while Flower was stopped.
 Adversarial runtime results were stored as `str`, failure exceptions as `********`, and failure tracebacks as null.
 
+## Ticket 45 account email delivery
+
+Recorded 2026-09-20. Every account email crosses a Celery task boundary after transaction commit. Credential-link
+tasks retain the completed activation/password-reset/username-reset contracts: the queue carries immutable account ID
+plus the raw bearer because the database stores only a digest, the worker revalidates authoritative state, and a
+durably claimed bearer is attempted at most once without automatic retry.
+
+Password-change and username-change notices are credential-free and retry-safe. Their tasks carry only the immutable
+account ID, resolve the current recipient on the primary, treat a deleted account as a successful no-op, and convert a
+backend rejection into a fixed `AccountEmailDeliveryError`. The project base then applies bounded backoff and terminal
+dead-letter state. Worker-loss redelivery can duplicate one credential-free security notice; the duplicate is accepted
+because it carries no action, bearer, account field, or mutable identifier.
+
+Request paths publish these tasks through `transaction.on_commit` and contain broker publication errors, so response
+status, body, and enumeration timing do not depend on mail or queue success. Testing remains eager with the locmem
+backend by default. The profile-gated SMTP task path passed against Mailpit in host and container modes. Development
+runtime verification observed SMTP outage retry followed by successful delivery, and permanent outage failure after
+five retries with one scrubbed dead-letter record.
+
+The after-commit dispatch boundary deliberately contains any task-execution exception and logs only its type. In
+testing, eager propagation can surface Celery's `Retry` after the first rejected attempt; in development, ordinary
+queued execution performs the complete retry lifecycle. Neither path can replace an already committed `204` response
+with a mail-shaped server error.
+
 ## Considered options
 
 **django-q2 1.11.1** (2026-08-26) — the strongest alternative: active, Python 3.14 classifier, and a scheduler

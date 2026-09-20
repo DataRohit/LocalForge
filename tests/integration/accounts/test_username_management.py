@@ -32,10 +32,15 @@ from rest_framework.exceptions import AuthenticationFailed
 
 import accounts.tasks as account_tasks_module
 import accounts.username_management as username_management_module
+import config.celery as celery_module
 from accounts.jwt_authentication import PrimaryRefreshToken
 from accounts.login_throttle import PostgresLoginThrottleStore
 from accounts.models import LoginThrottleEvent, UsernameResetToken
-from accounts.tasks import deliver_username_reset_email, send_username_reset_email
+from accounts.tasks import (
+    deliver_username_reset_email,
+    send_username_changed_email,
+    send_username_reset_email,
+)
 from accounts.username_management import change_username, dispatch_username_reset_email
 from accounts.username_tokens import (
     create_username_reset_token,
@@ -247,14 +252,14 @@ def test_authenticated_username_change_contains_notification_failure(
     )
     token = Token.objects.using("default").create(user=account)
 
-    def fail_notification(email: str) -> None:
+    def fail_notification(*, args: tuple[str]) -> None:
         """Raise unsafe notification diagnostics.
 
         Models an unexpected publication failure containing every protected value class so the
         endpoint's operational logging boundary proves it records only the exception type.
 
         Arguments:
-            email: Account address passed to notification delivery.
+            args: Immutable account identifier passed to the task.
 
         Returns:
             Never returns.
@@ -262,10 +267,10 @@ def test_authenticated_username_change_contains_notification_failure(
         Raises:
             RuntimeError: Always.
         """
-        message = f"{old_username} {new_username} {email} {token.key}"
-        raise RuntimeError(message)
+        message = f"{old_username} {new_username} {account.email} {token.key} {args[0]}"
+        raise OSError(message)
 
-    monkeypatch.setattr(username_management_module, "notify_username_changed", fail_notification)
+    monkeypatch.setattr(send_username_changed_email, "apply_async", fail_notification)
     with caplog.at_level(logging.ERROR, logger=username_management_module.__name__):
         response = client.post(
             "/api/v1/users/set_username/",
@@ -277,7 +282,7 @@ def test_authenticated_username_change_contains_notification_failure(
     failure_records = [
         record
         for record in caplog.records
-        if record.getMessage() == "Username change notification failed"
+        if record.getMessage() == "Username change notification publication failed"
     ]
 
     assert response.status_code == HTTPStatus.NO_CONTENT
@@ -285,12 +290,92 @@ def test_authenticated_username_change_contains_notification_failure(
     assert len(failure_records) == 1
     failure_record = failure_records[0]
     rendered = StructuredFormatter().format(failure_record)
-    assert vars(failure_record)["operation_error_type"] == "RuntimeError"
+    assert vars(failure_record)["task_error_type"] == "OSError"
     assert vars(failure_record)["request_id"] == response.headers["X-Request-ID"]
     assert old_username not in rendered
     assert new_username not in rendered
     assert account.email not in rendered
     assert token.key not in rendered
+
+
+@pytest.mark.integration
+@pytest.mark.services("postgres", "valkey-cache")
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
+def test_authenticated_username_change_contains_eager_delivery_failure(
+    client: DjangoClient,
+    django_user_model: type[User],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Keep a committed username change independent of eager task exhaustion.
+
+    Rejects the real eager notification task and lets canonical eager propagation surface its
+    retry signal, requiring the after-commit boundary to retain response and rename.
+
+    Arguments:
+        client: Django test client issuing the authenticated change.
+        django_user_model: Configured custom account model.
+        monkeypatch: Fixture replacing mail delivery and terminal publication.
+        caplog: Fixture collecting the contained task failure.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the eager retry signal changes response, state, mail, or safe logging.
+    """
+    account = django_user_model.objects.create_user(
+        f"username-eager-before-{uuid.uuid4().hex}",
+        f"username-eager-{uuid.uuid4().hex}@localforge.invalid",
+        CURRENT_PASSWORD,
+        is_active=True,
+    )
+    token = Token.objects.using("default").create(user=account)
+    new_username = f"username-eager-after-{uuid.uuid4().hex}"
+    attempts = 0
+
+    def reject_email(*_arguments: object, **_keywords: object) -> bool:
+        """Reject one eager notification delivery.
+
+        Leaves task retry behavior unchanged while preventing any mail side effect. The canonical
+        eager propagation setting then exposes the retry signal to the dispatch boundary.
+
+        Arguments:
+            *_arguments: Positional mail fields ignored by this boundary.
+            **_keywords: Optional mail fields ignored by this boundary.
+
+        Returns:
+            False, always.
+        """
+        nonlocal attempts
+        attempts += 1
+        return False
+
+    dead_letters: list[celery_module.DeadLetterRecord] = []
+    monkeypatch.setattr(account_tasks_module, "send_application_email", reject_email)
+    monkeypatch.setattr(celery_module, "publish_dead_letter", dead_letters.append)
+
+    with caplog.at_level(logging.ERROR, logger=username_management_module.__name__):
+        response = client.post(
+            "/api/v1/users/set_username/",
+            {"current_password": CURRENT_PASSWORD, "new_username": new_username},
+            content_type="application/json",
+            headers={"authorization": f"Token {token.key}"},
+        )
+    account.refresh_from_db(using="default")
+    records = [
+        record
+        for record in caplog.records
+        if record.getMessage() == "Username change notification publication failed"
+    ]
+
+    assert response.status_code == HTTPStatus.NO_CONTENT
+    assert account.username == new_username
+    assert attempts == 1
+    assert not mail.outbox
+    assert not dead_letters
+    assert len(records) == 1
+    assert vars(records[0])["task_error_type"] == "Retry"
 
 
 @pytest.mark.integration
@@ -421,14 +506,14 @@ def test_username_reset_confirm_contains_notification_failure(
     )
     link = _request_reset_link(client, account, remote_address="192.0.2.249")
 
-    def fail_notification(email: str) -> None:
+    def fail_notification(*, args: tuple[str]) -> None:
         """Raise unsafe reset-notification diagnostics.
 
         Models unexpected publication failure after username and bearer state commit while placing
         all protected values in the exception text.
 
         Arguments:
-            email: Account address passed to notification delivery.
+            args: Immutable account identifier passed to the task.
 
         Returns:
             Never returns.
@@ -436,10 +521,10 @@ def test_username_reset_confirm_contains_notification_failure(
         Raises:
             RuntimeError: Always.
         """
-        message = f"{old_username} {new_username} {email} {link['token']}"
-        raise RuntimeError(message)
+        message = f"{old_username} {new_username} {account.email} {link['token']} {args[0]}"
+        raise OSError(message)
 
-    monkeypatch.setattr(username_management_module, "notify_username_changed", fail_notification)
+    monkeypatch.setattr(send_username_changed_email, "apply_async", fail_notification)
     with caplog.at_level(logging.ERROR, logger=username_management_module.__name__):
         response = client.post(
             "/api/v1/users/reset_username_confirm/",
@@ -452,7 +537,7 @@ def test_username_reset_confirm_contains_notification_failure(
     failure_records = [
         log_record
         for log_record in caplog.records
-        if log_record.getMessage() == "Username change notification failed"
+        if log_record.getMessage() == "Username change notification publication failed"
     ]
 
     assert response.status_code == HTTPStatus.NO_CONTENT
@@ -461,7 +546,7 @@ def test_username_reset_confirm_contains_notification_failure(
     assert len(failure_records) == 1
     failure_record = failure_records[0]
     rendered = StructuredFormatter().format(failure_record)
-    assert vars(failure_record)["operation_error_type"] == "RuntimeError"
+    assert vars(failure_record)["task_error_type"] == "OSError"
     assert vars(failure_record)["request_id"] == response.headers["X-Request-ID"]
     assert old_username not in rendered
     assert new_username not in rendered

@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from typing import Protocol
 
     from celery import Celery
-    from celery.result import AsyncResult
+    from celery.result import AsyncResult, EagerResult
 
     class ActivationEmailTask(Protocol):
         """Callable activation task interface.
@@ -193,6 +193,80 @@ if TYPE_CHECKING:
             """
             ...
 
+    class NotificationEmailTask(Protocol):
+        """Callable credential-free notification task interface.
+
+        Inherits from ``Protocol`` and exposes eager plus queued execution using only an immutable
+        account identifier.
+
+        Attributes:
+            app: Celery application carrying acknowledgement and retry settings.
+            autoretry_for: Exception classes retried automatically.
+            max_retries: Retries permitted after the initial attempt.
+            name: Registered task name.
+
+        Members:
+            __call__: Execute notification delivery in the current process.
+            apply: Execute through Celery's eager task lifecycle.
+            apply_async: Publish notification delivery.
+        """
+
+        app: Celery
+        autoretry_for: tuple[type[BaseException], ...]
+        max_retries: int
+        name: str
+
+        def __call__(self, account_id: str) -> bool:
+            """Execute one account notification.
+
+            Resolves current primary account state before crossing the mail boundary, matching the
+            deployed worker and eager testing behavior.
+
+            Arguments:
+                account_id: Immutable account identifier used to load the current recipient.
+
+            Returns:
+                Whether delivery completed or no live account remained.
+            """
+            ...
+
+        def apply(
+            self,
+            args: tuple[str],
+            *,
+            throw: bool,
+        ) -> EagerResult:
+            """Execute one notification through Celery's eager lifecycle.
+
+            Runs retry and failure hooks in-process so tests can prove bounded transient and
+            permanent outcomes without a separate worker.
+
+            Arguments:
+                args: One immutable account identifier.
+                throw: Whether terminal failure should escape rather than be returned.
+
+            Returns:
+                Eager result carrying success or terminal failure state.
+            """
+            ...
+
+        def apply_async(
+            self,
+            args: tuple[str],
+        ) -> AsyncResult:
+            """Publish one credential-free notification.
+
+            Sends only the immutable identifier through the broker and leaves recipient resolution
+            to worker execution.
+
+            Arguments:
+                args: One immutable account identifier.
+
+            Returns:
+                Celery result handle for the queued notification.
+            """
+            ...
+
 
 @dataclass(frozen=True, slots=True)
 class ActivationDeliveryClaim:
@@ -301,7 +375,11 @@ def _send_claimed_activation(
 
         try:
             load_activation_payload(token)
-        except signing.BadSignature, TypeError, ValueError:
+        except (
+            signing.BadSignature,
+            TypeError,
+            ValueError,
+        ):
             return False
 
         recipient = account.email
@@ -334,7 +412,11 @@ def deliver_activation_email(account_id: str, token: str) -> bool:
     try:
         payload = load_activation_payload(token)
         subject_id = uuid.UUID(account_id)
-    except signing.BadSignature, TypeError, ValueError:
+    except (
+        signing.BadSignature,
+        TypeError,
+        ValueError,
+    ):
         return False
     if payload is None or payload[0] != account_id:
         return False
@@ -510,7 +592,10 @@ def deliver_password_reset_email(account_id: object, token: object) -> bool:
         subject_id = uuid.UUID(account_id)
         if password_reset_token_is_expired(token):
             return False
-    except TypeError, ValueError:
+    except (
+        TypeError,
+        ValueError,
+    ):
         return False
     digest = password_reset_token_digest(token)
     claim = _claim_password_reset_delivery(subject_id, digest, token)
@@ -679,7 +764,10 @@ def deliver_username_reset_email(account_id: object, token: object) -> bool:
         subject_id = uuid.UUID(account_id)
         if username_reset_token_is_expired(token):
             return False
-    except TypeError, ValueError:
+    except (
+        TypeError,
+        ValueError,
+    ):
         return False
     digest = username_reset_token_digest(token)
     claim = _claim_username_reset_delivery(subject_id, digest, token)
@@ -694,4 +782,113 @@ send_username_reset_email = cast(
         name="accounts.send_username_reset_email",
         autoretry_for=(),
     )(deliver_username_reset_email),
+)
+
+
+class AccountEmailDeliveryError(RuntimeError):
+    """Signal that a retry-safe account notification was not accepted.
+
+    Inherits from ``RuntimeError`` and carries no recipient or transport text, allowing the base
+    task retry and dead-letter lifecycle to remain credential-free.
+
+    Attributes:
+        None.
+
+    Members:
+        None.
+    """
+
+
+def _notification_recipient(account_id: object) -> str | None:
+    """Resolve the current recipient for one immutable account identifier.
+
+    Reads the authoritative primary at execution time so queued work never carries an address or
+    full user object and naturally suppresses delivery after account deletion.
+
+    Arguments:
+        account_id: Candidate immutable account identifier.
+
+    Returns:
+        Current email address, or None when the identifier or account is unavailable.
+    """
+    if not isinstance(account_id, str):
+        return None
+    try:
+        subject_id = uuid.UUID(account_id)
+        recipient = User.objects.using("default").values_list("email", flat=True).get(pk=subject_id)
+    except (
+        TypeError,
+        ValueError,
+        User.DoesNotExist,
+    ):
+        return None
+    return str(recipient)
+
+
+def deliver_password_changed_email(account_id: object) -> bool:
+    """Deliver one credential-free password-change notice.
+
+    Resolves the current address from the primary and retries a backend rejection through the
+    project task policy. A duplicate notice after worker-loss redelivery is harmless because it
+    carries no credential, action, or account data.
+
+    Arguments:
+        account_id: Immutable account identifier.
+
+    Returns:
+        True when delivered or when no live account remains.
+
+    Raises:
+        AccountEmailDeliveryError: If the configured backend rejects the message.
+    """
+    recipient = _notification_recipient(account_id)
+    if recipient is None:
+        return True
+    if send_application_email(
+        recipient,
+        "Your LocalForge password changed",
+        "Your password was changed through account recovery.",
+    ):
+        return True
+
+    raise AccountEmailDeliveryError
+
+
+def deliver_username_changed_email(account_id: object) -> bool:
+    """Deliver one credential-free username-change notice.
+
+    Resolves the current address from the primary and retries a backend rejection through the
+    project task policy. A duplicate notice after worker-loss redelivery is harmless because it
+    carries no credential, action, or account data.
+
+    Arguments:
+        account_id: Immutable account identifier.
+
+    Returns:
+        True when delivered or when no live account remains.
+
+    Raises:
+        AccountEmailDeliveryError: If the configured backend rejects the message.
+    """
+    recipient = _notification_recipient(account_id)
+    if recipient is None:
+        return True
+    if send_application_email(
+        recipient,
+        "Your LocalForge username changed",
+        "Your username was changed.",
+    ):
+        return True
+
+    raise AccountEmailDeliveryError
+
+
+send_password_changed_email = cast(
+    "NotificationEmailTask",
+    app.task(name="accounts.send_password_changed_email")(deliver_password_changed_email),
+)
+
+send_username_changed_email = cast(
+    "NotificationEmailTask",
+    app.task(name="accounts.send_username_changed_email")(deliver_username_changed_email),
 )

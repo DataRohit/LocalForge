@@ -41,7 +41,7 @@ from accounts.registration_timing import (
     wait_for_minimum_registration_duration,
 )
 from accounts.request_throttling import parse_throttle_rate, trusted_client_address
-from accounts.tasks import send_username_reset_email
+from accounts.tasks import send_username_changed_email, send_username_reset_email
 from accounts.token_authentication import (
     ErrorEnvelopeSerializer,
     PasswordHashDisposition,
@@ -80,7 +80,6 @@ from config.api_errors import (
     UsernameResetTokenMalformed,
     UsernameResetTokenUsed,
 )
-from config.email import send_application_email
 from config.logs import REQUEST_ID_META_KEY
 
 if TYPE_CHECKING:
@@ -791,47 +790,26 @@ def consume_outstanding_username_reset_tokens(account: User) -> None:
     ).update(used_at=timezone.now())
 
 
-def notify_username_changed(email: str) -> None:
-    """Send one username-change notification after commit.
-
-    Uses the failure-safe multipart email boundary with no old or new username, action link, or
-    credential so transport failure cannot undo the completed identifier change.
-
-    Arguments:
-        email: Current account address receiving the notification.
-
-    Returns:
-        None.
-    """
-    send_application_email(
-        email,
-        "Your LocalForge username changed",
-        "Your username was changed.",
-    )
-
-
-def dispatch_username_change_notification(email: str) -> None:
+def dispatch_username_change_notification(account_id: str) -> None:
     """Publish one username-change notification without escaping after commit.
 
-    Contains unexpected notification failures and records only their bounded type, preserving the
-    committed username and bearer state without exposing account or credential values.
+    Sends only the immutable account identifier and contains broker publication failure,
+    preserving committed username and bearer state without exposing account or credential values.
 
     Arguments:
-        email: Current account address receiving the notification.
+        account_id: Immutable account identifier used by the task to load the current recipient.
 
     Returns:
         None.
     """
     try:
-        notify_username_changed(email)
-    except Exception as error:  # noqa: BLE001
+        send_username_changed_email.apply_async(args=(account_id,))
+    except Exception as error:
         logger.log(
             logging.ERROR,
-            "Username change notification failed",
+            "Username change notification publication failed",
             extra={
-                "operation_error_type": type(error).__name__[
-                    :MAXIMUM_OPERATION_ERROR_TYPE_CHARACTERS
-                ]
+                "task_error_type": type(error).__name__[:MAXIMUM_OPERATION_ERROR_TYPE_CHARACTERS]
             },
         )
 
@@ -921,7 +899,7 @@ def _apply_locked_username_reset(
         _save_username(account, new_username)
         consume_outstanding_username_reset_tokens(account)
         transaction.on_commit(
-            partial(dispatch_username_change_notification, account.email),
+            partial(dispatch_username_change_notification, str(account.pk)),
             using="default",
         )
 
@@ -1172,7 +1150,7 @@ def change_username(account_id: object, validated_data: dict[str, Any]) -> None:
             _save_username(account, new_username)
             consume_outstanding_username_reset_tokens(account)
             transaction.on_commit(
-                partial(dispatch_username_change_notification, account.email),
+                partial(dispatch_username_change_notification, str(account.pk)),
                 using="default",
             )
     except DatabaseError as error:

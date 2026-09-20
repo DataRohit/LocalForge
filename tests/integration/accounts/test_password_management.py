@@ -40,6 +40,7 @@ import accounts.jwt_authentication as jwt_authentication_module
 import accounts.password_management as password_management_module
 import accounts.tasks as account_tasks_module
 import accounts.token_authentication as token_authentication_module
+import config.celery as celery_module
 from accounts.jwt_authentication import PrimaryRefreshToken
 from accounts.login_throttle import PostgresLoginThrottleStore
 from accounts.models import PasswordResetToken
@@ -47,7 +48,7 @@ from accounts.password_tokens import (
     create_password_reset_token,
     password_reset_token_is_expired,
 )
-from accounts.tasks import send_password_reset_email
+from accounts.tasks import send_password_changed_email, send_password_reset_email
 from config.api_errors import ErrorCode, ServiceUnavailable
 from config.logs import REQUEST_ID_HEADER, StructuredFormatter
 
@@ -668,6 +669,163 @@ def test_password_reset_confirm_changes_password_notifies_revokes_and_rejects_re
     assert query["token"][0] not in mail.outbox[1].body
     assert replayed.status_code == HTTPStatus.BAD_REQUEST
     assert replayed.json()["code"] == ErrorCode.PASSWORD_RESET_TOKEN_USED
+
+
+@pytest.mark.integration
+@pytest.mark.services("postgres", "valkey-cache")
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
+def test_password_reset_contains_notification_publication_failure(
+    client: DjangoClient,
+    django_user_model: type[User],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Keep a committed password reset independent of notification publication.
+
+    Makes the after-commit task publication fail with credential-bearing diagnostics and requires a
+    successful response, persisted password, no synchronous notice, and type-only logging.
+
+    Arguments:
+        client: Django test client issuing the recovery loop.
+        django_user_model: Configured custom account model.
+        monkeypatch: Fixture replacing notification task publication.
+        caplog: Fixture collecting the operational failure record.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If publication failure changes the response, state, mail, or safe log.
+    """
+    account = django_user_model.objects.create_user(
+        f"password-notification-{uuid.uuid4().hex}",
+        f"password-notification-{uuid.uuid4().hex}@localforge.invalid",
+        CURRENT_PASSWORD,
+        is_active=True,
+    )
+    link = _request_reset_link(client, account, remote_address="192.0.2.251")
+
+    def fail_publication(*, args: tuple[str]) -> None:
+        """Raise one unsafe broker failure.
+
+        Replaces only the task publication boundary and includes protected values in exception text
+        so operational logging proves it records only the exception type.
+
+        Arguments:
+            args: Immutable account identifier passed to the task.
+
+        Returns:
+            Never returns.
+
+        Raises:
+            OSError: Always, with values that must not reach the log.
+        """
+        message = f"{account.email} {link['token']} {args[0]}"
+        raise OSError(message)
+
+    monkeypatch.setattr(send_password_changed_email, "apply_async", fail_publication)
+    with caplog.at_level(logging.ERROR, logger=password_management_module.__name__):
+        response = client.post(
+            "/api/v1/users/reset_password_confirm/",
+            _confirm_payload(link),
+            content_type="application/json",
+            REMOTE_ADDR="192.0.2.252",
+        )
+    account.refresh_from_db(using="default")
+    records = [
+        record
+        for record in caplog.records
+        if record.getMessage() == "Password change notification publication failed"
+    ]
+
+    assert response.status_code == HTTPStatus.NO_CONTENT
+    assert account.check_password(NEW_PASSWORD)
+    assert len(mail.outbox) == 1
+    assert len(records) == 1
+    rendered = StructuredFormatter().format(records[0])
+    assert vars(records[0])["task_error_type"] == "OSError"
+    assert account.email not in rendered
+    assert link["token"] not in rendered
+    assert str(account.pk) not in rendered
+
+
+@pytest.mark.integration
+@pytest.mark.services("postgres", "valkey-cache")
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
+def test_password_reset_contains_eager_notification_delivery_failure(
+    client: DjangoClient,
+    django_user_model: type[User],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Keep a committed password reset independent of eager task exhaustion.
+
+    Rejects the real eager notification task and lets canonical eager propagation surface its
+    retry signal, requiring the after-commit boundary to preserve response and password.
+
+    Arguments:
+        client: Django test client issuing the recovery loop.
+        django_user_model: Configured custom account model.
+        monkeypatch: Fixture replacing mail delivery and terminal publication.
+        caplog: Fixture collecting the contained task failure.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the eager retry signal changes response, state, mail, or safe logging.
+    """
+    account = django_user_model.objects.create_user(
+        f"password-eager-failure-{uuid.uuid4().hex}",
+        f"password-eager-failure-{uuid.uuid4().hex}@localforge.invalid",
+        CURRENT_PASSWORD,
+        is_active=True,
+    )
+    link = _request_reset_link(client, account, remote_address="192.0.2.253")
+    attempts = 0
+
+    def reject_email(*_arguments: object, **_keywords: object) -> bool:
+        """Reject one eager notification delivery.
+
+        Leaves task retry behavior unchanged while preventing any mail side effect. The canonical
+        eager propagation setting then exposes the retry signal to the dispatch boundary.
+
+        Arguments:
+            *_arguments: Positional mail fields ignored by this boundary.
+            **_keywords: Optional mail fields ignored by this boundary.
+
+        Returns:
+            False, always.
+        """
+        nonlocal attempts
+        attempts += 1
+        return False
+
+    dead_letters: list[celery_module.DeadLetterRecord] = []
+    monkeypatch.setattr(account_tasks_module, "send_application_email", reject_email)
+    monkeypatch.setattr(celery_module, "publish_dead_letter", dead_letters.append)
+
+    with caplog.at_level(logging.ERROR, logger=password_management_module.__name__):
+        response = client.post(
+            "/api/v1/users/reset_password_confirm/",
+            _confirm_payload(link),
+            content_type="application/json",
+            REMOTE_ADDR="192.0.2.254",
+        )
+    account.refresh_from_db(using="default")
+    records = [
+        record
+        for record in caplog.records
+        if record.getMessage() == "Password change notification publication failed"
+    ]
+
+    assert response.status_code == HTTPStatus.NO_CONTENT
+    assert account.check_password(NEW_PASSWORD)
+    assert attempts == 1
+    assert len(mail.outbox) == 1
+    assert not dead_letters
+    assert len(records) == 1
+    assert vars(records[0])["task_error_type"] == "Retry"
 
 
 @pytest.mark.integration

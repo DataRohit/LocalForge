@@ -6,20 +6,22 @@ Compose smtp profile, then asserts on Mailpit's API rather than Django's in-proc
 
 import http.client
 import json
+import secrets
 import time
+import uuid
 from typing import TypedDict, cast
 
 import pytest
 from django.conf import settings
 from django.test import override_settings
 
-from config.email import send_application_email
+from accounts.models import User
+from accounts.tasks import send_password_changed_email
 
 SMTP_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 MAILPIT_TIMEOUT_SECONDS = 15
 POLL_INTERVAL_SECONDS = 0.1
-RECIPIENT = "smtp-round-trip@localforge.invalid"
-SUBJECT = "SMTP round trip"
+SUBJECT = "Your LocalForge password changed"
 
 
 class MailpitAddress(TypedDict):
@@ -108,20 +110,21 @@ def _mailpit_request(method: str) -> MailpitMessages | None:
 
 
 @pytest.mark.integration
-@pytest.mark.services("mailpit")
+@pytest.mark.services("postgres", "mailpit")
 @pytest.mark.serial
 @pytest.mark.timeout(MAILPIT_TIMEOUT_SECONDS)
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.skipif(
     settings.EMAIL_BACKEND != SMTP_BACKEND,
     reason="the real SMTP round trip runs only under the Compose smtp profile",
 )
 @override_settings(EMAIL_BACKEND=SMTP_BACKEND)
 def test_a_message_round_trips_through_smtp_and_mailpit() -> None:
-    """Send through SMTP and assert on the capture service.
+    """Execute an account task through SMTP and assert on the capture service.
 
-    Clears Mailpit before sending because its database persists across runs, then polls its API for
-    the expected recipient and subject instead of consulting Django's in-process outbox. This test
-    is serial because clearing a shared capture service cannot be namespaced per worker.
+    Clears Mailpit, creates one account, executes the credential-free notification task, then polls
+    the API instead of consulting Django's outbox. This test is serial because Mailpit cleanup
+    cannot be namespaced per worker.
 
     Arguments:
         None.
@@ -133,8 +136,16 @@ def test_a_message_round_trips_through_smtp_and_mailpit() -> None:
         AssertionError: If delivery fails or Mailpit never reports the expected message.
     """
     _mailpit_request("DELETE")
+    suffix = uuid.uuid4().hex
+    recipient = f"smtp-round-trip-{suffix}@localforge.invalid"
+    account = User.objects.db_manager("default").create_user(
+        f"smtp-round-trip-{suffix}",
+        recipient,
+        secrets.token_urlsafe(24),
+        is_active=True,
+    )
 
-    assert send_application_email(RECIPIENT, SUBJECT, "Captured by Mailpit.") is True
+    assert send_password_changed_email(str(account.pk)) is True
 
     deadline = time.monotonic() + MAILPIT_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
@@ -143,7 +154,7 @@ def test_a_message_round_trips_through_smtp_and_mailpit() -> None:
         if listing["messages"]:
             captured = listing["messages"][0]
             assert captured["Subject"] == SUBJECT
-            assert [address["Address"] for address in captured["To"]] == [RECIPIENT]
+            assert [address["Address"] for address in captured["To"]] == [recipient]
             return
         time.sleep(POLL_INTERVAL_SECONDS)
 

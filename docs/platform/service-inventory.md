@@ -352,6 +352,12 @@ the `localforge-test` project and prevents generated `*-run-*` one-off container
 | `celery-worker-cw8rt`, `celery-beat-cb4hq` | `CELERY_TASK_ALWAYS_EAGER=true` runs ordinary tasks in-process. Broker tests override the namespaced setting; worker-service tests start the real Celery command as a separate bounded process, while focused logging tests retain the in-process worker. Control, reply, and event queues are also declared directly because the focused workers skip bootsteps |
 | `mailpit-tm7bh` | Default `EMAIL_BACKEND` is `locmem`. The SMTP round-trip runs under `--profile smtp`. The web port is published so a host-mode run can assert through the REST API, not only send |
 
+Every account email uses a Celery task. Credential-link tasks carry account ID plus the required raw bearer and keep
+their durable at-most-once claim/no-retry contract. Credential-free password and username change notices carry only
+account ID, retry with bounded backoff, and accept harmless duplicate security notices after worker-loss redelivery.
+All request-side publication occurs after primary transaction commit and cannot change the public response. The
+dispatch boundary contains eager task retry signals and queued publication failures with type-only logs.
+
 ### 4.2 The two required modes
 
 | Mode | Command | Env file | Hostnames |

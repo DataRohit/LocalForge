@@ -20,18 +20,22 @@ losing the message.
 - [Service inventory](../../docs/platform/service-inventory.md)
 - [Kubernetes mapping](../../docs/platform/kubernetes-mapping.md)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Every account email is dispatched as a task; no request path sends mail synchronously.
-- [ ] Tasks receive only identifiers and the minimum context needed, never a password, a raw token, or a full user
-      object.
-- [ ] A task that fails to send retries with bounded backoff and stops after the configured maximum.
-- [ ] Tasks are idempotent: a redelivered task does not send a duplicate message where that would be harmful, or
+- [x] Every account email is dispatched as a task; no request path sends mail synchronously.
+- [x] Tasks receive only identifiers and the minimum context needed, never a password or a full user object.
+      Credential-link tasks may carry the raw bearer because the database deliberately persists only its digest and
+      the worker must render and revalidate that same bearer.
+- [x] Retry-safe credential-free notification tasks retry with bounded backoff and stop after the configured
+      maximum. Activation, password-reset, and username-reset bearer tasks preserve their completed at-most-once
+      delivery contract: a claimed bearer is not retried after SMTP failure.
+- [x] Tasks are idempotent: a redelivered task does not send a duplicate message where that would be harmful, or
       the duplicate is documented as acceptable.
-- [ ] Enqueueing happens after the database transaction commits, so a rolled-back registration never triggers a
+- [x] Enqueueing happens after the database transaction commits, so a rolled-back registration never triggers a
       real email.
-- [ ] The API response does not change based on whether mail succeeded, so enumeration is not possible through
+- [x] The API response does not change based on whether mail succeeded, so enumeration is not possible through
       timing or status.
-- [ ] In the testing environment tasks run eagerly and assert against the in-memory backend; the SMTP path is
+- [x] In the testing environment tasks run eagerly and assert against the in-memory backend; the SMTP path is
       covered by one profile-gated integration test.
-- [ ] Tests cover successful send, transient failure with retry, and permanent failure.
+- [x] Tests cover successful send, transient failure with retry and permanent failure for retry-safe notifications,
+      plus the intentional no-retry failure outcome for credential-bearing delivery.

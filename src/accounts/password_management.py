@@ -51,7 +51,7 @@ from accounts.registration_timing import (
     wait_for_minimum_registration_duration,
 )
 from accounts.request_throttling import parse_throttle_rate, trusted_client_address
-from accounts.tasks import send_password_reset_email
+from accounts.tasks import send_password_changed_email, send_password_reset_email
 from accounts.token_authentication import (
     ErrorEnvelopeSerializer,
     PasswordHashDisposition,
@@ -83,7 +83,6 @@ from config.api_errors import (
     PasswordResetTokenUsed,
     ServiceUnavailable,
 )
-from config.email import send_application_email
 from config.logs import REQUEST_ID_META_KEY
 
 if TYPE_CHECKING:
@@ -792,23 +791,26 @@ def consume_outstanding_password_reset_tokens(account: User) -> None:
     ).update(used_at=timezone.now())
 
 
-def notify_password_changed(email: str) -> None:
-    """Send one password-change notification after reset commit.
+def dispatch_password_change_notification(account_id: str) -> None:
+    """Publish one password-change notice after reset commit.
 
-    Uses the failure-safe multipart email boundary with no action link or credential, so transport
-    failure cannot undo the completed password replacement or expose sensitive values.
+    Sends only the immutable account identifier and contains broker publication failure so the
+    completed password replacement and public response never depend on queue availability.
 
     Arguments:
-        email: Current account address receiving the notification.
+        account_id: Immutable account identifier used by the task to load the current recipient.
 
     Returns:
         None.
     """
-    send_application_email(
-        email,
-        "Your LocalForge password changed",
-        "Your password was changed through account recovery.",
-    )
+    try:
+        send_password_changed_email.apply_async(args=(account_id,))
+    except Exception as error:
+        logger.log(
+            logging.ERROR,
+            "Password change notification publication failed",
+            extra={"task_error_type": type(error).__name__},
+        )
 
 
 def _apply_locked_password_reset(
@@ -883,7 +885,7 @@ def _apply_locked_password_reset(
         consume_outstanding_password_reset_tokens(account)
         revoke_account_credentials(account)
         transaction.on_commit(
-            partial(notify_password_changed, account.email),
+            partial(dispatch_password_change_notification, str(account.pk)),
             using="default",
         )
 
