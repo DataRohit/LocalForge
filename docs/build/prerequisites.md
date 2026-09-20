@@ -6,6 +6,26 @@ observed here.
 Run this list first, via `scripts/preflight.py`. Everything below was probed on **this machine on 2026-09-13**;
 re-verify, because the machine may have moved on.
 
+The supported first-run interface performs that check and prepares local environment files without replacing
+existing values:
+
+```console
+uv sync --all-groups --frozen
+uv run poe help
+uv run poe environments-setup
+```
+
+If port 8000 is already occupied, use `uv run poe environments-setup --proxy-only`; the override applies only to
+the development project and the testing project remains unchanged.
+
+The combined command reports redacted durations for environment preparation, missing-image work, Compose startup,
+health waiting, the Docker ownership audit, and the total. It builds each absent local image once, skips existing
+local image tags, starts with `--no-build`, and runs no application tests. Use the environment-specific rebuild
+commands after source or Dockerfile changes.
+
+Use `uv run poe secrets-decrypt` when committed encrypted values must replace absent plaintext files explicitly.
+Use `uv run poe secrets-generate` to create or top up machine-local values without decrypting.
+
 ## 1. Checklist
 
 | # | Requirement | Check | Minimum | Observed 2026-09-13 | If missing |

@@ -39,6 +39,7 @@ Listed so scope creep is recognisable. None exists.
 | --- | --- |
 | `compose.yaml` | Shared services and the project name |
 | `compose.development.yaml`, `compose.testing.yaml` | Per-environment overlays, each owning its own networks and volumes because the two registries are disjoint |
+| `compose.proxy-only.yaml` | Development override that removes the direct Django host port |
 | `docker/django/Dockerfile` | Multi-stage app image with a `test` stage |
 | `docker/django/entrypoint.sh` | Wait for dependencies, migrate, collectstatic, exec the server |
 | `docker/pgbackrest/Dockerfile` | pgBackRest image; no first-party image exists upstream |
@@ -55,7 +56,8 @@ Listed so scope creep is recognisable. None exists.
 | `docker/pgadmin/servers.json` | Pre-registered PostgreSQL servers |
 | `docker/seaweedfs/s3.json` | S3 identities and keys |
 | `docker/postgres-exporter/auth_modules.yaml` | Probe credentials for the standby, rendered at start from the environment |
-| `scripts/*.py`, `scripts/*.sh` | The nine scripts in [../platform/conventions.md](../platform/conventions.md) Section 4, plus the documentation checker in Section 4.10 |
+| `scripts/*.py`, `scripts/*.sh` | The scripts in [../platform/conventions.md](../platform/conventions.md) Section 4 |
+| `scripts/manage_platform.py` | Cross-platform operator command adapter exposed through Poe; centralizes safe and destructive Compose workflows |
 | `docs/platform/documentation-standard.md` | The worked reference for the docstring standard the checker enforces |
 | `.env.example` | Committed variable manifest, placeholders only |
 | `.env.development.sops`, `.env.testing.sops` | Committed encrypted env files |
@@ -192,19 +194,26 @@ Before pinning RabbitMQ, check whether 4.3.x is still within community support â
 community-supported series is current, pin that and update the inventory.
 
 ```console
-uv run python scripts/gen_secrets.py --environment all
-docker compose --env-file .env.development -f compose.yaml -f compose.development.yaml up -d --build
+uv run poe setup
+uv run poe development-build
+uv run poe development-up
+uv run poe development-health
 ```
+
+The command adapter retains the original idempotent storage gate:
+`uv run python scripts/seed_storage.py --environment development --endpoint http://127.0.0.1:8333`.
 
 For a deliberate clean-room verification, remove only LocalForge resources and rebuild local images without cache.
 This destroys development data and is not the ordinary restart path.
 
 ```console
-docker compose --env-file .env.development -f compose.yaml -f compose.development.yaml down --volumes --remove-orphans
-docker image rm localforge/django:0.1.0 localforge/pgbackrest:18.6
-docker compose --env-file .env.development -f compose.yaml -f compose.development.yaml build --no-cache --pull
-docker compose --env-file .env.development -f compose.yaml -f compose.development.yaml pull --ignore-buildable
-docker compose --env-file .env.development -f compose.yaml -f compose.development.yaml up -d
+uv run poe development-reset
+```
+
+Ordinary source rebuilds preserve named volumes:
+
+```console
+uv run poe development-rebuild
 ```
 
 **Gate 5a â€” everything healthy.**
@@ -280,21 +289,32 @@ Gate: all twelve pass and `uv run poe check` is still green.
 [../platform/service-inventory.md](../platform/service-inventory.md) Section 4 and **no dashboard or UI service**.
 
 ```console
-docker compose --profile smtp --env-file .env.testing -f compose.yaml -f compose.testing.yaml down --volumes --remove-orphans
-docker image rm localforge/django-test:0.1.0
-docker compose --profile smtp --env-file .env.testing -f compose.yaml -f compose.testing.yaml build --no-cache django-test-dt5qx
-docker compose --env-file .env.testing -f compose.yaml -f compose.testing.yaml up -d
-uv run python scripts/seed_storage.py --environment testing
-docker compose --env-file .env.testing -f compose.yaml -f compose.testing.yaml run --rm django-test-dt5qx
-uv run poe test
+uv run poe testing-reset
+uv run poe testing-up
+uv run poe testing-health
 ```
+
+Environment preparation ends here and runs no application tests. The phase gate then runs the explicit test
+commands:
+
+```console
+uv run poe testing-test-container
+uv run poe testing-test-host
+uv run poe testing-down
+```
+
+The testing startup tasks retain the original storage step:
+`uv run python scripts/seed_storage.py --environment testing --endpoint http://127.0.0.1:28333`.
+
+`uv run poe testing-verify` remains an explicit full-suite workflow. A failure leaves the testing services running
+for diagnosis.
 
 Gate:
 
 - Pass: both complete tasks exit `0`; each core stage reports 100% branch coverage; each core count plus its
   security-timing count equals the complete collection; host and container totals match; the stack contains
-  nothing from the exclusion list. The one-off runner writes no test artifact through a writable repository bind;
-  its complete output and exit status are the container evidence.
+  nothing from the exclusion list. The persistent runner writes no test artifact through a writable repository
+  bind; its complete output and exit status are the container evidence.
 - Fail: differing test counts mean environment-dependent skipping, which hides real failures. A host-only failure
   is almost always a `*_HOST` variable in `.env.testing.host` still naming a container instead of `127.0.0.1`.
 

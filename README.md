@@ -1,20 +1,30 @@
 # LocalForge
 
-LocalForge is a local Django project using SQLite and `uv` for dependency management.
+LocalForge is a fully local Django backend platform. Docker Compose runs the database, cache, channel layer, broker,
+object storage, mail capture, reverse proxy, monitoring, logging, backup, and application services; `uv` manages the
+host Python environment and Poe exposes the supported operator commands.
 
 ## Requirements
 
 - Python 3.14 or newer
 - `uv`
+- Docker Engine with Compose
+- SOPS and age when decrypting committed environment files
 
 ## Setup
 
-Create the Python 3.14 virtual environment, install all dependency groups, and initialize the database:
+Install all dependency groups, inspect the commands, then build and start both environments:
 
 ```console
-uv venv --python 3.14 .venv
-uv sync --all-groups
-uv run poe migrate
+uv sync --all-groups --frozen
+uv run poe help
+uv run poe environments-setup
+```
+
+On Windows, or whenever another process owns port 8000, use the first-run variant:
+
+```console
+uv run poe environments-setup --proxy-only
 ```
 
 Package downloads use the Microsoft package feed configured in `pyproject.toml`, with system certificate verification
@@ -24,13 +34,70 @@ downloads from `files.pythonhosted.org`, which fails TLS negotiation on this man
 Changing the default index alone does not redirect URLs already recorded in `uv.lock`. After an approved index change,
 run `uv lock` and then `uv sync --all-groups --frozen`. Do not disable TLS certificate verification.
 
-Start the development server:
+`environments-setup` prepares environment files, pulls missing pinned external images, builds each missing local
+image once, starts both Compose projects with `--no-build`, waits for readiness, and audits Docker ownership.
+Existing local image tags are not rebuilt, so repeated setup does not recreate persistent services. It prints
+redacted phase and total timings and never runs application tests, coverage, security tests, or the project quality
+gate. Use `development-rebuild` or `testing-rebuild` after source or Dockerfile changes.
+
+`setup` performs only the prerequisite and environment-file portion. It prefers committed SOPS files when plaintext
+configuration is absent and an age key is available, then uses the idempotent secret generator to top up all three
+local environment files. It never prints a secret or replaces an existing value.
+
+Start and verify the complete development environment:
 
 ```console
-uv run poe dev
+uv run poe development-up
+uv run poe development-health
 ```
 
-Open `http://127.0.0.1:8000/admin/` to verify that Django is running.
+The public application entry point is `http://localforge.localhost:8080/`. If another local process owns port 8000,
+use `uv run poe development-up --proxy-only`; Traefik remains available while the direct loopback publication is
+omitted.
+
+## Environment commands
+
+Run `uv run poe help` for the complete categorized command list.
+
+| Workflow | Development | Testing |
+| --- | --- | --- |
+| Prepare both | `uv run poe environments-setup` | `uv run poe environments-setup` |
+| Start | `uv run poe development-up` | `uv run poe testing-up` |
+| Rebuild, preserve data | `uv run poe development-rebuild` | `uv run poe testing-rebuild` |
+| Status | `uv run poe development-status` | `uv run poe testing-status` |
+| Health | `uv run poe development-health` | `uv run poe testing-health` |
+| Recent logs | `uv run poe development-logs` | `uv run poe testing-logs` |
+| Follow one service | `uv run poe development-logs --follow django-uv5n2` | `uv run poe testing-logs --follow postgres-tp8vn` |
+| Stop, preserve data | `uv run poe development-down` | `uv run poe testing-down` |
+| **Destructive reset** | `uv run poe development-reset` | `uv run poe testing-reset` |
+
+The reset commands remove that environment's named volumes and rebuild without cache. They are intentionally named
+separately from ordinary rebuilds.
+
+Run `uv run poe docker-audit` for the complete container, label, network, volume, image, and health inventory.
+`uv run poe docker-clean-check` is the inverse precondition: it fails if any LocalForge Docker resource remains.
+
+For a development machine where port 8000 is already owned by another process, `--proxy-only` is accepted by
+`environments-setup`, `development-up`, `development-rebuild`, and `development-reset`. Every other command rejects
+the option before running a subprocess.
+
+## Testing environments
+
+Environment setup and rebuild commands never execute tests. Test execution is explicit:
+
+```console
+uv run poe testing-test-container
+uv run poe testing-test-host
+```
+
+The testing environment keeps `django-test-dt5qx` running as a Compose service. Container-mode tests use
+`docker compose exec`, so Docker Desktop keeps the runner under `localforge-test` and no `*-run-*` container is
+created. `testing-verify` remains an explicit full-suite workflow and is not part of setup:
+
+```console
+uv run poe testing-verify
+uv run poe testing-down
+```
 
 ## Quality checks
 
@@ -87,7 +154,7 @@ Run every local quality check with one command:
 uv run poe check
 ```
 
-List all configured commands and their descriptions with `uv run poe`.
+List all configured Poe tasks with `uv run poe`, or use the curated operational guide with `uv run poe help`.
 
 ## License
 

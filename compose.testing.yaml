@@ -210,6 +210,10 @@ services:
       target: test
     container_name: django-test-dt5qx
     restart: "no"
+    entrypoint: [python]
+    command:
+      - -c
+      - import time; time.sleep(31536000)
 
     env_file:
       - .env.testing
@@ -233,6 +237,17 @@ services:
         condition: service_healthy
       seaweedfs-ts3jd:
         condition: service_healthy
+
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import pathlib; assert pathlib.Path('/app/src').is_dir()
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
 networks:
   access-net-ht6pn:

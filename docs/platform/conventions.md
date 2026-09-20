@@ -525,6 +525,33 @@ file written by `makemigrations` cannot be held to a hand-written standard.
 Exit `0` clean; `1` violations, printed one per line as `FAIL <path>:<line> <rule> <detail>` followed by a count.
 Runs in `uv run poe check` and as a pre-commit hook.
 
+### 4.11 `scripts/manage_platform.py`
+
+Cross-platform operator adapter exposed by the `uv run poe ...` tasks. It centralizes Compose file selection,
+environment preparation, safe rebuilds, explicitly destructive resets, readiness checks, logs, and host/container
+test orchestration so onboarding documentation does not duplicate shell logic.
+
+The stable interface is listed by `uv run poe help`. Safe `down` and `rebuild` commands preserve named volumes;
+`development-reset` and `testing-reset` are the only task names that delete them. `environments-setup` prepares,
+builds only missing local image tags once through representative services, starts with `--no-build`, times, and
+audits both environments without running application tests. Existing local image tags make setup a no-build,
+no-recreate path; use `development-rebuild` or `testing-rebuild` after source or Dockerfile changes. `docker-audit`
+rejects missing, stale, unowned, mislabelled, duplicate, wrong-image, unexpectedly healthcheck-free, unhealthy, or
+one-off LocalForge resources. Docker Hub's optional registry and `library` prefixes are normalized before exact
+image and tag comparison; no other registry, repository, or tag variation is accepted.
+
+Every Compose invocation pins `--project-name localforge-dev` or `--project-name localforge-test`. Development
+commands accept `--proxy-only`, which adds `compose.proxy-only.yaml` and creates the registered `django-uv5n2`
+service through Compose `up` without publishing port 8000. Container-mode tests execute inside the persistent
+`django-test-dt5qx` service with Compose `exec`; no persistent workflow uses Compose `run`.
+
+The exact `--proxy-only` allowlist is `environments-setup`, `development-up`, `development-rebuild`, and
+`development-reset`. Every other command rejects the option before prerequisite, secret, Compose, or destructive
+work begins.
+
+Exit `0` means every requested step passed. A child command's non-zero status is returned unchanged; usage and
+missing-environment-file refusals return `2`.
+
 ## 5. Secret handling
 
 1. No real secret appears in `docs/`, `AGENTS.md`, `CONTEXT.md`, a Compose file, a Dockerfile, or a settings module.

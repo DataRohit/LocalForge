@@ -221,6 +221,8 @@ An unexpected consumer exception is contained by the outer WebSocket failure bou
 exception traceback, credential, JWT, payload, or secret. Consumer group cleanup runs before the boundary closes,
 including exception and cancellation paths. The consumer claims cleanup ownership before awaiting group addition,
 so cancellation after the channel layer records local or remote membership still performs one idempotent discard.
+That discard is shielded until the channel layer processes Redis' unsubscribe acknowledgement; only then is cleanup
+ownership released and the original cancellation propagated.
 
 ## Verification state
 

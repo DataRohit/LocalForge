@@ -45,6 +45,20 @@ class SubscriptionNotConfirmedError(RuntimeError):
     """
 
 
+class UnsubscriptionNotConfirmedError(RuntimeError):
+    """Raised when the server never acknowledges a requested unsubscribe.
+
+    Signals that local membership is gone but the server-side subscription cannot yet be proven
+    absent. Inherits from ``RuntimeError`` and carries only the affected channel name.
+
+    Attributes:
+        None.
+
+    Members:
+        None.
+    """
+
+
 class ConfirmingShardConnection(RedisSingleShardConnection):  # type: ignore[misc]
     """A shard connection whose subscribe waits for the server to register the subscription.
 
@@ -58,7 +72,7 @@ class ConfirmingShardConnection(RedisSingleShardConnection):  # type: ignore[mis
 
     Members:
         subscribe: Subscribe to a channel and return only once the server has registered it.
-        unsubscribe: Drop a subscription unless the layer has taken it up again.
+        unsubscribe: Drop and confirm a subscription unless the layer has taken it up again.
         flush: Reset the connection with no subscription change in flight.
     """
 
@@ -112,23 +126,30 @@ class ConfirmingShardConnection(RedisSingleShardConnection):  # type: ignore[mis
 
     @override
     async def unsubscribe(self, channel: str) -> None:
-        """Drop a subscription unless the layer has taken it up again.
+        """Drop and confirm a subscription unless the layer has taken it up again.
 
-        Re-reads the layer's membership while holding the transition lock, because a group emptied
-        by one caller can be rejoined by another before this runs and unsubscribing then would
-        leave the new member with no subscription at all.
+        Re-reads membership under the transition lock so a concurrent rejoin cannot be removed.
+        A successful return also requires Redis acknowledgement, preventing cancellation-safe
+        consumer cleanup from outrunning remote removal.
 
         Arguments:
             channel: Name of the channel or group channel to unsubscribe from.
 
         Returns:
             None.
+
+        Raises:
+            UnsubscriptionNotConfirmedError: If the acknowledgement does not arrive in time.
         """
         async with self._transitions:
             if self.channel_layer.groups.get(channel):
                 return
 
+            handle = cast("PubSub", self._pubsub)
+            pending_before = set(handle.pending_unsubscribe_channels)
             await super().unsubscribe(channel)
+            pending = set(handle.pending_unsubscribe_channels) - pending_before
+            await self._poll_until_unsubscribed(handle, pending, channel)
 
     @override
     async def flush(self) -> None:
@@ -245,6 +266,41 @@ class ConfirmingShardConnection(RedisSingleShardConnection):  # type: ignore[mis
                     f"within {CONFIRMATION_TIMEOUT_SECONDS} seconds"
                 )
                 raise SubscriptionNotConfirmedError(message)
+
+            await asyncio.sleep(CONFIRMATION_POLL_SECONDS)
+
+    async def _poll_until_unsubscribed(
+        self,
+        handle: PubSub,
+        pending: set[object],
+        channel: str,
+    ) -> None:
+        """Wait until Redis acknowledges this connection's unsubscribe.
+
+        Observes the pub/sub handle state updated by its receiver task, which isolates this
+        connection's acknowledgement even when other workers remain subscribed to the same group.
+
+        Arguments:
+            handle: Publish and subscribe handle processing acknowledgement frames.
+            pending: Normalized channel keys introduced by this unsubscribe command.
+            channel: Human-readable channel name used only in a failure message.
+
+        Returns:
+            None.
+
+        Raises:
+            UnsubscriptionNotConfirmedError: If pending keys remain for the whole budget.
+        """
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + CONFIRMATION_TIMEOUT_SECONDS
+
+        while pending & handle.pending_unsubscribe_channels:
+            if loop.time() >= deadline:
+                message = (
+                    f"the channel instance did not acknowledge removal of {channel} "
+                    f"within {CONFIRMATION_TIMEOUT_SECONDS} seconds"
+                )
+                raise UnsubscriptionNotConfirmedError(message)
 
             await asyncio.sleep(CONFIRMATION_POLL_SECONDS)
 

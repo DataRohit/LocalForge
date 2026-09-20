@@ -126,6 +126,31 @@ def valkey_services(environment: str) -> dict[str, Any]:
     }
 
 
+def test_testing_runner_is_a_persistent_idle_compose_service() -> None:
+    """Keep the test image running without executing the suite during setup.
+
+    Requires a bounded local health check and an idle command so explicit test tasks can use
+    Compose ``exec`` without creating a generated one-off container.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If starting the testing environment runs tests or lacks health state.
+    """
+    runner = merged(TESTING_FILE)["services"]["django-test-dt5qx"]
+
+    assert runner["container_name"] == "django-test-dt5qx"
+    assert runner["entrypoint"] == ["python"]
+    assert runner["command"][0] == "-c"
+    assert "time.sleep" in runner["command"][1]
+    assert "healthcheck" in runner
+    assert "test" not in runner["command"]
+
+
 def registry_rows(heading: str) -> set[str]:
     """Read one registry table out of the conventions document.
 

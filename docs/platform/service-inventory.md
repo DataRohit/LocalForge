@@ -290,7 +290,7 @@ Seven services, one profile-gated. Every dashboard and UI service is dropped; no
 
 | Container name | Role | Host ports | Networks | Default |
 | --- | --- | --- | --- | --- |
-| `django-test-dt5qx` | pytest runner | none | `app-net-nt5rk`, `data-net-nt8fq` | yes |
+| `django-test-dt5qx` | persistent pytest runner, idle until explicit `compose exec` | none | `app-net-nt5rk`, `data-net-nt8fq` | yes |
 | `postgres-tp8vn` | PostgreSQL 18.6, single node | `25432` | `data-net-nt8fq`, `access-net-ht6pn` | yes |
 | `valkey-cache-tv4kq` | cache | `26379` | `app-net-nt5rk`, `access-net-ht6pn` | yes |
 | `valkey-channels-tv9zw` | Channels layer | `26380` | `app-net-nt5rk`, `access-net-ht6pn` | yes |
@@ -312,6 +312,10 @@ a broker user that matches the compose definition — and without the files thos
 container mode report a different result from host mode for an environmental reason. The files stay on the
 machine, out of the image, and out of version control.
 
+The runner's Compose command is an idle Python process with a local filesystem health check. Setup starts it with
+`compose up`; explicit container-mode test commands use `compose exec`. This keeps the registered container inside
+the `localforge-test` project and prevents generated `*-run-*` one-off containers.
+
 ### 4.1 Exclusions, and why
 
 | Excluded | Reason |
@@ -330,8 +334,8 @@ machine, out of the image, and out of version control.
 
 | Mode | Command | Env file | Hostnames |
 | --- | --- | --- | --- |
-| Container | `docker compose ... run --rm django-test-dt5qx` | `.env.testing` | container names on the testing networks |
-| Host | `uv run poe test` with the testing stack up | `.env.testing.host` | `127.0.0.1` and the published ports above |
+| Container | `uv run poe testing-test-container` | `.env.testing` | container names on the testing networks |
+| Host | `uv run poe testing-test-host` | `.env.testing.host` | `127.0.0.1` and the published ports above |
 
 Both modes run the same complete Poe task, which keeps their collection arithmetic and stage timings comparable.
 That interface hides two stages:
@@ -363,6 +367,10 @@ Core and timing evidence is written separately to `test-results/pytest-core.xml`
 complete console output and exit status provide the independently auditable container counts.
 
 Host mode is why every testing service publishes a host port even though container mode never uses them.
+
+`uv run poe testing-verify` is the complete operator workflow: rebuild the source-matched test image, recreate and
+verify the dependency stack, run container mode followed by host mode, then stop the testing environment while
+preserving its named volumes. It leaves a failed stack running so status and logs remain available.
 
 ## 5. Image pins
 

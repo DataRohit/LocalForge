@@ -74,6 +74,11 @@ connection dies. And an unsubscribe re-reads the layer's group membership while 
 emptied by a departing socket can be rejoined before the unsubscribe runs, and sending it then would leave the new
 member subscribed locally and absent on the instance.
 
+Unsubscribe completion is also a barrier. Redis' client returns after writing `UNSUBSCRIBE`, before its receiver
+task processes the server acknowledgement. The confirming shard therefore waits until that acknowledgement removes
+the channel from the handle's pending set. This lets cancellation-safe consumer cleanup defer cancellation until
+remote removal is complete rather than reporting success while the instance still has a subscriber.
+
 Measured 2026-09-14 against `valkey-channels-tv9zw`, comparing the stock layer with this one. Joining a fresh group
 and publishing to it at once: stock lost **46 of 200**; this layer lost **0 of 600**. Two channels joining one group
 through `asyncio.gather` and publishing at once: stock lost **66 of 300 receives**; this layer lost **0 of 600

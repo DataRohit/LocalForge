@@ -115,6 +115,7 @@ convention = "google"
 "scripts/gen_secrets.py" = ["S603"]
 "scripts/preflight.py" = ["S603"]
 "scripts/sops_env.py" = ["S603"]
+"scripts/manage_platform.py" = ["S603"]
 "tests/**/*.py" = ["S101"]
 "tests/unit/test_harness.py" = ["S101", "S603"]
 "tests/unit/scripts/test_django_entrypoint.py" = ["S101", "S603"]
@@ -231,6 +232,114 @@ cmd = """uvicorn config.asgi:application
   --reload
   --reload-dir src
   --ws websockets-sansio"""
+
+[tool.poe.tasks.help]
+help = "Show LocalForge setup, environment, testing, and maintenance commands"
+cmd = "python -m scripts.manage_platform help"
+
+[tool.poe.tasks.setup]
+help = "Check prerequisites and safely prepare all local environment files"
+cmd = "python -m scripts.manage_platform setup"
+
+[tool.poe.tasks.environments-setup]
+help = "Bootstrap missing images, start, time, and audit both environments without tests"
+cmd = "python -m scripts.manage_platform environments-setup"
+
+[tool.poe.tasks.docker-audit]
+help = "Verify LocalForge Docker names, ownership labels, health, and resources"
+cmd = "python -m scripts.manage_platform docker-audit"
+
+[tool.poe.tasks.docker-clean-check]
+help = "Require zero LocalForge Docker containers, networks, volumes, and images"
+cmd = "python -m scripts.manage_platform docker-clean-check"
+
+[tool.poe.tasks.secrets-generate]
+help = "Create or top up local environment files without replacing existing values"
+cmd = "python -m scripts.manage_platform secrets-generate"
+
+[tool.poe.tasks.secrets-decrypt]
+help = "Decrypt committed development and testing environment files"
+cmd = "python -m scripts.manage_platform secrets-decrypt"
+
+[tool.poe.tasks.development-build]
+help = "Build development images while preserving containers and volumes"
+cmd = "python -m scripts.manage_platform development-build"
+
+[tool.poe.tasks.development-up]
+help = "Build if needed and start the complete development environment"
+cmd = "python -m scripts.manage_platform development-up"
+
+[tool.poe.tasks.development-down]
+help = "Stop development containers while preserving named volumes"
+cmd = "python -m scripts.manage_platform development-down"
+
+[tool.poe.tasks.development-rebuild]
+help = "Rebuild and recreate development containers while preserving named volumes"
+cmd = "python -m scripts.manage_platform development-rebuild"
+
+[tool.poe.tasks.development-reset]
+help = "Destructively reset development volumes and rebuild without cache"
+cmd = "python -m scripts.manage_platform development-reset --confirm-destroy-data"
+
+[tool.poe.tasks.development-status]
+help = "Show all development containers and their state"
+cmd = "python -m scripts.manage_platform development-status"
+
+[tool.poe.tasks.development-health]
+help = "Verify development Compose state and aggregate application readiness"
+cmd = "python -m scripts.manage_platform development-health"
+
+[tool.poe.tasks.development-logs]
+help = "Show the last 200 development log lines; pass --follow or service names"
+cmd = "python -m scripts.manage_platform development-logs"
+
+[tool.poe.tasks.testing-build]
+help = "Build the source-matched testing image"
+cmd = "python -m scripts.manage_platform testing-build"
+
+[tool.poe.tasks.testing-up]
+help = "Build if needed and start the complete headless testing environment"
+cmd = "python -m scripts.manage_platform testing-up"
+
+[tool.poe.tasks.testing-down]
+help = "Stop testing containers while preserving named volumes"
+cmd = "python -m scripts.manage_platform testing-down"
+
+[tool.poe.tasks.testing-rebuild]
+help = "Rebuild the test image and recreate the headless testing environment"
+cmd = "python -m scripts.manage_platform testing-rebuild"
+
+[tool.poe.tasks.testing-reset]
+help = "Destructively reset testing volumes and rebuild without cache"
+cmd = "python -m scripts.manage_platform testing-reset --confirm-destroy-data"
+
+[tool.poe.tasks.testing-status]
+help = "Show all testing containers and their state"
+cmd = "python -m scripts.manage_platform testing-status"
+
+[tool.poe.tasks.testing-health]
+help = "Verify every testing dependency through its host readiness probe"
+cmd = "python -m scripts.manage_platform testing-health"
+
+[tool.poe.tasks.testing-logs]
+help = "Show the last 200 testing log lines; pass --follow or service names"
+cmd = "python -m scripts.manage_platform testing-logs"
+
+[tool.poe.tasks.testing-test-container]
+help = "Start testing and run the complete suite inside the persistent test service"
+cmd = "python -m scripts.manage_platform testing-test-container"
+
+[tool.poe.tasks.testing-test-host]
+help = "Start testing dependencies and run the complete suite from the host"
+cmd = "python -m scripts.manage_platform testing-test-host"
+
+[tool.poe.tasks.testing-test-both]
+help = "Start testing dependencies and run container mode followed by host mode"
+cmd = "python -m scripts.manage_platform testing-test-both"
+
+[tool.poe.tasks.testing-verify]
+help = "Rebuild testing, run both complete modes, and stop after success"
+cmd = "python -m scripts.manage_platform testing-verify"
 
 [tool.poe.tasks.migrate]
 help = "Apply database migrations (development database; run from inside django-uv5n2)"

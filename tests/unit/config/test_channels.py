@@ -59,6 +59,10 @@ class FakePubSub:
         subscribed: Channel names passed to subscribe, in order.
         unsubscribed: Channel names passed to unsubscribe, in order.
         fail_unsubscribe: Whether unsubscribe should raise instead of recording.
+        acknowledge_unsubscribe: Whether the fabricated server acknowledges immediately.
+        channels: Currently acknowledged subscriptions.
+        pending_unsubscribe_channels: Subscriptions awaiting server acknowledgement.
+        unsubscribe_started: Event set when an unsubscribe command is recorded.
 
     Members:
         subscribe: Record a subscription request.
@@ -80,6 +84,10 @@ class FakePubSub:
         self.subscribed: list[str] = []
         self.unsubscribed: list[str] = []
         self.fail_unsubscribe = False
+        self.acknowledge_unsubscribe = True
+        self.channels: set[str] = set()
+        self.pending_unsubscribe_channels: set[str] = set()
+        self.unsubscribe_started = asyncio.Event()
 
     async def subscribe(self, channel: str) -> None:
         """Record a subscription request.
@@ -94,6 +102,7 @@ class FakePubSub:
             None.
         """
         self.subscribed.append(channel)
+        self.channels.add(channel)
 
     async def unsubscribe(self, channel: str) -> None:
         """Record an unsubscription request.
@@ -115,6 +124,11 @@ class FakePubSub:
             raise ConnectionError(message)
 
         self.unsubscribed.append(channel)
+        self.unsubscribe_started.set()
+        self.pending_unsubscribe_channels.add(channel)
+        if self.acknowledge_unsubscribe:
+            self.pending_unsubscribe_channels.remove(channel)
+            self.channels.discard(channel)
 
 
 class FakeInstance:
@@ -323,6 +337,70 @@ async def test_a_subscription_already_confirmed_is_not_confirmed_again(
     await shard.subscribe("localforge__group__repeat")
 
     assert len(instance.queried) == queried_once
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_unsubscribe_waits_for_the_server_acknowledgement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep group cleanup open until the unsubscribe acknowledgement arrives.
+
+    Holds the fabricated server acknowledgement after the command is sent, proving callers cannot
+    treat local bookkeeping as completed remote cleanup.
+
+    Arguments:
+        monkeypatch: Fixture wiring the shard to a fabricated connection.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If unsubscribe returns before acknowledgement.
+    """
+    shard, handle, _ = build_shard(monkeypatch, [[(b"probe", 1)]])
+    channel = "localforge__group__cleanup"
+    shard._subscribed_to.add(channel)  # noqa: SLF001
+    handle.channels.add(channel)
+    handle.acknowledge_unsubscribe = False
+
+    task = asyncio.create_task(shard.unsubscribe(channel))
+    await handle.unsubscribe_started.wait()
+
+    assert not task.done()
+    handle.pending_unsubscribe_channels.remove(channel)
+    handle.channels.remove(channel)
+    await task
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_unsubscribe_reports_an_unacknowledged_server_transition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fail explicitly when the server never acknowledges unsubscribe.
+
+    Uses a zero confirmation budget and a pending fabricated acknowledgement so cleanup failure is
+    observable rather than reported as successful.
+
+    Arguments:
+        monkeypatch: Fixture wiring the shard and shortening the timeout.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the timeout does not produce the stable exception.
+    """
+    monkeypatch.setattr(channels, "CONFIRMATION_TIMEOUT_SECONDS", 0.0)
+    shard, handle, _ = build_shard(monkeypatch, [[(b"probe", 1)]])
+    channel = "localforge__group__stale"
+    shard._subscribed_to.add(channel)  # noqa: SLF001
+    handle.channels.add(channel)
+    handle.acknowledge_unsubscribe = False
+
+    with pytest.raises(channels.UnsubscriptionNotConfirmedError):
+        await shard.unsubscribe(channel)
 
 
 @pytest.mark.unit
