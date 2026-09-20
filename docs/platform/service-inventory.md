@@ -128,6 +128,13 @@ run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data /
 waits on the schema being current. Celery workers never run migrations: they reuse the same image and pass their own
 command to the entrypoint, which waits for dependencies and then hands over.
 
+`celery-worker-cw8rt` consumes the explicit durable default and slow queues with environment-controlled concurrency
+and prefetch. Its health check pings the registered node through RabbitMQ, its Compose stop grace is bounded by the
+environment inventory, and terminal failures publish scrubbed records to the durable dead-letter queue, which the
+worker does not consume. Task logs retain only exception types, never arbitrary exception text or tracebacks. One slow
+task cannot starve ordinary work because the configured concurrency may not fall below two, and the operational slow
+probe cannot exceed the worker soft time limit even when executed eagerly.
+
 Ticket 43 makes `celery-beat-cb4hq` operationally responsible for running SimpleJWT's upstream
 `flushexpiredtokens` command once daily. The command's delete is routed to `default`, the authoritative primary;
 Ticket 30 proves expired outstanding and cascaded blacklist rows are removed without touching unexpired rows, but
@@ -327,7 +334,7 @@ the `localforge-test` project and prevents generated `*-run-*` one-off container
 | `cadvisor-cv8mh`, all three exporters | They exist only to feed Prometheus, which is excluded |
 | `postgres-replica-pg6vy` | The `replica` alias points at `postgres-tp8vn`. Router paths are exercised; replication lag is not. See [../adr/0012-streaming-replication.md](../adr/0012-streaming-replication.md) |
 | `pgbackrest-pb2wj` | Time-based operational behaviour, verified in development by the phase 6 gate |
-| `celery-worker-cw8rt`, `celery-beat-cb4hq` | `CELERY_TASK_ALWAYS_EAGER=true` runs tasks in-process. The tests needing a real broker override the namespaced setting and run a worker in-process against it; the queues a worker declares are checked against the broker directly, because that worker skips the bootsteps that declare them |
+| `celery-worker-cw8rt`, `celery-beat-cb4hq` | `CELERY_TASK_ALWAYS_EAGER=true` runs ordinary tasks in-process. Broker tests override the namespaced setting; worker-service tests start the real Celery command as a separate bounded process, while focused logging tests retain the in-process worker. Control, reply, and event queues are also declared directly because the focused workers skip bootsteps |
 | `mailpit-tm7bh` | Default `EMAIL_BACKEND` is `locmem`. The SMTP round-trip runs under `--profile smtp`. The web port is published so a host-mode run can assert through the REST API, not only send |
 
 ### 4.2 The two required modes

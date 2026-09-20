@@ -121,6 +121,29 @@ and before successful delivery, that token remains claimed and is not attempted 
 is the explicit recovery path and issues a new bearer. This chooses at-most-once email over hidden duplicate delivery;
 the accepted resend response makes recovery available without exposing account state.
 
+## Ticket 42 worker runtime
+
+Recorded 2026-09-20. The development worker reuses `localforge/django:0.1.0`, waits through the shared entrypoint,
+and never migrates. It consumes the explicit durable `localforge.default` and `localforge.slow` queues with an
+environment-controlled concurrency that may not fall below two and prefetch multiplier one, so one slow task leaves
+capacity for ordinary work. Compose grants the worker the configured bounded stop window.
+
+Terminal failure is not inferred from a transient log line. After the configured retry bound, the base task publishes
+one durable scrubbed record to `localforge.dead-letter`, carrying task name, task identifier, retry count, exception
+type, positional argument types, and cleansed keyword arguments. The worker does not consume that queue. A broker
+publication failure is separately logged as critical rather than replacing the original task failure.
+
+Task failures record only the exception type. The project failure record carries no traceback or exception text, and
+the queue logging filter rewrites Celery's failure message plus copied diagnostics to the task name, identifier, and
+exception type. This is required because arbitrary exception text is caller-controlled and cannot be safely inferred
+to contain no credential.
+
+The worker health check uses remote-control ping against the registered node and therefore fails when the broker path
+or worker process is unavailable. Runtime verification covered real broker and result-backend execution, fast work
+completing while one slow task occupied another slot, abrupt worker loss followed by redelivery, retry exhaustion into
+the dead-letter queue, and the task name and identifier reaching Loki. The operational slow probe rejects non-finite,
+negative, and over-soft-limit delays, so eager execution cannot bypass the worker's configured runtime bound.
+
 ## Considered options
 
 **django-q2 1.11.1** (2026-08-26) — the strongest alternative: active, Python 3.14 classifier, and a scheduler

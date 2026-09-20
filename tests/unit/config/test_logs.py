@@ -54,6 +54,7 @@ PROBE_DURATION = 0.004
 EXPECTED_REDACTED_HEADERS = 2
 ADVERSARIAL_REPEAT_COUNT = 4096
 REDACTION_TIME_LIMIT_SECONDS = 1.0
+TASK_EXCEPTION_MARKER = "task-exception-marker"
 PROBE_HASH = "argon2$argon2id$v=19$m=102400,t=2,p=8$c2FsdA$aGFzaA"
 DOCUMENTED_SECRET_FIELDS = (
     "CELERY_BROKER_URL",
@@ -1535,6 +1536,48 @@ def test_task_arguments_are_blanked_on_a_queue_record() -> None:
     assert attached["name"] == "tests.probe"
     assert attached["args"] == REDACTED_ARGUMENTS
     assert attached["kwargs"] == REDACTED_ARGUMENTS
+
+
+@pytest.mark.unit
+def test_task_failure_exception_text_is_reduced_to_its_type() -> None:
+    """Keep arbitrary task exception text and traceback content out of queue logs.
+
+    Supplies a credential-shaped exception through Celery's failure record shape and requires only
+    the task identity and exception type to survive structured formatting.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If exception text or traceback content reaches the formatted record.
+    """
+    exception = RuntimeError(TASK_EXCEPTION_MARKER)
+    exception_info = (RuntimeError, exception, None)
+
+    record = _record(
+        name="celery.app.trace",
+        msg="Task %s[%s] raised unexpected: %r",
+        args=("tests.probe", "task-1234", exception_info[1]),
+        exc_info=exception_info,
+        data={
+            "id": "task-1234",
+            "name": "tests.probe",
+            "exc": repr(exception_info[1]),
+            "traceback": TASK_EXCEPTION_MARKER,
+        },
+    )
+
+    assert TaskArgumentRedactionFilter().filter(record) is True
+    payload = json.loads(StructuredFormatter().format(record))
+
+    assert payload["message"] == "Task tests.probe[task-1234] failed with RuntimeError"
+    assert payload["data"]["exc"] == REDACTED_ARGUMENTS
+    assert payload["data"]["traceback"] == REDACTED_ARGUMENTS
+    assert "exception" not in payload
+    assert TASK_EXCEPTION_MARKER not in json.dumps(payload)
 
 
 @pytest.mark.unit

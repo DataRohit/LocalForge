@@ -17,6 +17,7 @@ from typing import Any
 import environ
 from botocore.config import Config
 from django.core.exceptions import ImproperlyConfigured
+from kombu import Exchange, Queue
 
 from accounts.request_throttling import parse_throttle_rate
 
@@ -24,6 +25,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 THROTTLE_IDENTITY_HMAC_MINIMUM_BYTES = 32
 THROTTLE_IDENTITY_HMAC_MAXIMUM_REPEATING_PATTERN_BYTES = 8
 WEBSOCKET_APPLICATION_LIMIT_BYTES = 64 * 1024
+CELERY_QUEUE_COUNT = 3
+CELERY_MINIMUM_WORKER_CONCURRENCY = 2
 THROTTLE_IDENTITY_HMAC_TEXT_PATTERN = re.compile(r"[A-Za-z0-9_-]+")
 THROTTLE_IDENTITY_HMAC_PLACEHOLDER_FRAGMENTS = (
     b"changeme",
@@ -590,6 +593,40 @@ CELERY_RESULT_BACKEND = env.str("CELERY_RESULT_BACKEND")
 
 CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER")
 
+CELERY_DEFAULT_QUEUE = env.str("CELERY_DEFAULT_QUEUE")
+
+CELERY_SLOW_QUEUE = env.str("CELERY_SLOW_QUEUE")
+
+CELERY_DEAD_LETTER_QUEUE = env.str("CELERY_DEAD_LETTER_QUEUE")
+
+CELERY_WORKER_CONCURRENCY = env.int("CELERY_WORKER_CONCURRENCY")
+
+CELERY_WORKER_PREFETCH_MULTIPLIER = env.int("CELERY_WORKER_PREFETCH_MULTIPLIER")
+
+CELERY_WORKER_SHUTDOWN_TIMEOUT_SECONDS = env.int("CELERY_WORKER_SHUTDOWN_TIMEOUT_SECONDS")
+
+CELERY_WORKER_HEALTH_TIMEOUT_SECONDS = env.int("CELERY_WORKER_HEALTH_TIMEOUT_SECONDS")
+
+if len({CELERY_DEFAULT_QUEUE, CELERY_SLOW_QUEUE, CELERY_DEAD_LETTER_QUEUE}) != CELERY_QUEUE_COUNT:
+    message = "Celery default, slow, and dead-letter queues must be distinct"
+    raise ImproperlyConfigured(message)
+
+if CELERY_WORKER_CONCURRENCY < CELERY_MINIMUM_WORKER_CONCURRENCY:
+    message = "CELERY_WORKER_CONCURRENCY must be at least two"
+    raise ImproperlyConfigured(message)
+
+if CELERY_WORKER_PREFETCH_MULTIPLIER <= 0:
+    message = "CELERY_WORKER_PREFETCH_MULTIPLIER must be positive"
+    raise ImproperlyConfigured(message)
+
+if CELERY_WORKER_SHUTDOWN_TIMEOUT_SECONDS <= 0:
+    message = "CELERY_WORKER_SHUTDOWN_TIMEOUT_SECONDS must be positive"
+    raise ImproperlyConfigured(message)
+
+if CELERY_WORKER_HEALTH_TIMEOUT_SECONDS <= 0:
+    message = "CELERY_WORKER_HEALTH_TIMEOUT_SECONDS must be positive"
+    raise ImproperlyConfigured(message)
+
 CELERY_TASK_EAGER_PROPAGATES = True
 
 CELERY_ACCEPT_CONTENT = ["json"]
@@ -602,7 +639,40 @@ CELERY_TASK_ACKS_LATE = True
 
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
 
-CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_TASK_TRACK_STARTED = True
+
+CELERY_TASK_DEFAULT_QUEUE = CELERY_DEFAULT_QUEUE
+
+CELERY_TASK_DEFAULT_EXCHANGE = CELERY_DEFAULT_QUEUE
+
+CELERY_TASK_DEFAULT_ROUTING_KEY = CELERY_DEFAULT_QUEUE
+
+CELERY_TASK_QUEUES = (
+    Queue(
+        CELERY_DEFAULT_QUEUE,
+        Exchange(CELERY_DEFAULT_QUEUE, type="direct", durable=True),
+        routing_key=CELERY_DEFAULT_QUEUE,
+        durable=True,
+    ),
+    Queue(
+        CELERY_SLOW_QUEUE,
+        Exchange(CELERY_SLOW_QUEUE, type="direct", durable=True),
+        routing_key=CELERY_SLOW_QUEUE,
+        durable=True,
+    ),
+    Queue(
+        CELERY_DEAD_LETTER_QUEUE,
+        Exchange(CELERY_DEAD_LETTER_QUEUE, type="direct", durable=True),
+        routing_key=CELERY_DEAD_LETTER_QUEUE,
+        durable=True,
+    ),
+)
+
+CELERY_TASK_ROUTES = {
+    "config.slow_worker_probe": {"queue": CELERY_SLOW_QUEUE},
+}
+
+CELERY_IMPORTS = ("config.tasks",)
 
 CELERY_TASK_TIME_LIMIT = CELERY_TASK_TIME_LIMIT_SECONDS
 

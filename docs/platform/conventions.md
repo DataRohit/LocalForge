@@ -271,6 +271,13 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `CELERY_BROKER_URL` | `celery-worker-cw8rt` | AMQP URL | composed from the five above | **yes** | yes |
 | `CELERY_RESULT_BACKEND` | `celery-worker-cw8rt` | result store, DB 1 | composed | **yes** | yes |
 | `CELERY_TASK_ALWAYS_EAGER` | `django-test-dt5qx` | run tasks inline | `false` dev, `true` testing | no | no |
+| `CELERY_DEFAULT_QUEUE` | `celery-worker-cw8rt` | default queue for bounded ordinary work | `localforge.default` | no | yes |
+| `CELERY_SLOW_QUEUE` | `celery-worker-cw8rt` | isolated queue for work that may occupy a worker slot | `localforge.slow` | no | yes |
+| `CELERY_DEAD_LETTER_QUEUE` | `celery-worker-cw8rt` | terminal scrubbed failure records after retry exhaustion | `localforge.dead-letter` | no | yes |
+| `CELERY_WORKER_CONCURRENCY` | `celery-worker-cw8rt` | worker process concurrency | `2` | no | yes |
+| `CELERY_WORKER_PREFETCH_MULTIPLIER` | `celery-worker-cw8rt` | tasks reserved per worker process | `1` | no | yes |
+| `CELERY_WORKER_SHUTDOWN_TIMEOUT_SECONDS` | `celery-worker-cw8rt` | bounded grace period for in-flight tasks during stop | `300` | no | yes |
+| `CELERY_WORKER_HEALTH_TIMEOUT_SECONDS` | `celery-worker-cw8rt` | broker-backed worker ping timeout | `10` | no | yes |
 | `FLOWER_BASIC_AUTH` | `flower-fl9zd` | dashboard credentials | `<GENERATED>` | **yes** | yes |
 | `EMAIL_BACKEND` | `django-uv5n2` | Django email backend | `django.core.mail.backends.smtp.EmailBackend` | no | yes |
 | `EMAIL_HOST` | `django-uv5n2` | SMTP host | `mailpit-mp6gb` | no | yes |

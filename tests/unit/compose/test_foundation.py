@@ -151,6 +151,47 @@ def test_testing_runner_is_a_persistent_idle_compose_service() -> None:
     assert "test" not in runner["command"]
 
 
+@pytest.mark.unit
+def test_development_worker_reuses_the_application_image_with_bounded_runtime_settings() -> None:
+    """Run the registered worker as a non-migrating application-image companion.
+
+    Requires the worker to wait for the migrated application, broker, and result backend, consume
+    both registered queues with environment-controlled capacity, and expose a broker-backed health
+    check without publishing a host port.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the worker runtime contract is absent or left at framework defaults.
+    """
+    worker = merged(DEVELOPMENT_FILE)["services"]["celery-worker-cw8rt"]
+
+    assert worker["container_name"] == "celery-worker-cw8rt"
+    assert worker["image"] == "localforge/django:0.1.0"
+    assert set(worker["networks"]) == {"app-net-na6hy", "data-net-nd9pc"}
+    assert "ports" not in worker
+    assert worker["command"][0:4] == ["celery", "-A", "config", "worker"]
+    command = " ".join(worker["command"])
+    assert "${CELERY_WORKER_CONCURRENCY}" in command
+    assert "${CELERY_WORKER_PREFETCH_MULTIPLIER}" in command
+    assert "${CELERY_DEFAULT_QUEUE}" in command
+    assert "${CELERY_SLOW_QUEUE}" in command
+    assert worker["stop_grace_period"] == "${CELERY_WORKER_SHUTDOWN_TIMEOUT_SECONDS}s"
+    assert worker["depends_on"] == {
+        "django-uv5n2": {"condition": "service_healthy"},
+        "rabbitmq-rq4sx": {"condition": "service_healthy"},
+        "valkey-cache-vc5tn": {"condition": "service_healthy"},
+    }
+    health = " ".join(worker["healthcheck"]["test"])
+    assert "inspect ping" in health
+    assert "celery-worker-cw8rt" in health
+    assert "$$CELERY_WORKER_HEALTH_TIMEOUT_SECONDS" in health
+
+
 def registry_rows(heading: str) -> set[str]:
     """Read one registry table out of the conventions document.
 

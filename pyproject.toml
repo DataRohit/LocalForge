@@ -119,6 +119,7 @@ convention = "google"
 "tests/**/*.py" = ["S101"]
 "tests/unit/test_harness.py" = ["S101", "S603"]
 "tests/unit/scripts/test_django_entrypoint.py" = ["S101", "S603"]
+"tests/integration/config/test_worker_service.py" = ["S603"]
 ".github/scripts/validate_commit_message.py" = ["C901", "INP001", "PLR0912"]
 
 [tool.ruff.format]

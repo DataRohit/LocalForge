@@ -5,17 +5,20 @@ remote control declares against this broker, and the credentials a worker's own 
 write out.
 """
 
+from __future__ import annotations
+
+import gc
 import io
 import logging
 import uuid
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from celery.contrib.testing.worker import start_worker
 from celery.events.receiver import EventReceiver
-from celery.result import EagerResult
+from celery.result import AsyncResult, EagerResult
 from django.conf import settings
-from kombu import Queue
+from kombu import Exchange, Queue
 
 from config import celery as celery_module
 from config.celery import REDACTED, app
@@ -23,6 +26,8 @@ from config.logs import StructuredFormatter
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+    from celery import Task
 
 RESULT_TIMEOUT_SECONDS = 15
 WORKER_SHUTDOWN_SECONDS = 30
@@ -32,6 +37,25 @@ POSITIONAL_SECRET = "positional-credential-value"  # noqa: S105
 KEYWORD_SECRET = "keyword-credential-value"  # noqa: S105
 NESTED_SECRET = "nested-credential-value"  # noqa: S105
 AUTH_SECRET = "authorization-credential-value"  # noqa: S105
+
+
+def dispose_result(result: AsyncResult | None) -> None:
+    """Release one real result consumer while service access is still permitted.
+
+    Forgets persisted state and removes the asynchronous consumer before forcing collection, so a
+    deferred deallocator cannot reconnect after the unit network guard becomes active.
+
+    Arguments:
+        result: Real asynchronous result to release, or None before publication.
+
+    Returns:
+        None.
+    """
+    if result is None:
+        return
+
+    result.forget()
+    app.backend.remove_pending_result(result)
 
 
 def add(first: int, second: int) -> int:
@@ -72,8 +96,44 @@ def refuse(carrier: str, *, api_key: str, payload: dict[str, str]) -> None:
     raise RuntimeError(message)
 
 
+def retry_then_refuse(
+    task: Task,
+    carrier: str,
+    *,
+    api_key: str,
+    payload: dict[str, str],
+) -> None:
+    """Retry twice before ending in the terminal failure path.
+
+    Uses immediate retries so the integration test proves the configured bounded lifecycle without
+    waiting for production backoff delays, while retaining credential-shaped arguments for the
+    dead-letter scrub assertion.
+
+    Arguments:
+        task: Bound Celery task carrying the current retry count.
+        carrier: Positional argument standing in for a credential.
+        api_key: Keyword argument whose name reads like a credential.
+        payload: Keyword argument holding nested credentials.
+
+    Returns:
+        None.
+
+    Raises:
+        Retry: Until the retry bound is exhausted.
+        RuntimeError: When the configured retry bound is exhausted.
+    """
+    del carrier, api_key, payload
+    failure = RuntimeError("refused after bounded retries")
+    raise task.retry(exc=failure, countdown=0, max_retries=2)
+
+
 add_task = app.task(name="tests.add")(add)
 refuse_task = app.task(name="tests.refuse", max_retries=0, autoretry_for=())(refuse)
+retry_refuse_task = app.task(
+    bind=True,
+    name="tests.retry_then_refuse",
+    autoretry_for=(),
+)(retry_then_refuse)
 
 
 @pytest.fixture
@@ -121,22 +181,37 @@ def test_a_task_enqueued_on_the_broker_comes_back_with_its_result(broker_queue: 
     """
     assert app.conf.task_always_eager is False
 
-    with start_worker(
-        app,
-        queues=[broker_queue],
-        perform_ping_check=False,
-        shutdown_timeout=WORKER_SHUTDOWN_SECONDS,
-    ):
-        enqueued = add_task.apply_async(args=(FIRST_ADDEND, SECOND_ADDEND), queue=broker_queue)
+    enqueued: AsyncResult | None = None
+    try:
+        with start_worker(
+            app,
+            queues=[broker_queue],
+            perform_ping_check=False,
+            shutdown_timeout=WORKER_SHUTDOWN_SECONDS,
+        ):
+            enqueued = cast(
+                "AsyncResult",
+                add_task.apply_async(
+                    args=(FIRST_ADDEND, SECOND_ADDEND),
+                    queue=broker_queue,
+                ),
+            )
 
-        assert not isinstance(enqueued, EagerResult)
-        assert enqueued.get(timeout=RESULT_TIMEOUT_SECONDS) == FIRST_ADDEND + SECOND_ADDEND
-        assert enqueued.successful()
+            assert not isinstance(enqueued, EagerResult)
+            assert enqueued.get(timeout=RESULT_TIMEOUT_SECONDS) == FIRST_ADDEND + SECOND_ADDEND
+            assert enqueued.successful()
+    finally:
+        dispose_result(enqueued)
+        enqueued = None
+        gc.collect()
 
 
 @pytest.mark.integration
 @pytest.mark.services("rabbitmq", "valkey-cache")
-def test_a_failing_task_logs_no_argument_the_caller_passed(broker_queue: str) -> None:
+def test_a_failing_task_logs_no_argument_the_caller_passed(
+    broker_queue: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Keep every argument value out of everything the queue logs.
 
     Reads the log stream a real worker writes for a failing task, because the queue's own receipt
@@ -145,6 +220,7 @@ def test_a_failing_task_logs_no_argument_the_caller_passed(broker_queue: str) ->
 
     Arguments:
         broker_queue: Queue this test owns on the broker.
+        monkeypatch: Fixture replacing the terminal-record publisher.
 
     Returns:
         None.
@@ -156,11 +232,14 @@ def test_a_failing_task_logs_no_argument_the_caller_passed(broker_queue: str) ->
     handler = logging.StreamHandler(stream)
     handler.setFormatter(StructuredFormatter())
     watched = [logging.getLogger("celery"), logging.getLogger(celery_module.__name__)]
+    dead_letters: list[celery_module.DeadLetterRecord] = []
+    monkeypatch.setattr(celery_module, "publish_dead_letter", dead_letters.append)
 
     for logger in watched:
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
 
+    enqueued: AsyncResult | None = None
     try:
         with start_worker(
             app,
@@ -168,18 +247,24 @@ def test_a_failing_task_logs_no_argument_the_caller_passed(broker_queue: str) ->
             perform_ping_check=False,
             shutdown_timeout=WORKER_SHUTDOWN_SECONDS,
         ):
-            enqueued = refuse_task.apply_async(
-                args=(POSITIONAL_SECRET,),
-                kwargs={
-                    "api_key": KEYWORD_SECRET,
-                    "payload": {"password": NESTED_SECRET, "authorization": AUTH_SECRET},
-                },
-                queue=broker_queue,
+            enqueued = cast(
+                "AsyncResult",
+                refuse_task.apply_async(
+                    args=(POSITIONAL_SECRET,),
+                    kwargs={
+                        "api_key": KEYWORD_SECRET,
+                        "payload": {"password": NESTED_SECRET, "authorization": AUTH_SECRET},
+                    },
+                    queue=broker_queue,
+                ),
             )
 
             with pytest.raises(RuntimeError):
                 enqueued.get(timeout=RESULT_TIMEOUT_SECONDS)
     finally:
+        dispose_result(enqueued)
+        enqueued = None
+        gc.collect()
         for logger in watched:
             logger.removeHandler(handler)
 
@@ -191,6 +276,7 @@ def test_a_failing_task_logs_no_argument_the_caller_passed(broker_queue: str) ->
     assert KEYWORD_SECRET not in logged
     assert NESTED_SECRET not in logged
     assert AUTH_SECRET not in logged
+    assert len(dead_letters) == 1
 
 
 @pytest.mark.integration
@@ -214,7 +300,9 @@ def test_a_task_run_in_the_caller_logs_no_argument_either(
         AssertionError: If any argument value reaches the log stream.
     """
     reported = False
+    dead_letters: list[celery_module.DeadLetterRecord] = []
     monkeypatch.setitem(app.conf, "CELERY_TASK_EAGER_PROPAGATES", reported)
+    monkeypatch.setattr(celery_module, "publish_dead_letter", dead_letters.append)
 
     stream = io.StringIO()
     handler = logging.StreamHandler(stream)
@@ -244,6 +332,7 @@ def test_a_task_run_in_the_caller_logs_no_argument_either(
     assert KEYWORD_SECRET not in logged
     assert NESTED_SECRET not in logged
     assert AUTH_SECRET not in logged
+    assert len(dead_letters) == 1
 
 
 @pytest.mark.integration
@@ -263,28 +352,126 @@ def test_a_published_message_carries_no_argument_on_the_wire(broker_queue: str) 
     Raises:
         AssertionError: If the message carries an argument value.
     """
-    refuse_task.apply_async(
-        args=(POSITIONAL_SECRET,),
-        kwargs={
-            "api_key": KEYWORD_SECRET,
-            "payload": {"password": NESTED_SECRET, "authorization": AUTH_SECRET},
-        },
-        queue=broker_queue,
+    published: AsyncResult | None = None
+    try:
+        published = cast(
+            "AsyncResult",
+            refuse_task.apply_async(
+                args=(POSITIONAL_SECRET,),
+                kwargs={
+                    "api_key": KEYWORD_SECRET,
+                    "payload": {"password": NESTED_SECRET, "authorization": AUTH_SECRET},
+                },
+                queue=broker_queue,
+            ),
+        )
+
+        with app.connection_for_read() as connection:
+            message = Queue(broker_queue)(connection.channel()).get(accept=["json"], no_ack=True)
+
+        assert message is not None
+
+        headers = message.headers
+
+        assert headers["argsrepr"] == repr(("str",))
+        assert REDACTED in headers["kwargsrepr"]
+        assert POSITIONAL_SECRET not in str(headers)
+        assert KEYWORD_SECRET not in str(headers)
+        assert NESTED_SECRET not in str(headers)
+        assert AUTH_SECRET not in str(headers)
+    finally:
+        dispose_result(published)
+        published = None
+        gc.collect()
+
+
+@pytest.mark.integration
+@pytest.mark.services("rabbitmq", "valkey-cache")
+def test_a_terminal_failure_lands_in_one_scrubbed_dead_letter_record(
+    broker_queue: str,
+    monkeypatch: pytest.MonkeyPatch,
+    worker_namespace: str,
+) -> None:
+    """Persist one safe terminal record after a task reaches its retry bound.
+
+    Executes an immediate bounded-retry task through a real broker and worker, then reads the
+    durable dead-letter queue directly to prove terminal state is observable without credentials.
+
+    Arguments:
+        broker_queue: Queue this test owns for executable work.
+        monkeypatch: Fixture assigning an isolated terminal queue.
+        worker_namespace: Per-worker prefix keeping terminal records isolated.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If no record arrives, more than one arrives, or any argument leaks.
+    """
+    dead_letter_name = f"{worker_namespace}-dead-{uuid.uuid4().hex}"
+    dead_letter_queue = Queue(
+        dead_letter_name,
+        Exchange(dead_letter_name, type="direct", durable=True),
+        routing_key=dead_letter_name,
+        durable=True,
     )
+    monkeypatch.setitem(app.conf, "CELERY_DEAD_LETTER_QUEUE", dead_letter_name)
 
-    with app.connection_for_read() as connection:
-        message = Queue(broker_queue)(connection.channel()).get(accept=["json"], no_ack=True)
+    enqueued: AsyncResult | None = None
+    try:
+        with start_worker(
+            app,
+            queues=[broker_queue],
+            perform_ping_check=False,
+            shutdown_timeout=WORKER_SHUTDOWN_SECONDS,
+        ):
+            enqueued = cast(
+                "AsyncResult",
+                retry_refuse_task.apply_async(
+                    args=(POSITIONAL_SECRET,),
+                    kwargs={
+                        "api_key": KEYWORD_SECRET,
+                        "payload": {"password": NESTED_SECRET, "authorization": AUTH_SECRET},
+                    },
+                    queue=broker_queue,
+                ),
+            )
 
-    assert message is not None
+            with pytest.raises(RuntimeError):
+                enqueued.get(timeout=RESULT_TIMEOUT_SECONDS)
 
-    headers = message.headers
+        with app.connection_for_read() as connection:
+            channel = connection.channel()
+            bound = dead_letter_queue(channel)
+            message = bound.get(accept=["json"], no_ack=True)
+            duplicate = bound.get(accept=["json"], no_ack=True)
 
-    assert headers["argsrepr"] == repr(("str",))
-    assert REDACTED in headers["kwargsrepr"]
-    assert POSITIONAL_SECRET not in str(headers)
-    assert KEYWORD_SECRET not in str(headers)
-    assert NESTED_SECRET not in str(headers)
-    assert AUTH_SECRET not in str(headers)
+            assert message is not None
+            assert duplicate is None
+            assert message.payload == {
+                "exception_type": "RuntimeError",
+                "retries": 2,
+                "task_args": ["str"],
+                "task_id": enqueued.id,
+                "task_kwargs": {
+                    "api_key": REDACTED,
+                    "payload": {
+                        "authorization": REDACTED,
+                        "password": REDACTED,
+                    },
+                },
+                "task_name": "tests.retry_then_refuse",
+            }
+            assert POSITIONAL_SECRET not in str(message.payload)
+            assert KEYWORD_SECRET not in str(message.payload)
+            assert NESTED_SECRET not in str(message.payload)
+            assert AUTH_SECRET not in str(message.payload)
+    finally:
+        dispose_result(enqueued)
+        enqueued = None
+        gc.collect()
+        with app.connection_for_write() as connection:
+            dead_letter_queue(connection.channel()).delete()
 
 
 @pytest.mark.integration

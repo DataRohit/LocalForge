@@ -32,6 +32,10 @@ BODY_LIMIT_PROBE_BYTES = 2048
 WEBSOCKET_APPLICATION_LIMIT_BYTES = 64 * 1024
 WEBSOCKET_TRANSPORT_LIMIT_BYTES = 128 * 1024
 WEBSOCKET_ADMISSION_TIMEOUT_SECONDS = 5.0
+WORKER_CONCURRENCY_PROBE = 3
+WORKER_PREFETCH_PROBE = 2
+WORKER_SHUTDOWN_PROBE_SECONDS = 240
+WORKER_HEALTH_PROBE_SECONDS = 9
 
 REQUIRED_ENVIRONMENT = {
     "DJANGO_SECRET_KEY": secrets.token_urlsafe(32),
@@ -88,6 +92,13 @@ REQUIRED_ENVIRONMENT = {
     "CELERY_BROKER_URL": "amqp://broker:secret@rabbitmq-rq4sx:5672/localforge",
     "CELERY_RESULT_BACKEND": "redis://:secret@valkey-cache-vc5tn:6379/1",
     "CELERY_TASK_ALWAYS_EAGER": "false",
+    "CELERY_DEFAULT_QUEUE": "localforge.default",
+    "CELERY_SLOW_QUEUE": "localforge.slow",
+    "CELERY_DEAD_LETTER_QUEUE": "localforge.dead-letter",
+    "CELERY_WORKER_CONCURRENCY": "2",
+    "CELERY_WORKER_PREFETCH_MULTIPLIER": "1",
+    "CELERY_WORKER_SHUTDOWN_TIMEOUT_SECONDS": "300",
+    "CELERY_WORKER_HEALTH_TIMEOUT_SECONDS": "10",
     "EMAIL_BACKEND": "django.core.mail.backends.smtp.EmailBackend",
     "EMAIL_HOST": "mailpit-mp6gb",
     "EMAIL_PORT": "1025",
@@ -158,6 +169,92 @@ def _execute_module_in_isolation(name: str, environment: dict[str, str]) -> Modu
 
         with mock.patch.dict(sys.modules, {"config.settings.base": base}):
             return _execute_file(name)
+
+
+@pytest.mark.unit
+def test_worker_runtime_policy_comes_from_the_environment() -> None:
+    """Load queue identity, capacity, shutdown, and health bounds from the environment.
+
+    Executes shared settings with non-default valid values, proving worker behavior is an
+    environment contract rather than a framework or source-code default.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any worker setting ignores or misparses its environment variable.
+    """
+    environment = REQUIRED_ENVIRONMENT | {
+        "CELERY_DEFAULT_QUEUE": "ordinary",
+        "CELERY_SLOW_QUEUE": "slow",
+        "CELERY_DEAD_LETTER_QUEUE": "terminal",
+        "CELERY_WORKER_CONCURRENCY": str(WORKER_CONCURRENCY_PROBE),
+        "CELERY_WORKER_PREFETCH_MULTIPLIER": str(WORKER_PREFETCH_PROBE),
+        "CELERY_WORKER_SHUTDOWN_TIMEOUT_SECONDS": str(WORKER_SHUTDOWN_PROBE_SECONDS),
+        "CELERY_WORKER_HEALTH_TIMEOUT_SECONDS": str(WORKER_HEALTH_PROBE_SECONDS),
+    }
+
+    module = _execute_module_in_isolation("base", environment)
+
+    assert module.CELERY_DEFAULT_QUEUE == "ordinary"
+    assert module.CELERY_SLOW_QUEUE == "slow"
+    assert module.CELERY_DEAD_LETTER_QUEUE == "terminal"
+    assert module.CELERY_WORKER_CONCURRENCY == WORKER_CONCURRENCY_PROBE
+    assert module.CELERY_WORKER_PREFETCH_MULTIPLIER == WORKER_PREFETCH_PROBE
+    assert module.CELERY_WORKER_SHUTDOWN_TIMEOUT_SECONDS == WORKER_SHUTDOWN_PROBE_SECONDS
+    assert module.CELERY_WORKER_HEALTH_TIMEOUT_SECONDS == WORKER_HEALTH_PROBE_SECONDS
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        (
+            {"CELERY_SLOW_QUEUE": "localforge.default"},
+            "Celery default, slow, and dead-letter queues must be distinct",
+        ),
+        (
+            {"CELERY_WORKER_CONCURRENCY": "1"},
+            "CELERY_WORKER_CONCURRENCY must be at least two",
+        ),
+        (
+            {"CELERY_WORKER_PREFETCH_MULTIPLIER": "0"},
+            "CELERY_WORKER_PREFETCH_MULTIPLIER must be positive",
+        ),
+        (
+            {"CELERY_WORKER_SHUTDOWN_TIMEOUT_SECONDS": "0"},
+            "CELERY_WORKER_SHUTDOWN_TIMEOUT_SECONDS must be positive",
+        ),
+        (
+            {"CELERY_WORKER_HEALTH_TIMEOUT_SECONDS": "0"},
+            "CELERY_WORKER_HEALTH_TIMEOUT_SECONDS must be positive",
+        ),
+    ],
+)
+def test_invalid_worker_runtime_policy_fails_at_startup(
+    overrides: dict[str, str],
+    message: str,
+) -> None:
+    """Reject ambiguous queues and unsafe worker bounds before a process starts.
+
+    Executes shared settings for each invalid environment shape so a misconfigured worker cannot
+    start with starvation, unbounded shutdown, or an unusable health probe.
+
+    Arguments:
+        overrides: Invalid worker settings replacing the valid baseline.
+        message: Stable configuration error expected from settings.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If invalid worker policy loads or reports another failure.
+    """
+    with pytest.raises(ImproperlyConfigured, match=message):
+        _execute_module_in_isolation("base", REQUIRED_ENVIRONMENT | overrides)
 
 
 @pytest.mark.unit

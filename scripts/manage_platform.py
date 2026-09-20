@@ -49,6 +49,7 @@ DEVELOPMENT_FOUNDATION = (
     "loki-lk3ny",
 )
 DEVELOPMENT_AFTER_DJANGO = (
+    "celery-worker-cw8rt",
     "traefik-tk2jp",
     "pgadmin-pa7fe",
     "cadvisor-cv8mh",
@@ -80,6 +81,7 @@ CONTAINER_IMAGES = {
     "valkey-cache-vc5tn": "valkey/valkey:9.1.2",
     "valkey-channels-vh8dm": "valkey/valkey:9.1.2",
     "rabbitmq-rq4sx": "rabbitmq:4.3.5-management",
+    "celery-worker-cw8rt": "localforge/django:0.1.0",
     "mailpit-mp6gb": "axllent/mailpit:v1.31.1",
     "seaweedfs-sw9cr": "chrislusf/seaweedfs:4.46",
     "prometheus-pm5db": "prom/prometheus:v3.14.0",
@@ -1393,7 +1395,10 @@ def wait_for_environment_containers(
         if result.code == EXIT_OK:
             try:
                 records = decode_inspect_output(result.output)
-            except json.JSONDecodeError, ValueError:
+            except (
+                json.JSONDecodeError,
+                ValueError,
+            ):
                 records = []
             if not evaluate_environment_health(records, spec):
                 return EXIT_OK
@@ -1781,7 +1786,11 @@ def probe_http(url: str, host: str) -> bool:
     try:
         with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310
             return int(response.status) == HTTPStatus.OK
-    except OSError, ValueError, urllib.error.URLError:
+    except (
+        OSError,
+        ValueError,
+        urllib.error.URLError,
+    ):
         return False
 
 

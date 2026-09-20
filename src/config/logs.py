@@ -364,7 +364,11 @@ def _format_database_log_message(
 
     try:
         return str(record.msg) % arguments
-    except KeyError, TypeError, ValueError:
+    except (
+        KeyError,
+        TypeError,
+        ValueError,
+    ):
         return "database operation failed"
 
 
@@ -661,7 +665,10 @@ def _redact_value(
     elif value is not None and not isinstance(value, bool | int | float):
         try:
             redacted = _redact_text(repr(value))
-        except TypeError, ValueError:
+        except (
+            TypeError,
+            ValueError,
+        ):
             redacted = "<unrepresentable>"
 
     return redacted
@@ -2050,8 +2057,20 @@ class TaskArgumentRedactionFilter(logging.Filter):
                 if field in data:
                     data[field] = REDACTED_ARGUMENTS
 
-            if record.exc_info is None and "exc" in data:
-                data["exc"] = REDACTED_ARGUMENTS
+            for field in DATABASE_DIAGNOSTIC_FIELDS:
+                if field in data:
+                    data[field] = REDACTED_ARGUMENTS
+
+            if record.exc_info is not None:
+                exception_type = type(record.exc_info[1]).__name__
+                record.msg = "Task %s[%s] failed with %s"
+                record.args = (
+                    str(data.get("name", "unknown")),
+                    str(data.get("id", "unknown")),
+                    exception_type,
+                )
+                record.exc_info = None
+                record.exc_text = None
 
         return True
 

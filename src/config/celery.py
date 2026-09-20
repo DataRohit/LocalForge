@@ -8,10 +8,13 @@ records.
 import logging
 import os
 import re
+from dataclasses import asdict, dataclass
 from typing import Any, cast, override
 
 from celery import Celery, Task, signals
 from celery.exceptions import SoftTimeLimitExceeded, TimeLimitExceeded
+from kombu import Exchange, Producer, Queue
+from kombu.exceptions import KombuError
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.development")
 
@@ -26,6 +29,7 @@ RETRY_BACKOFF_SECONDS = 2
 RETRY_BACKOFF_MAX_SECONDS = 300
 MAX_RETRIES = 5
 BODY_ARGUMENT_COUNT = 2
+DEAD_LETTER_PUBLISH_RETRIES = 3
 
 
 def cleansed(value: object) -> object:
@@ -89,6 +93,74 @@ def described_arguments(positional: tuple[Any, ...] | list[Any] | None) -> tuple
     return tuple(names)
 
 
+@dataclass(frozen=True, slots=True)
+class DeadLetterRecord:
+    """One terminal task outcome retained on the broker.
+
+    Inherits from ``dataclass`` and carries only safe task identity, retry, exception-type, and
+    cleansed call-shape fields suitable for JSON serialization and operational inspection.
+
+    Attributes:
+        exception_type: Class name of the terminal exception.
+        retries: Number of retries completed before terminal failure.
+        task_args: Positional argument type names.
+        task_id: Identifier assigned to the failed invocation.
+        task_kwargs: Keyword arguments with credential-shaped values replaced.
+        task_name: Registered task name.
+
+    Members:
+        None.
+    """
+
+    exception_type: str
+    retries: int
+    task_args: list[str]
+    task_id: str
+    task_kwargs: dict[str, Any]
+    task_name: str
+
+
+def publish_dead_letter(record: DeadLetterRecord) -> None:
+    """Publish one scrubbed terminal task record to the durable dead-letter queue.
+
+    Declares the configured queue before publishing so the first terminal failure is retained, and
+    carries only the task identity, retry count, exception type, and cleansed call shape.
+
+    Arguments:
+        record: Scrubbed terminal task outcome.
+
+    Returns:
+        None.
+
+    Raises:
+        KombuError: If the broker cannot declare or publish the terminal record.
+        OSError: If the broker connection fails at the transport boundary.
+    """
+    queue_name = str(app.conf.dead_letter_queue)
+    terminal_queue = Queue(
+        queue_name,
+        Exchange(queue_name, type="direct", durable=True),
+        routing_key=queue_name,
+        durable=True,
+    )
+    with app.connection_for_write() as connection:
+        producer = Producer(connection)
+        producer.publish(
+            asdict(record),
+            exchange=terminal_queue.exchange,
+            routing_key=terminal_queue.routing_key,
+            serializer="json",
+            declare=(terminal_queue,),
+            retry=True,
+            retry_policy={
+                "max_retries": DEAD_LETTER_PUBLISH_RETRIES,
+                "interval_start": 0,
+                "interval_step": 1,
+                "interval_max": 2,
+            },
+        )
+
+
 class LoggedTask(Task):  # type: ignore[misc]
     """The base class every task in this project inherits.
 
@@ -143,11 +215,32 @@ class LoggedTask(Task):  # type: ignore[misc]
         """
         del einfo
 
+        request = self.request_stack.top if self.request_stack is not None else None
+        dead_letter = DeadLetterRecord(
+            exception_type=type(exc).__name__,
+            retries=int(getattr(request, "retries", 0)),
+            task_args=list(described_arguments(args)),
+            task_id=task_id,
+            task_kwargs=redacted_arguments(kwargs),
+            task_name=str(self.name),
+        )
+        try:
+            publish_dead_letter(dead_letter)
+        except (KombuError, OSError) as dead_letter_error:
+            logger.critical(
+                "task dead-letter publication failed",
+                extra={
+                    "dead_letter_error": type(dead_letter_error).__name__,
+                    "task_name": self.name,
+                    "task_id": task_id,
+                },
+            )
+
         logger.error(
             "task %s failed",
             self.name,
-            exc_info=exc,
             extra={
+                "exception_type": type(exc).__name__,
                 "task_name": self.name,
                 "task_id": task_id,
                 "task_args": list(described_arguments(args)),

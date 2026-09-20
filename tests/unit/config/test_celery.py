@@ -6,7 +6,7 @@ apps, and the base task's retry policy, acknowledgement, and failure record.
 
 import logging
 import os
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from celery import Task, signals
@@ -14,11 +14,14 @@ from celery.exceptions import SoftTimeLimitExceeded, TimeLimitExceeded
 from celery.loaders import base as loaders
 from django.conf import settings
 from django.views.debug import SafeExceptionReporterFilter
+from kombu.exceptions import KombuError
 
 import config
 from config import celery as queue
+from config import tasks as queue_tasks
 
 PICKLE = "pickle"
+FAILURE_TEXT_MARKER = "task-failure-marker"
 
 
 class FailingTask(queue.LoggedTask):
@@ -184,7 +187,183 @@ def test_a_task_is_acknowledged_only_once_it_has_finished() -> None:
     """
     assert queue.app.conf.task_acks_late is True
     assert queue.app.conf.task_reject_on_worker_lost is True
-    assert queue.app.conf.worker_prefetch_multiplier == 1
+    assert queue.app.conf.worker_prefetch_multiplier == settings.CELERY_WORKER_PREFETCH_MULTIPLIER
+    assert settings.CELERY_WORKER_CONCURRENCY >= settings.CELERY_MINIMUM_WORKER_CONCURRENCY
+
+
+@pytest.mark.unit
+def test_the_result_backend_marks_a_running_task_before_worker_loss() -> None:
+    """Expose in-flight state so restart verification can interrupt real work deterministically.
+
+    Requires the worker to publish the started transition before executing a task, giving operators
+    and tests a bounded public signal that the task is in flight rather than merely queued.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If task execution remains indistinguishable from broker delay.
+    """
+    assert queue.app.conf.task_track_started is True
+
+
+@pytest.mark.unit
+def test_the_worker_queues_are_explicit_durable_and_isolated() -> None:
+    """Declare ordinary, slow, and terminal work as separate durable queues.
+
+    Confirms the default and slow queues are consumed intentionally while terminal failure records
+    have their own durable queue that a long task cannot use to starve ordinary work.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any queue is implicit, transient, duplicated, or routed incorrectly.
+    """
+    queues = {configured.name: configured for configured in queue.app.conf.task_queues}
+
+    assert set(queues) == {
+        settings.CELERY_DEFAULT_QUEUE,
+        settings.CELERY_SLOW_QUEUE,
+        settings.CELERY_DEAD_LETTER_QUEUE,
+    }
+    assert settings.CELERY_DEFAULT_QUEUE != settings.CELERY_SLOW_QUEUE
+    assert all(configured.durable for configured in queues.values())
+    assert queue.app.conf.task_default_queue == settings.CELERY_DEFAULT_QUEUE
+    assert queue.app.conf.task_routes[queue_tasks.slow_worker_probe.name] == {
+        "queue": settings.CELERY_SLOW_QUEUE
+    }
+
+
+@pytest.mark.unit
+def test_operational_probe_tasks_are_registered_with_the_worker_application() -> None:
+    """Expose deterministic fast and slow work through the deployed worker application.
+
+    Requires both probes to belong to the project Celery app and return only their caller-supplied
+    identifier, giving runtime tests a safe round-trip and restart seam without application data.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the probes are absent, registered elsewhere, or mutate their result.
+    """
+    probe_id = "worker-probe"
+
+    assert queue_tasks.worker_probe.app is queue.app
+    assert queue_tasks.slow_worker_probe.app is queue.app
+    assert queue_tasks.worker_probe(probe_id) == probe_id
+    assert queue_tasks.slow_worker_probe(probe_id, 0) == probe_id
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "duration",
+    [-1, float("inf"), queue_tasks.MAXIMUM_SLOW_PROBE_SECONDS + 1],
+)
+def test_the_slow_probe_rejects_an_unbounded_duration(duration: float) -> None:
+    """Reject an invalid delay before it can become undefined worker behavior.
+
+    Calls the operational seam with negative, non-finite, and over-limit values, covering the same
+    exception the deployed retry and dead-letter lifecycle handles.
+
+    Arguments:
+        duration: Invalid delay supplied to the operational task.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the probe accepts or misclassifies a negative duration.
+    """
+    with pytest.raises(ValueError, match="finite and within the task soft limit"):
+        queue_tasks.slow_worker_probe("invalid-delay", duration)
+
+
+@pytest.mark.unit
+def test_the_slow_probe_accepts_the_largest_bounded_duration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Accept the boundary immediately below the configured soft time limit.
+
+    Replaces only the operating-system sleep boundary and requires the task to pass the exact
+    maximum through, proving the validator is bounded without being off by one.
+
+    Arguments:
+        monkeypatch: Fixture replacing the external sleep boundary.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the valid boundary is rejected or changed.
+    """
+    slept: list[float] = []
+    monkeypatch.setattr("config.tasks.time.sleep", slept.append)
+
+    result = queue_tasks.slow_worker_probe(
+        "maximum-delay",
+        queue_tasks.MAXIMUM_SLOW_PROBE_SECONDS,
+    )
+
+    assert result == "maximum-delay"
+    assert slept == [queue_tasks.MAXIMUM_SLOW_PROBE_SECONDS]
+
+
+@pytest.mark.unit
+def test_a_redelivered_slow_probe_does_not_repeat_its_delay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Complete immediately when RabbitMQ marks the same probe as redelivered.
+
+    Supplies Celery's public request metadata and makes sleeping fail, proving worker-loss recovery
+    does not repeat an operational delay and can complete within the bounded restart test.
+
+    Arguments:
+        monkeypatch: Fixture replacing sleep with an assertion failure.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a redelivered probe sleeps or changes its result.
+    """
+
+    def reject_sleep(_seconds: float) -> None:
+        """Fail if the redelivered task repeats its first-delivery delay.
+
+        Replaces the operating-system boundary with an immediate assertion so the test cannot
+        accidentally wait for the production-scale limit.
+
+        Arguments:
+            _seconds: Delay that must not be used.
+
+        Returns:
+            None.
+
+        Raises:
+            AssertionError: Always, because redelivery must skip the delay.
+        """
+        pytest.fail("redelivered probe repeated its delay")
+
+    monkeypatch.setattr("config.tasks.time.sleep", reject_sleep)
+    probe = cast("Task", queue_tasks.slow_worker_probe)
+    probe.push_request(delivery_info={"redelivered": True})
+    try:
+        result = probe.run("redelivered-probe", queue_tasks.MAXIMUM_SLOW_PROBE_SECONDS)
+    finally:
+        probe.pop_request()
+
+    assert result == "redelivered-probe"
 
 
 @pytest.mark.unit
@@ -329,6 +508,7 @@ def test_a_call_with_no_keyword_arguments_redacts_to_nothing() -> None:
 @pytest.mark.unit
 def test_a_failure_is_recorded_with_the_task_and_its_call(
     caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Record enough to find the task that failed.
 
@@ -338,6 +518,7 @@ def test_a_failure_is_recorded_with_the_task_and_its_call(
 
     Arguments:
         caplog: Fixture capturing the record the failure emits.
+        monkeypatch: Fixture replacing the external dead-letter publisher.
 
     Returns:
         None.
@@ -345,7 +526,9 @@ def test_a_failure_is_recorded_with_the_task_and_its_call(
     Raises:
         AssertionError: If any context is missing or a credential is recorded.
     """
-    failure = RuntimeError("the dependency refused")
+    failure = RuntimeError(FAILURE_TEXT_MARKER)
+    published: list[queue.DeadLetterRecord] = []
+    monkeypatch.setattr(queue, "publish_dead_letter", published.append)
 
     with caplog.at_level(logging.ERROR, logger=queue.__name__):
         FailingTask().on_failure(
@@ -362,7 +545,71 @@ def test_a_failure_is_recorded_with_the_task_and_its_call(
     assert record["task_id"] == "task-1234"
     assert record["task_args"] == ["int"]
     assert record["task_kwargs"] == {"recipient": "someone", "api_key": queue.REDACTED}
+    assert record["exception_type"] == "RuntimeError"
+    assert record["exc_info"] is None
     assert "a-real-secret" not in caplog.text
+    assert FAILURE_TEXT_MARKER not in caplog.text
+    assert published == [
+        queue.DeadLetterRecord(
+            exception_type="RuntimeError",
+            retries=0,
+            task_args=["int"],
+            task_id="task-1234",
+            task_kwargs={"recipient": "someone", "api_key": queue.REDACTED},
+            task_name="tests.failing",
+        )
+    ]
+
+
+@pytest.mark.unit
+def test_a_dead_letter_transport_failure_is_reported_without_hiding_the_task_failure(
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Report a broker-side terminal-record failure and continue recording the task failure.
+
+    Replaces only the external broker boundary, requiring the base task to emit a bounded critical
+    record and its ordinary failure record without raising a second exception from ``on_failure``.
+
+    Arguments:
+        caplog: Fixture capturing both failure records.
+        monkeypatch: Fixture replacing the external dead-letter publisher.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the transport error escapes or either failure record is absent.
+    """
+
+    def fail_publication(_record: queue.DeadLetterRecord) -> None:
+        """Raise the broker-family exception the failure boundary handles.
+
+        Replaces the real publisher with the exact transport-family failure the task base must
+        contain and report.
+
+        Arguments:
+            _record: Dead-letter record ignored by this fabricated transport.
+
+        Returns:
+            None.
+
+        Raises:
+            KombuError: Always, to exercise the explicit failure record.
+        """
+        raise KombuError
+
+    monkeypatch.setattr(queue, "publish_dead_letter", fail_publication)
+
+    with caplog.at_level(logging.ERROR, logger=queue.__name__):
+        FailingTask().on_failure(RuntimeError("failed"), "task-5678", (), {}, None)
+
+    records = [record.__dict__ for record in caplog.records]
+
+    assert records[-2]["message"] == "task dead-letter publication failed"
+    assert records[-2]["dead_letter_error"] == "KombuError"
+    assert records[-2]["task_id"] == "task-5678"
+    assert records[-1]["message"] == "task tests.failing failed"
 
 
 @pytest.mark.unit

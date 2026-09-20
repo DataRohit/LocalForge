@@ -67,6 +67,7 @@ Listed so scope creep is recognisable. None exists.
 | `src/config/routing.py` | Channels routing, empty router |
 | `src/config/channels.py` | Channel layer whose subscribe waits for the instance to register it |
 | `src/config/celery.py` | Celery application object |
+| `src/config/tasks.py` | Operational worker probes and scheduler-owned maintenance tasks |
 | `src/config/db_router.py` | Primary/replica router |
 | `src/config/email.py` | Multipart application email rendering and failure-safe delivery |
 | `src/config/templates/email/` | Plain-text and HTML application email templates |

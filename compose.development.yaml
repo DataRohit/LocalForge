@@ -693,6 +693,56 @@ services:
       retries: 10
       start_period: 120s
 
+  celery-worker-cw8rt:
+    image: localforge/django:0.1.0
+    build:
+      context: .
+      dockerfile: docker/django/Dockerfile
+      target: runtime
+    container_name: celery-worker-cw8rt
+    hostname: celery-worker-cw8rt
+    restart: unless-stopped
+    stop_grace_period: ${CELERY_WORKER_SHUTDOWN_TIMEOUT_SECONDS}s
+
+    env_file:
+      - .env.development
+
+    networks:
+      - app-net-na6hy
+      - data-net-nd9pc
+
+    command:
+      - celery
+      - -A
+      - config
+      - worker
+      - --hostname=celery@celery-worker-cw8rt
+      - --loglevel=${DJANGO_LOG_LEVEL}
+      - --concurrency=${CELERY_WORKER_CONCURRENCY}
+      - --prefetch-multiplier=${CELERY_WORKER_PREFETCH_MULTIPLIER}
+      - --queues=${CELERY_DEFAULT_QUEUE},${CELERY_SLOW_QUEUE}
+
+    depends_on:
+      django-uv5n2:
+        condition: service_healthy
+      rabbitmq-rq4sx:
+        condition: service_healthy
+      valkey-cache-vc5tn:
+        condition: service_healthy
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          celery -A config inspect ping
+          --destination celery@celery-worker-cw8rt
+          --timeout "$$CELERY_WORKER_HEALTH_TIMEOUT_SECONDS"
+          | grep -q pong
+      interval: 15s
+      timeout: 15s
+      retries: 10
+      start_period: 60s
+
 networks:
   edge-net-ne2vk:
     name: edge-net-ne2vk

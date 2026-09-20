@@ -219,6 +219,27 @@ def environment_records(spec: platform.EnvironmentSpec) -> list[dict[str, object
     ]
 
 
+def test_development_inventory_includes_the_registered_worker() -> None:
+    """Audit the worker with the rest of the persistent development project.
+
+    Requires operator health and ownership checks to inspect the worker under the registered
+    Compose project and application image rather than leaving it outside the managed inventory.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the worker is absent from the required development inventory.
+    """
+    assert "celery-worker-cw8rt" in platform.DEVELOPMENT_CONTAINERS
+    assert platform.CONTAINER_PROJECTS["celery-worker-cw8rt"] == "localforge-dev"
+    assert platform.CONTAINER_IMAGES["celery-worker-cw8rt"] == "localforge/django:0.1.0"
+    assert "celery-worker-cw8rt" not in platform.PROBELESS_CONTAINERS
+
+
 def test_help_publishes_the_complete_stable_command_surface(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
