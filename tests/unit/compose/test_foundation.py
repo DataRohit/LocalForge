@@ -192,6 +192,44 @@ def test_development_worker_reuses_the_application_image_with_bounded_runtime_se
     assert "$$CELERY_WORKER_HEALTH_TIMEOUT_SECONDS" in health
 
 
+@pytest.mark.unit
+def test_development_scheduler_is_one_database_backed_application_image_process() -> None:
+    """Run exactly one registered scheduler as a non-migrating image companion.
+
+    Requires the development-only Beat service to wait for migrated database and broker state,
+    load the editable database scheduler, publish no port, and remain a separate process from the
+    worker.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the scheduler is absent, duplicated, embedded in the worker, or
+            hardcoded.
+    """
+    services = merged(DEVELOPMENT_FILE)["services"]
+    scheduler = services["celery-beat-cb4hq"]
+
+    assert [name for name in services if name == "celery-beat-cb4hq"] == ["celery-beat-cb4hq"]
+    assert scheduler["container_name"] == "celery-beat-cb4hq"
+    assert scheduler["image"] == "localforge/django:0.1.0"
+    assert set(scheduler["networks"]) == {"app-net-na6hy", "data-net-nd9pc"}
+    assert "ports" not in scheduler
+    assert scheduler["command"][0:4] == ["celery", "-A", "config", "beat"]
+    command = " ".join(scheduler["command"])
+    assert "django_celery_beat.schedulers:DatabaseScheduler" in command
+    assert "${CELERY_BEAT_MAX_LOOP_INTERVAL_SECONDS}" in command
+    assert scheduler["depends_on"] == {
+        "django-uv5n2": {"condition": "service_healthy"},
+        "rabbitmq-rq4sx": {"condition": "service_healthy"},
+        "valkey-cache-vc5tn": {"condition": "service_healthy"},
+    }
+    assert "celery-beat-cb4hq" not in merged(TESTING_FILE)["services"]
+
+
 def registry_rows(heading: str) -> set[str]:
     """Read one registry table out of the conventions document.
 

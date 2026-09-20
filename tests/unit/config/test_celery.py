@@ -239,6 +239,9 @@ def test_the_worker_queues_are_explicit_durable_and_isolated() -> None:
     assert queue.app.conf.task_routes[queue_tasks.slow_worker_probe.name] == {
         "queue": settings.CELERY_SLOW_QUEUE
     }
+    assert queue.app.conf.task_routes[queue_tasks.cleanup_expired_account_tokens.name] == {
+        "queue": settings.CELERY_SLOW_QUEUE
+    }
 
 
 @pytest.mark.unit
@@ -261,6 +264,8 @@ def test_operational_probe_tasks_are_registered_with_the_worker_application() ->
 
     assert queue_tasks.worker_probe.app is queue.app
     assert queue_tasks.slow_worker_probe.app is queue.app
+    assert queue_tasks.flush_expired_jwt_tokens.app is queue.app
+    assert queue_tasks.cleanup_expired_account_tokens.app is queue.app
     assert queue_tasks.worker_probe(probe_id) == probe_id
     assert queue_tasks.slow_worker_probe(probe_id, 0) == probe_id
 

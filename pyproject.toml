@@ -152,6 +152,7 @@ module = [
     "channels.*",
     "channels_redis.*",
     "celery.*",
+    "django_celery_beat.*",
     "kombu.*",
     "rest_framework.*",
 ]

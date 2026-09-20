@@ -36,6 +36,12 @@ WORKER_CONCURRENCY_PROBE = 3
 WORKER_PREFETCH_PROBE = 2
 WORKER_SHUTDOWN_PROBE_SECONDS = 240
 WORKER_HEALTH_PROBE_SECONDS = 9
+BEAT_LOOP_PROBE_SECONDS = 7
+TOMBSTONE_BATCH_PROBE = 17
+TOMBSTONE_INTERVAL_PROBE_SECONDS = 61
+JWT_CLEANUP_HOUR_PROBE = 2
+JWT_CLEANUP_MINUTE_PROBE = 30
+JWT_CLEANUP_EXPIRY_PROBE_SECONDS = 600
 
 REQUIRED_ENVIRONMENT = {
     "DJANGO_SECRET_KEY": secrets.token_urlsafe(32),
@@ -99,6 +105,12 @@ REQUIRED_ENVIRONMENT = {
     "CELERY_WORKER_PREFETCH_MULTIPLIER": "1",
     "CELERY_WORKER_SHUTDOWN_TIMEOUT_SECONDS": "300",
     "CELERY_WORKER_HEALTH_TIMEOUT_SECONDS": "10",
+    "CELERY_BEAT_MAX_LOOP_INTERVAL_SECONDS": "5",
+    "CELERY_TOMBSTONE_CLEANUP_BATCH_SIZE": "100",
+    "CELERY_TOMBSTONE_CLEANUP_INTERVAL_SECONDS": "300",
+    "CELERY_JWT_CLEANUP_HOUR": "0",
+    "CELERY_JWT_CLEANUP_MINUTE": "0",
+    "CELERY_JWT_CLEANUP_EXPIRY_SECONDS": "3600",
     "EMAIL_BACKEND": "django.core.mail.backends.smtp.EmailBackend",
     "EMAIL_HOST": "mailpit-mp6gb",
     "EMAIL_PORT": "1025",
@@ -195,6 +207,12 @@ def test_worker_runtime_policy_comes_from_the_environment() -> None:
         "CELERY_WORKER_PREFETCH_MULTIPLIER": str(WORKER_PREFETCH_PROBE),
         "CELERY_WORKER_SHUTDOWN_TIMEOUT_SECONDS": str(WORKER_SHUTDOWN_PROBE_SECONDS),
         "CELERY_WORKER_HEALTH_TIMEOUT_SECONDS": str(WORKER_HEALTH_PROBE_SECONDS),
+        "CELERY_BEAT_MAX_LOOP_INTERVAL_SECONDS": str(BEAT_LOOP_PROBE_SECONDS),
+        "CELERY_TOMBSTONE_CLEANUP_BATCH_SIZE": str(TOMBSTONE_BATCH_PROBE),
+        "CELERY_TOMBSTONE_CLEANUP_INTERVAL_SECONDS": str(TOMBSTONE_INTERVAL_PROBE_SECONDS),
+        "CELERY_JWT_CLEANUP_HOUR": str(JWT_CLEANUP_HOUR_PROBE),
+        "CELERY_JWT_CLEANUP_MINUTE": str(JWT_CLEANUP_MINUTE_PROBE),
+        "CELERY_JWT_CLEANUP_EXPIRY_SECONDS": str(JWT_CLEANUP_EXPIRY_PROBE_SECONDS),
     }
 
     module = _execute_module_in_isolation("base", environment)
@@ -206,6 +224,12 @@ def test_worker_runtime_policy_comes_from_the_environment() -> None:
     assert module.CELERY_WORKER_PREFETCH_MULTIPLIER == WORKER_PREFETCH_PROBE
     assert module.CELERY_WORKER_SHUTDOWN_TIMEOUT_SECONDS == WORKER_SHUTDOWN_PROBE_SECONDS
     assert module.CELERY_WORKER_HEALTH_TIMEOUT_SECONDS == WORKER_HEALTH_PROBE_SECONDS
+    assert module.CELERY_BEAT_MAX_LOOP_INTERVAL_SECONDS == BEAT_LOOP_PROBE_SECONDS
+    assert module.CELERY_TOMBSTONE_CLEANUP_BATCH_SIZE == TOMBSTONE_BATCH_PROBE
+    assert module.CELERY_TOMBSTONE_CLEANUP_INTERVAL_SECONDS == TOMBSTONE_INTERVAL_PROBE_SECONDS
+    assert module.CELERY_JWT_CLEANUP_HOUR == JWT_CLEANUP_HOUR_PROBE
+    assert module.CELERY_JWT_CLEANUP_MINUTE == JWT_CLEANUP_MINUTE_PROBE
+    assert module.CELERY_JWT_CLEANUP_EXPIRY_SECONDS == JWT_CLEANUP_EXPIRY_PROBE_SECONDS
 
 
 @pytest.mark.unit
@@ -231,6 +255,30 @@ def test_worker_runtime_policy_comes_from_the_environment() -> None:
         (
             {"CELERY_WORKER_HEALTH_TIMEOUT_SECONDS": "0"},
             "CELERY_WORKER_HEALTH_TIMEOUT_SECONDS must be positive",
+        ),
+        (
+            {"CELERY_BEAT_MAX_LOOP_INTERVAL_SECONDS": "0"},
+            "CELERY_BEAT_MAX_LOOP_INTERVAL_SECONDS must be positive",
+        ),
+        (
+            {"CELERY_TOMBSTONE_CLEANUP_BATCH_SIZE": "0"},
+            "CELERY_TOMBSTONE_CLEANUP_BATCH_SIZE must be positive",
+        ),
+        (
+            {"CELERY_TOMBSTONE_CLEANUP_INTERVAL_SECONDS": "0"},
+            "CELERY_TOMBSTONE_CLEANUP_INTERVAL_SECONDS must be positive",
+        ),
+        (
+            {"CELERY_JWT_CLEANUP_HOUR": "24"},
+            "CELERY_JWT_CLEANUP_HOUR must be between 0 and 23",
+        ),
+        (
+            {"CELERY_JWT_CLEANUP_MINUTE": "60"},
+            "CELERY_JWT_CLEANUP_MINUTE must be between 0 and 59",
+        ),
+        (
+            {"CELERY_JWT_CLEANUP_EXPIRY_SECONDS": "0"},
+            "CELERY_JWT_CLEANUP_EXPIRY_SECONDS must be positive",
         ),
     ],
 )
@@ -300,6 +348,7 @@ def test_installed_applications_include_the_admin_and_its_dependencies() -> None
         "django.contrib.auth",
         "django.contrib.contenttypes",
         "django.contrib.sessions",
+        "django_celery_beat",
     }
 
     assert required.issubset(set(configured_settings.INSTALLED_APPS))

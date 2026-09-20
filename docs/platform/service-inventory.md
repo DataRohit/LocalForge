@@ -141,6 +141,14 @@ Ticket 30 proves expired outstanding and cascaded blacklist rows are removed wit
 does not start the future scheduler early. The same ticket owns bounded primary cleanup of expired activation,
 password-reset, and username-reset tombstones after each protocol's configured maximum age.
 
+Both schedules are persisted through django-celery-beat and editable in the Django administration interface.
+Account-token cleanup uses oldest-first bounded batches, message expiry equal to its interval, and one
+database-scoped advisory lock so an overrun is skipped rather than stacked. Beat stores `last_run_at` and run counts
+on the primary, preserving due state across container restart. A scheduler-specific database router pins every
+django-celery-beat read and write to `default`, ahead of the ordinary replica router. Account-token retention adds one
+second beyond each configured lifetime so whole-second signed bearers remain classifiable through their inclusive
+validity boundary.
+
 **Tier 3's wait covers the tier-1 services that have a probe.** `loki-lk3ny` has none — Section 2.1 records why — so
 nothing can depend on it with `service_healthy`, and the application does not depend on it at all: a log store that
 is down must not stop the application serving.

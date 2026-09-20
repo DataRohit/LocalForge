@@ -240,6 +240,27 @@ def test_development_inventory_includes_the_registered_worker() -> None:
     assert "celery-worker-cw8rt" not in platform.PROBELESS_CONTAINERS
 
 
+def test_development_inventory_includes_the_registered_scheduler() -> None:
+    """Audit the scheduler with the persistent development project.
+
+    Requires ownership checks to include the single registered Beat process while accepting that
+    the scheduler has no independent protocol health endpoint.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the scheduler is absent, misowned, or incorrectly requires a probe.
+    """
+    assert "celery-beat-cb4hq" in platform.DEVELOPMENT_CONTAINERS
+    assert platform.CONTAINER_PROJECTS["celery-beat-cb4hq"] == "localforge-dev"
+    assert platform.CONTAINER_IMAGES["celery-beat-cb4hq"] == "localforge/django:0.1.0"
+    assert "celery-beat-cb4hq" in platform.PROBELESS_CONTAINERS
+
+
 def test_help_publishes_the_complete_stable_command_surface(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

@@ -5,16 +5,23 @@ migration rule is the project's own and a wrong answer there would point schema 
 read-only server.
 """
 
+from __future__ import annotations
+
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest import mock
 
 import pytest
 from django.conf import settings
 from django.db import connections
+from django_celery_beat.models import CrontabSchedule, IntervalSchedule, PeriodicTask, PeriodicTasks
 
 from accounts.models import User
-from config.db_router import PRIMARY, REPLICA, PrimaryReplicaRouter
+from config.db_router import PRIMARY, REPLICA, CeleryBeatRouter, PrimaryReplicaRouter
+
+if TYPE_CHECKING:
+    from django.db.models import Model
 
 
 @pytest.mark.unit
@@ -133,6 +140,77 @@ def test_the_router_answers_last() -> None:
     Raises:
         AssertionError: If another router is configured after it.
     """
+    assert settings.DATABASE_ROUTERS[-1] == "config.db_router.PrimaryReplicaRouter"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "model",
+    [PeriodicTask, PeriodicTasks, CrontabSchedule, IntervalSchedule],
+)
+def test_database_scheduler_models_are_pinned_to_the_primary(model: type[Model]) -> None:
+    """Route every django-celery-beat read and write to authoritative state.
+
+    Exercises the narrow router for schedule rows, the change sentinel, and both schedule types so
+    replica lag cannot delay edits or replay stale due state after restart.
+
+    Arguments:
+        model: Database scheduler model under test.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any scheduler operation can reach the replica.
+    """
+    router = CeleryBeatRouter()
+
+    assert router.db_for_read(model) == PRIMARY
+    assert router.db_for_write(model) == PRIMARY
+    assert router.allow_migrate(PRIMARY, "django_celery_beat") is True
+    assert router.allow_migrate(REPLICA, "django_celery_beat") is False
+
+
+@pytest.mark.unit
+def test_database_scheduler_router_defers_unrelated_models() -> None:
+    """Leave ordinary application models to the primary-replica router.
+
+    Confirms the narrow scheduler router returns no decision for accounts, preserving replica reads
+    everywhere outside django-celery-beat.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the scheduler exception captures unrelated models.
+    """
+    router = CeleryBeatRouter()
+
+    assert router.db_for_read(User) is None
+    assert router.db_for_write(User) is None
+    assert router.allow_migrate(PRIMARY, "accounts") is None
+
+
+@pytest.mark.unit
+def test_database_scheduler_router_answers_before_the_catch_all() -> None:
+    """Place the primary-pinning scheduler rule before the catch-all router.
+
+    Confirms Django consults the narrow exception first, because the existing router answers every
+    model and would otherwise make the scheduler rule unreachable.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If scheduler reads can fall through to the replica.
+    """
+    assert settings.DATABASE_ROUTERS[0] == "config.db_router.CeleryBeatRouter"
     assert settings.DATABASE_ROUTERS[-1] == "config.db_router.PrimaryReplicaRouter"
 
 

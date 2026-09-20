@@ -144,6 +144,31 @@ completing while one slow task occupied another slot, abrupt worker loss followe
 the dead-letter queue, and the task name and identifier reaching Loki. The operational slow probe rejects non-finite,
 negative, and over-soft-limit delays, so eager execution cannot bypass the worker's configured runtime bound.
 
+## Ticket 43 database scheduler
+
+Recorded 2026-09-20. `celery-beat-cb4hq` is a separate development service using the application image and
+`django_celery_beat.schedulers:DatabaseScheduler`. Compose starts one service and Kubernetes retains exactly one
+replica with `Recreate`; neither application code nor Compose contains scaling logic.
+
+The migration seeds two editable database schedules. Daily JWT cleanup invokes SimpleJWT's maintained
+`flushexpiredtokens` command on the authoritative primary. Account-token cleanup runs on the slow queue at the
+configured interval, expires stale queued invocations after that same interval, and deletes oldest-first bounded
+batches from activation, password-reset, and username-reset tables only after each protocol lifetime.
+
+Account-token cleanup also takes a PostgreSQL advisory lock derived from the current database name. Concurrent
+invocations against one database produce a visible skipped outcome, while parallel test databases remain isolated.
+Beat persists `last_run_at` and run counts in PostgreSQL; runtime verification observed both tasks through the real
+scheduler and worker, restored their canonical schedules, restarted Beat, and saw no immediate re-fire. Beat dispatch
+and worker success records were retrieved from Loki.
+
+All django-celery-beat models are pinned to the authoritative primary by a narrow router placed before the ordinary
+primary-replica router. Schedule edits, the change sentinel, `last_run_at`, and run counts must never depend on replica
+lag. The real `DatabaseScheduler.all_as_schedule()` path is tested with every replica statement rejected.
+
+Token issue timestamps retain subsecond precision while signed password and username reset timestamps are whole
+seconds and remain valid at the exact configured timeout. Cleanup therefore applies a one-second precision cushion to
+all three account-token cutoffs and deletes only rows strictly beyond the inclusive bearer boundary.
+
 ## Considered options
 
 **django-q2 1.11.1** (2026-08-26) — the strongest alternative: active, Python 3.14 classifier, and a scheduler

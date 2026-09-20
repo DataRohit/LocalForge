@@ -27,6 +27,8 @@ THROTTLE_IDENTITY_HMAC_MAXIMUM_REPEATING_PATTERN_BYTES = 8
 WEBSOCKET_APPLICATION_LIMIT_BYTES = 64 * 1024
 CELERY_QUEUE_COUNT = 3
 CELERY_MINIMUM_WORKER_CONCURRENCY = 2
+MAXIMUM_DAILY_SCHEDULE_HOUR = 23
+MAXIMUM_DAILY_SCHEDULE_MINUTE = 59
 THROTTLE_IDENTITY_HMAC_TEXT_PATTERN = re.compile(r"[A-Za-z0-9_-]+")
 THROTTLE_IDENTITY_HMAC_PLACEHOLDER_FRAGMENTS = (
     b"changeme",
@@ -200,6 +202,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django_celery_beat",
     "health_check",
     "accounts",
     "channels",
@@ -449,7 +452,10 @@ DATABASES = {
     },
 }
 
-DATABASE_ROUTERS = ["config.db_router.PrimaryReplicaRouter"]
+DATABASE_ROUTERS = [
+    "config.db_router.CeleryBeatRouter",
+    "config.db_router.PrimaryReplicaRouter",
+]
 
 CACHE_KEY_PREFIX = "localforge"
 CACHE_DEFAULT_TIMEOUT_SECONDS = 300
@@ -607,6 +613,18 @@ CELERY_WORKER_SHUTDOWN_TIMEOUT_SECONDS = env.int("CELERY_WORKER_SHUTDOWN_TIMEOUT
 
 CELERY_WORKER_HEALTH_TIMEOUT_SECONDS = env.int("CELERY_WORKER_HEALTH_TIMEOUT_SECONDS")
 
+CELERY_BEAT_MAX_LOOP_INTERVAL_SECONDS = env.int("CELERY_BEAT_MAX_LOOP_INTERVAL_SECONDS")
+
+CELERY_TOMBSTONE_CLEANUP_BATCH_SIZE = env.int("CELERY_TOMBSTONE_CLEANUP_BATCH_SIZE")
+
+CELERY_TOMBSTONE_CLEANUP_INTERVAL_SECONDS = env.int("CELERY_TOMBSTONE_CLEANUP_INTERVAL_SECONDS")
+
+CELERY_JWT_CLEANUP_HOUR = env.int("CELERY_JWT_CLEANUP_HOUR")
+
+CELERY_JWT_CLEANUP_MINUTE = env.int("CELERY_JWT_CLEANUP_MINUTE")
+
+CELERY_JWT_CLEANUP_EXPIRY_SECONDS = env.int("CELERY_JWT_CLEANUP_EXPIRY_SECONDS")
+
 if len({CELERY_DEFAULT_QUEUE, CELERY_SLOW_QUEUE, CELERY_DEAD_LETTER_QUEUE}) != CELERY_QUEUE_COUNT:
     message = "Celery default, slow, and dead-letter queues must be distinct"
     raise ImproperlyConfigured(message)
@@ -625,6 +643,30 @@ if CELERY_WORKER_SHUTDOWN_TIMEOUT_SECONDS <= 0:
 
 if CELERY_WORKER_HEALTH_TIMEOUT_SECONDS <= 0:
     message = "CELERY_WORKER_HEALTH_TIMEOUT_SECONDS must be positive"
+    raise ImproperlyConfigured(message)
+
+if CELERY_BEAT_MAX_LOOP_INTERVAL_SECONDS <= 0:
+    message = "CELERY_BEAT_MAX_LOOP_INTERVAL_SECONDS must be positive"
+    raise ImproperlyConfigured(message)
+
+if CELERY_TOMBSTONE_CLEANUP_BATCH_SIZE <= 0:
+    message = "CELERY_TOMBSTONE_CLEANUP_BATCH_SIZE must be positive"
+    raise ImproperlyConfigured(message)
+
+if CELERY_TOMBSTONE_CLEANUP_INTERVAL_SECONDS <= 0:
+    message = "CELERY_TOMBSTONE_CLEANUP_INTERVAL_SECONDS must be positive"
+    raise ImproperlyConfigured(message)
+
+if not 0 <= CELERY_JWT_CLEANUP_HOUR <= MAXIMUM_DAILY_SCHEDULE_HOUR:
+    message = "CELERY_JWT_CLEANUP_HOUR must be between 0 and 23"
+    raise ImproperlyConfigured(message)
+
+if not 0 <= CELERY_JWT_CLEANUP_MINUTE <= MAXIMUM_DAILY_SCHEDULE_MINUTE:
+    message = "CELERY_JWT_CLEANUP_MINUTE must be between 0 and 59"
+    raise ImproperlyConfigured(message)
+
+if CELERY_JWT_CLEANUP_EXPIRY_SECONDS <= 0:
+    message = "CELERY_JWT_CLEANUP_EXPIRY_SECONDS must be positive"
     raise ImproperlyConfigured(message)
 
 CELERY_TASK_EAGER_PROPAGATES = True
@@ -670,6 +712,7 @@ CELERY_TASK_QUEUES = (
 
 CELERY_TASK_ROUTES = {
     "config.slow_worker_probe": {"queue": CELERY_SLOW_QUEUE},
+    "config.cleanup_expired_account_tokens": {"queue": CELERY_SLOW_QUEUE},
 }
 
 CELERY_IMPORTS = ("config.tasks",)

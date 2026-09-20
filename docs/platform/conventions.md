@@ -278,6 +278,12 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `CELERY_WORKER_PREFETCH_MULTIPLIER` | `celery-worker-cw8rt` | tasks reserved per worker process | `1` | no | yes |
 | `CELERY_WORKER_SHUTDOWN_TIMEOUT_SECONDS` | `celery-worker-cw8rt` | bounded grace period for in-flight tasks during stop | `300` | no | yes |
 | `CELERY_WORKER_HEALTH_TIMEOUT_SECONDS` | `celery-worker-cw8rt` | broker-backed worker ping timeout | `10` | no | yes |
+| `CELERY_BEAT_MAX_LOOP_INTERVAL_SECONDS` | `celery-beat-cb4hq` | maximum delay before the database scheduler checks for edits | `5` | no | yes |
+| `CELERY_TOMBSTONE_CLEANUP_BATCH_SIZE` | `celery-beat-cb4hq` | maximum expired rows removed from each account-token table per run | `100` | no | yes |
+| `CELERY_TOMBSTONE_CLEANUP_INTERVAL_SECONDS` | `celery-beat-cb4hq` | persisted account-token cleanup interval and message expiry | `300` | no | yes |
+| `CELERY_JWT_CLEANUP_HOUR` | `celery-beat-cb4hq` | local-time hour for daily expired JWT cleanup | `0` | no | yes |
+| `CELERY_JWT_CLEANUP_MINUTE` | `celery-beat-cb4hq` | local-time minute for daily expired JWT cleanup | `0` | no | yes |
+| `CELERY_JWT_CLEANUP_EXPIRY_SECONDS` | `celery-beat-cb4hq` | maximum age of a queued daily JWT cleanup invocation | `3600` | no | yes |
 | `FLOWER_BASIC_AUTH` | `flower-fl9zd` | dashboard credentials | `<GENERATED>` | **yes** | yes |
 | `EMAIL_BACKEND` | `django-uv5n2` | Django email backend | `django.core.mail.backends.smtp.EmailBackend` | no | yes |
 | `EMAIL_HOST` | `django-uv5n2` | SMTP host | `mailpit-mp6gb` | no | yes |

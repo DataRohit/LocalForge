@@ -743,6 +743,40 @@ services:
       retries: 10
       start_period: 60s
 
+  celery-beat-cb4hq:
+    image: localforge/django:0.1.0
+    build:
+      context: .
+      dockerfile: docker/django/Dockerfile
+      target: runtime
+    container_name: celery-beat-cb4hq
+    hostname: celery-beat-cb4hq
+    restart: unless-stopped
+
+    env_file:
+      - .env.development
+
+    networks:
+      - app-net-na6hy
+      - data-net-nd9pc
+
+    command:
+      - celery
+      - -A
+      - config
+      - beat
+      - --loglevel=${DJANGO_LOG_LEVEL}
+      - --scheduler=django_celery_beat.schedulers:DatabaseScheduler
+      - --max-interval=${CELERY_BEAT_MAX_LOOP_INTERVAL_SECONDS}
+
+    depends_on:
+      django-uv5n2:
+        condition: service_healthy
+      rabbitmq-rq4sx:
+        condition: service_healthy
+      valkey-cache-vc5tn:
+        condition: service_healthy
+
 networks:
   edge-net-ne2vk:
     name: edge-net-ne2vk
