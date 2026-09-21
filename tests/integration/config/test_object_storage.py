@@ -4,6 +4,7 @@ Exercises Django's configured storage API against SeaweedFS, including byte-iden
 explicit overwrite semantics, private anonymous access, and deletion.
 """
 
+import http.client
 from typing import TypedDict, cast
 from urllib.parse import parse_qs, urlparse
 
@@ -20,6 +21,7 @@ STORAGE_TIMEOUT_SECONDS = 15
 FORBIDDEN_STATUS = 403
 FIRST_CONTENT = b"first object content"
 SECOND_CONTENT = b"replacement object content"
+SUCCESS_STATUS = 200
 
 
 class StorageOptions(TypedDict):
@@ -58,6 +60,71 @@ def _object_name(worker_namespace: str, suffix: str) -> str:
         A storage-relative object name.
     """
     return f"{worker_namespace}/{suffix}"
+
+
+def _storage_status(port: int, path: str) -> int:
+    """Read one SeaweedFS HTTP surface through the configured environment address.
+
+    Reuses the S3 endpoint host while selecting the registered port for each native service,
+    allowing the same assertion to reach container names and published loopback ports.
+
+    Arguments:
+        port: Environment-specific port for the requested SeaweedFS surface.
+        path: HTTP path to request.
+
+    Returns:
+        HTTP response status.
+
+    Raises:
+        AssertionError: If the configured S3 endpoint has no hostname.
+    """
+    storages = cast("dict[str, dict[str, object]]", settings.STORAGES)
+    options = cast("StorageOptions", storages["default"]["OPTIONS"])
+    hostname = urlparse(options["endpoint_url"]).hostname
+
+    assert hostname is not None
+
+    connection = http.client.HTTPConnection(
+        hostname,
+        port,
+        timeout=STORAGE_TIMEOUT_SECONDS,
+    )
+    try:
+        connection.request("GET", path)
+        response = connection.getresponse()
+        response.read()
+    finally:
+        connection.close()
+
+    return response.status
+
+
+@pytest.mark.integration
+@pytest.mark.services("seaweedfs")
+@pytest.mark.timeout(STORAGE_TIMEOUT_SECONDS)
+def test_every_documented_object_storage_surface_answers() -> None:
+    """Reach the S3 API, master status UI, and filer browser.
+
+    Exercises each native SeaweedFS HTTP surface through the environment-specific address and
+    registered port instead of treating the S3 object round trip as proof that the UIs are live.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any documented surface does not answer successfully.
+    """
+    storages = cast("dict[str, dict[str, object]]", settings.STORAGES)
+    options = cast("StorageOptions", storages["default"]["OPTIONS"])
+    s3_port = urlparse(options["endpoint_url"]).port
+
+    assert s3_port is not None
+    assert _storage_status(s3_port, "/healthz") == SUCCESS_STATUS
+    assert _storage_status(settings.SEAWEEDFS_MASTER_PORT, "/") == SUCCESS_STATUS
+    assert _storage_status(settings.SEAWEEDFS_FILER_PORT, "/") == SUCCESS_STATUS
 
 
 @pytest.mark.integration

@@ -133,6 +133,7 @@ services:
     ports:
       - "28333:8333"
       - "29333:9333"
+      - "28888:8888"
 
     networks:
       - app-net-nt5rk

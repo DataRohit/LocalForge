@@ -238,10 +238,18 @@ must not recur in a post-readiness exercise window:
 | `grafana-gf7qv` | `skipped registering status sub-resource that does not support dual writing` | Grafana 13 registers its bundled recording-rule API while unified storage is enabled. The resource remains available and `/api/health` must pass. |
 | `loki-lk3ny` | `error getting ingester clients`, `empty ring` | Loki's single process initializes the query path before its ingester joins the in-memory ring. `/ready` must pass after the documented delay. |
 | `prometheus-pm5db` | `A lockfile from a previous execution already existed. It was replaced` | A source-preserving Docker recreation can leave the exclusive-volume lock file behind after the old container has stopped. WAL replay and `/-/ready` must pass, and only one container may own the volume. |
+| `pgadmin-pa7fe` | Python `SyntaxWarning: 'return' in a 'finally' block` from `sshtunnel.py` | pgAdmin's vendored dependency is compiled during Python 3.14 startup and warns about syntax that remains executable. The warning must occur only before readiness; the dashboard health check and authenticated database connection must pass. |
 | `rabbitmq-rq4sx` | deprecated `management_metrics_collection` warning | RabbitMQ 4.3 reports the management plugin's metrics collector that Flower uses for queue depth. The authenticated management API and Prometheus endpoint must both pass. |
 | `rabbitmq-rq4sx` | deprecated `global_qos` error followed by worker readiness | Celery 5.6.3 requests RabbitMQ's pre-3.3 global QoS scope during worker bootstrap. RabbitMQ 4.3 refuses that deprecated scope, Celery continues with supported consumer prefetch, and a queued round trip plus the configured prefetch count must pass. |
-| `seaweedfs-sw9cr` | info-level `Not current leader` or local gRPC socket connection failure | SeaweedFS all-in-one components begin dialing before the embedded Raft leader and local sockets exist. Both `/healthz` probes and an S3 byte round trip must pass. |
+| `seaweedfs-*` | info-level `Not current leader` or local gRPC socket connection failure | SeaweedFS all-in-one components begin dialing before the embedded Raft leader and local sockets exist. Both `/healthz` probes and an S3 byte round trip must pass. |
 | `traefik-tk2jp` | encoded-character rejection warning | Traefik 3.7 warns when the entrypoint explicitly rejects encoded slash, backslash, null, semicolon, percent, question-mark, and hash characters. Both entrypoints pin every option to `false` to prevent proxy/backend split views. |
+
+The controlled integration audit deliberately produces one bounded application error record while the real testing
+cache is stopped:
+
+| Service | Record | Trigger and disposition |
+| --- | --- | --- |
+| host and `django-test-dt5qx` runtime probes | `django.request` error for `Service Unavailable: /health/` | Expected only between the project-scoped cache stop and recovery. The response must be `503`, the public body must name only the cache as unavailable, both modes must pass the degraded assertion, and no traceback or infrastructure detail may enter the response. |
 
 ## 3. Dashboards
 
@@ -357,7 +365,7 @@ Seven services, one profile-gated. Every dashboard and UI service is dropped; no
 | `valkey-cache-tv4kq` | cache | `26379` | `app-net-nt5rk`, `access-net-ht6pn` | yes |
 | `valkey-channels-tv9zw` | Channels layer | `26380` | `app-net-nt5rk`, `access-net-ht6pn` | yes |
 | `rabbitmq-tr6mc` | Celery broker, no management plugin | `25672` | `app-net-nt5rk`, `access-net-ht6pn` | yes |
-| `seaweedfs-ts3jd` | S3 storage | `28333` S3, `29333` master | `app-net-nt5rk`, `access-net-ht6pn` | yes |
+| `seaweedfs-ts3jd` | S3 storage | `28333` S3, `29333` master, `28888` filer | `app-net-nt5rk`, `access-net-ht6pn` | yes |
 | `mailpit-tm7bh` | SMTP capture | `21025` SMTP, `28025` web | `app-net-nt5rk`, `access-net-ht6pn` | **no — profile `smtp`** |
 
 Three networks, not five: there is no `edge` zone because no proxy runs, and no `obsv` zone because every

@@ -345,6 +345,10 @@ cmd = "python -m scripts.manage_platform testing-test-host"
 help = "Start testing dependencies and run container mode followed by host mode"
 cmd = "python -m scripts.manage_platform testing-test-both"
 
+[tool.poe.tasks.testing-integration-audit]
+help = "Prove Mailpit persistence and real degraded readiness in both test modes"
+cmd = "python -m scripts.manage_platform testing-integration-audit"
+
 [tool.poe.tasks.testing-verify]
 help = "Rebuild testing, run both complete modes, and stop after success"
 cmd = "python -m scripts.manage_platform testing-verify"

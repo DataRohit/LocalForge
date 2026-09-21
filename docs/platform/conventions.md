@@ -295,6 +295,8 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `DJANGO_SITE_NAME` | `django-uv5n2` | application name rendered in email | `LocalForge` | no | yes |
 | `DJANGO_SITE_URL` | `django-uv5n2` | absolute base URL for email links | `http://localforge.localhost:8080` | no | yes |
 | `S3_ENDPOINT_URL` | `django-uv5n2` | SeaweedFS S3 gateway | `http://seaweedfs-sw9cr:8333` | no | yes |
+| `SEAWEEDFS_MASTER_PORT` | `seaweedfs-sw9cr` | master status UI port | `9333` | no | yes |
+| `SEAWEEDFS_FILER_PORT` | `seaweedfs-sw9cr` | filer browser port | `8888` | no | yes |
 | `S3_ACCESS_KEY_ID` | `seaweedfs-sw9cr` | S3 access key | `<GENERATED>` | **yes** | yes |
 | `S3_SECRET_ACCESS_KEY` | `seaweedfs-sw9cr` | S3 secret key | `<GENERATED>` | **yes** | yes |
 | `S3_BUCKET_NAME` | `django-uv5n2` | media bucket | `localforge-media` | no | yes |
@@ -428,6 +430,8 @@ Testing overrides, present only in `.env.testing`:
 | `VALKEY_CHANNELS_HOST` | `valkey-channels-tv9zw` | the testing channel-layer container |
 | `RABBITMQ_HOST` | `rabbitmq-tr6mc` | the testing broker container |
 | `S3_ENDPOINT_URL` | `http://seaweedfs-ts3jd:8333` | the testing storage container |
+| `SEAWEEDFS_MASTER_PORT` | `9333` | native master status UI inside the testing network |
+| `SEAWEEDFS_FILER_PORT` | `8888` | native filer browser inside the testing network |
 | `EMAIL_HOST` | `mailpit-tm7bh` | the testing mail container, profile `smtp` |
 | `EMAIL_BACKEND` | `django.core.mail.backends.locmem.EmailBackend` | default; SMTP only under the `smtp` profile |
 | `DJANGO_SITE_URL` | `http://localhost:8000` | host-mode links stay inside the testing process |

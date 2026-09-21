@@ -153,6 +153,28 @@ def environment_files(root: Path) -> None:
         (root / name).write_text("NAME=value\nPOSTGRES_HOST=127.0.0.1\n", encoding="utf-8")
 
 
+def run_testing_integration_audit(root: Path, runner: platform.Runner) -> int:
+    """Run the integration audit with deterministic test adapters.
+
+    Supplies successful readiness and inert clock helpers so unit tests can focus on command
+    sequencing and failure propagation without invoking Docker or sleeping.
+
+    Arguments:
+        root: Temporary repository root.
+        runner: Fabricated external command adapter.
+
+    Returns:
+        Integration audit exit code.
+    """
+    return platform.testing_integration_audit(
+        root,
+        runner,
+        http_probe=lambda _url, _host: True,
+        sleep=lambda _seconds: None,
+        now=lambda: 0.0,
+    )
+
+
 def container_record(
     name: str,
     *,
@@ -543,6 +565,306 @@ def test_testing_verify_leaves_the_stack_running_after_a_test_failure(tmp_path: 
 
     assert code == 1
     assert all("down" not in call[0] for call in runner.calls)
+
+
+def test_testing_integration_audit_proves_mail_persistence_and_real_degradation(
+    tmp_path: Path,
+) -> None:
+    """Exercise the two live-service scenarios pytest cannot orchestrate itself.
+
+    Requires the operator command to seed Mailpit from both run modes, verify the messages before
+    and after container recreation, clear the store, and stop the real cache while both modes
+    observe degraded readiness before restoring healthy state.
+
+    Arguments:
+        tmp_path: Temporary repository root.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If either mode, persistence, cleanup, or dependency recovery is omitted.
+    """
+    environment_files(tmp_path)
+    runner = FakeRunner()
+
+    with (
+        patch.object(platform, "up", return_value=0) as up,
+        patch.object(platform, "health", return_value=0) as health,
+    ):
+        code = platform.main(
+            ["testing-integration-audit"],
+            root=tmp_path,
+            runner=runner,
+        )
+
+    commands = [call[0] for call in runner.calls]
+    rendered = [" ".join(command) for command in commands]
+    assert code == platform.EXIT_OK
+    up.assert_called_once()
+    health.assert_called_once()
+    assert any("--profile smtp up -d --no-build mailpit-tm7bh" in line for line in rendered)
+    assert sum("mailpit-seed" in line for line in rendered) == ENVIRONMENT_COUNT
+    assert sum("mailpit-verify" in line for line in rendered) == ENVIRONMENT_COUNT * 2
+    assert sum("mailpit-empty" in line for line in rendered) == ENVIRONMENT_COUNT * 2
+    smtp_calls = [
+        call
+        for call in runner.calls
+        if "test_registration_activation_loop_round_trips_through_mailpit" in " ".join(call[0])
+    ]
+    smtp_backend = "django.core.mail.backends.smtp.EmailBackend"
+    assert len(smtp_calls) == ENVIRONMENT_COUNT
+    assert all(
+        (environment is not None and environment.get("EMAIL_BACKEND") == smtp_backend)
+        or f"EMAIL_BACKEND={smtp_backend}" in command
+        for command, environment, _capture in smtp_calls
+    )
+    assert any("--force-recreate --no-deps mailpit-tm7bh" in line for line in rendered)
+    stop_index = next(
+        index for index, line in enumerate(rendered) if "stop valkey-cache-tv4kq" in line
+    )
+    degraded = [index for index, line in enumerate(rendered) if "health-degraded" in line]
+    restore_index = next(
+        index
+        for index, line in enumerate(rendered)
+        if "up -d --no-build valkey-cache-tv4kq" in line
+    )
+    ready = [index for index, line in enumerate(rendered) if "health-ready" in line]
+    assert len(degraded) == ENVIRONMENT_COUNT
+    assert len(ready) == ENVIRONMENT_COUNT
+    assert stop_index < min(degraded) < restore_index < min(ready)
+    assert rendered[-1].endswith("rm -f -s mailpit-tm7bh")
+
+
+def test_testing_runtime_helpers_cover_each_mode_and_failure(tmp_path: Path) -> None:
+    """Cover host, container, invalid, and short-circuit runtime helper behavior.
+
+    Verifies each command carries the configuration its execution location needs, failures stop the
+    two-mode sequence, and unsupported modes fail explicitly instead of choosing a silent default.
+
+    Arguments:
+        tmp_path: Temporary repository root.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a helper omits configuration or hides a failure.
+        ValueError: Expected for unsupported runtime and SMTP modes.
+    """
+    environment_files(tmp_path)
+    host = FakeRunner()
+    container = FakeRunner()
+
+    assert platform.testing_runtime_probe(tmp_path, host, "health-ready", "host") == 0
+    assert host.calls[0][1] is not None
+    assert str(tmp_path / "src") in host.calls[0][1]["PYTHONPATH"]
+    assert platform.testing_runtime_probe(tmp_path, container, "health-ready", "container") == 0
+    assert "PYTHONPATH=/app/src:/app" in container.calls[0][0]
+    with pytest.raises(ValueError, match="unsupported testing runtime mode"):
+        platform.testing_runtime_probe(tmp_path, FakeRunner(), "health-ready", "invalid")
+
+    failed = FakeRunner(results=[LOG_FAILURE])
+    assert platform.testing_runtime_probe_both(tmp_path, failed, "health-ready") == LOG_FAILURE
+    assert len(failed.calls) == 1
+
+    waiting = FakeRunner()
+    assert platform.wait_for_testing_service(tmp_path, waiting, "mailpit") == 0
+    assert waiting.calls[0][0][-1] == "mailpit"
+
+    smtp_host = FakeRunner()
+    smtp_container = FakeRunner()
+    assert platform.testing_smtp_integration_tests(tmp_path, smtp_host, "host") == 0
+    assert smtp_host.calls[0][1] is not None
+    assert smtp_host.calls[0][1]["EMAIL_BACKEND"] == platform.SMTP_BACKEND
+    assert platform.testing_smtp_integration_tests(tmp_path, smtp_container, "container") == 0
+    assert f"EMAIL_BACKEND={platform.SMTP_BACKEND}" in smtp_container.calls[0][0]
+    with pytest.raises(ValueError, match="unsupported SMTP integration mode"):
+        platform.testing_smtp_integration_tests(tmp_path, FakeRunner(), "invalid")
+
+
+def test_testing_integration_audit_reports_startup_and_mail_failures(tmp_path: Path) -> None:
+    """Stop the runtime audit at failed startup, readiness, or mail assertions.
+
+    Covers each pre-degradation return boundary so a missing Mailpit service or failed persistence
+    assertion cannot fall through into a misleading cache recovery result.
+
+    Arguments:
+        tmp_path: Temporary repository root.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the first failure is not preserved.
+    """
+    environment_files(tmp_path)
+
+    with patch.object(platform, "up", return_value=LOG_FAILURE):
+        assert run_testing_integration_audit(tmp_path, FakeRunner()) == LOG_FAILURE
+    with (
+        patch.object(platform, "up", return_value=0),
+        patch.object(platform, "health", return_value=LOG_FAILURE),
+    ):
+        assert run_testing_integration_audit(tmp_path, FakeRunner()) == LOG_FAILURE
+    with (
+        patch.object(platform, "up", return_value=0),
+        patch.object(platform, "health", return_value=0),
+    ):
+        assert (
+            run_testing_integration_audit(
+                tmp_path,
+                FakeRunner(results=[LOG_FAILURE]),
+            )
+            == LOG_FAILURE
+        )
+        readiness_failure = FakeRunner(results=[0, LOG_FAILURE])
+        assert run_testing_integration_audit(tmp_path, readiness_failure) == LOG_FAILURE
+        assert readiness_failure.calls[-1][0][-4:] == ("rm", "-f", "-s", "mailpit-tm7bh")
+        mail_failure = FakeRunner(results=[0, 0, 0, LOG_FAILURE])
+        assert run_testing_integration_audit(tmp_path, mail_failure) == LOG_FAILURE
+        rendered = [" ".join(call[0]) for call in mail_failure.calls]
+        assert sum("mailpit-clear" in line for line in rendered) == ENVIRONMENT_COUNT + 1
+        assert rendered[-1].endswith("rm -f -s mailpit-tm7bh")
+
+
+def test_testing_integration_audit_requires_the_testing_environment_file(
+    tmp_path: Path,
+) -> None:
+    """Refuse the live audit before Docker when testing configuration is absent.
+
+    Dispatches through the public operator interface and requires the ordinary environment-file
+    guard to fail explicitly instead of starting services with unresolved configuration.
+
+    Arguments:
+        tmp_path: Empty temporary repository root.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the command reaches its runtime audit.
+    """
+    runner = FakeRunner()
+
+    code = platform.main(
+        ["testing-integration-audit"],
+        root=tmp_path,
+        runner=runner,
+    )
+
+    assert code == platform.EXIT_USAGE
+    assert runner.calls == []
+
+
+def test_testing_cache_audit_restores_cache_after_probe_failure(
+    tmp_path: Path,
+) -> None:
+    """Restore the real cache even when degraded readiness cannot be observed.
+
+    Replaces assertion helpers while retaining direct Compose commands, requiring the audit to
+    restart the stopped service before returning the original degraded-probe failure.
+
+    Arguments:
+        tmp_path: Temporary repository root.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If recovery is skipped or another status replaces the probe failure.
+    """
+    environment_files(tmp_path)
+    runner = FakeRunner()
+
+    with (
+        patch.object(platform, "testing_runtime_probe_both", return_value=LOG_FAILURE),
+        patch.object(platform, "wait_for_testing_service", return_value=0),
+    ):
+        code = platform.testing_cache_degradation_audit(tmp_path, runner)
+
+    rendered = [" ".join(call[0]) for call in runner.calls]
+    assert code == LOG_FAILURE
+    assert any("stop valkey-cache-tv4kq" in line for line in rendered)
+    assert any("up -d --no-build valkey-cache-tv4kq" in line for line in rendered)
+
+
+def test_testing_cache_audit_reports_stop_and_restore_failures(
+    tmp_path: Path,
+) -> None:
+    """Propagate failures that prevent or fail the real dependency transition.
+
+    Holds every probe helper green while direct Compose results fail at cache stop and cache
+    restart, covering both operational boundaries without running Docker.
+
+    Arguments:
+        tmp_path: Temporary repository root.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a transition failure is hidden.
+    """
+    environment_files(tmp_path)
+
+    with (
+        patch.object(platform, "testing_runtime_probe_both", return_value=0),
+        patch.object(platform, "wait_for_testing_service", return_value=0),
+    ):
+        stop_runner = FakeRunner(results=[LOG_FAILURE, 0])
+        stop_failure = platform.testing_cache_degradation_audit(
+            tmp_path,
+            stop_runner,
+        )
+        restore_failure = platform.testing_cache_degradation_audit(
+            tmp_path,
+            FakeRunner(results=[0, LOG_FAILURE]),
+        )
+
+    assert stop_failure == LOG_FAILURE
+    assert "up -d --no-build valkey-cache-tv4kq" in " ".join(stop_runner.calls[-1][0])
+    assert restore_failure == LOG_FAILURE
+
+
+def test_mailpit_finalizer_preserves_cleanup_and_stop_failures(tmp_path: Path) -> None:
+    """Preserve each cleanup failure while always stopping profile state.
+
+    Covers clear, empty verification, and service-stop failures independently so the finalizer
+    cannot return success after leaving persistent audit messages or a running optional service.
+
+    Arguments:
+        tmp_path: Temporary repository root.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If cleanup hides a failure or omits the stop command.
+    """
+    environment_files(tmp_path)
+
+    clear_failure = FakeRunner(results=[LOG_FAILURE, 0, 0, 0, 0])
+    assert platform.finalize_testing_mailpit(tmp_path, clear_failure) == LOG_FAILURE
+    assert any(
+        "mailpit-clear" in " ".join(command) and "django-test-dt5qx" in command
+        for command, _environment, _capture in clear_failure.calls
+    )
+    assert clear_failure.calls[-1][0][-4:] == ("rm", "-f", "-s", "mailpit-tm7bh")
+
+    both_clear_fail = FakeRunner(results=[LOG_FAILURE, IMAGE_FAILURE, 0])
+    assert platform.finalize_testing_mailpit(tmp_path, both_clear_fail) == LOG_FAILURE
+    assert all(
+        "mailpit-empty" not in " ".join(command)
+        for command, _environment, _capture in both_clear_fail.calls
+    )
+
+    empty_failure = FakeRunner(results=[0, 0, 0, LOG_FAILURE, 0])
+    assert platform.finalize_testing_mailpit(tmp_path, empty_failure) == LOG_FAILURE
+    assert empty_failure.calls[-1][0][-4:] == ("rm", "-f", "-s", "mailpit-tm7bh")
+
+    stop_failure = FakeRunner(results=[0, 0, 0, 0, LOG_FAILURE])
+    assert platform.finalize_testing_mailpit(tmp_path, stop_failure) == LOG_FAILURE
 
 
 def test_confirmed_development_reset_is_explicitly_destructive(tmp_path: Path) -> None:

@@ -67,6 +67,23 @@ DEVELOPMENT_CONTAINERS = frozenset(
 )
 TESTING_CONTAINERS = frozenset(TESTING_SERVICES)
 TESTING_OPTIONAL_CONTAINERS = frozenset({"mailpit-tm7bh"})
+TESTING_RUNTIME_PROBE_MODULE = "tests.integration.config.runtime_probe"
+SMTP_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+SMTP_INTEGRATION_TESTS = (
+    (
+        "tests/integration/accounts/test_account_activation.py"
+        "::test_registration_activation_loop_round_trips_through_mailpit"
+    ),
+    (
+        "tests/integration/accounts/test_password_management.py"
+        "::test_password_recovery_round_trips_through_smtp_and_mailpit"
+    ),
+    (
+        "tests/integration/accounts/test_username_management.py"
+        "::test_username_recovery_round_trips_through_smtp_and_mailpit"
+    ),
+    "tests/integration/config/test_email.py::test_a_message_round_trips_through_smtp_and_mailpit",
+)
 CONTAINER_PROJECTS = {
     **dict.fromkeys(DEVELOPMENT_CONTAINERS, "localforge-dev"),
     **dict.fromkeys(TESTING_CONTAINERS, "localforge-test"),
@@ -199,6 +216,8 @@ Testing (each safe default preserves volumes)
   uv run poe testing-test-container Run the complete suite in the test container
   uv run poe testing-test-host      Run the complete suite from the host
   uv run poe testing-test-both      Run container mode, then host mode
+  uv run poe testing-integration-audit
+                                     Prove Mailpit persistence and real degraded readiness
   uv run poe testing-verify         Rebuild, run both modes, then stop on success
   uv run poe testing-down           Stop the stack and preserve data
   uv run poe testing-reset          DESTRUCTIVE: remove data and rebuild from scratch
@@ -1960,6 +1979,317 @@ def testing_test(  # noqa: PLR0913
     return EXIT_OK
 
 
+def testing_runtime_probe(
+    root: Path,
+    runner: Runner,
+    action: str,
+    mode: str,
+    *arguments: str,
+) -> int:
+    """Run one live integration assertion from host or container settings.
+
+    Executes the same probe module in both locations so the operator-controlled service transition
+    is observed through the exact configuration each required test mode uses.
+
+    Arguments:
+        root: Repository root holding the host environment file.
+        runner: External command adapter.
+        action: Probe operation to execute.
+        mode: ``host`` or ``container``.
+        *arguments: Additional probe arguments.
+
+    Returns:
+        Probe process exit code.
+
+    Raises:
+        ValueError: If the mode is unsupported.
+    """
+    probe = ("-m", TESTING_RUNTIME_PROBE_MODULE, action, *arguments)
+    if mode == "host":
+        environment = load_environment(root, ".env.testing.host")
+        environment["PYTHONPATH"] = os.pathsep.join((str(root / "src"), str(root)))
+        return runner.run((sys.executable, *probe), environment).code
+    if mode == "container":
+        return runner.run(
+            compose_command(
+                TESTING,
+                "exec",
+                "-T",
+                "-e",
+                "PYTHONPATH=/app/src:/app",
+                "django-test-dt5qx",
+                "python",
+                *probe,
+            )
+        ).code
+
+    msg = f"unsupported testing runtime mode: {mode}"
+    raise ValueError(msg)
+
+
+def testing_runtime_probe_both(
+    root: Path,
+    runner: Runner,
+    action: str,
+) -> int:
+    """Run one live assertion through both required testing modes.
+
+    Preserves mode order and stops on the first failure so the returned status identifies the
+    first execution location that could not observe the required behavior.
+
+    Arguments:
+        root: Repository root holding the host environment file.
+        runner: External command adapter.
+        action: Probe operation to execute.
+
+    Returns:
+        Zero when both modes pass, otherwise the first failure.
+    """
+    for mode in ("host", "container"):
+        code = testing_runtime_probe(root, runner, action, mode)
+        if code != EXIT_OK:
+            return code
+
+    return EXIT_OK
+
+
+def wait_for_testing_service(root: Path, runner: Runner, service: str) -> int:
+    """Wait for one published testing service through its host configuration.
+
+    Reuses the bounded readiness helper after a targeted start or recreation, avoiding arbitrary
+    sleeps and proving the published host seam is live before the next assertion.
+
+    Arguments:
+        root: Repository root holding the host environment file.
+        runner: External command adapter.
+        service: Readiness helper service name.
+
+    Returns:
+        Readiness command exit code.
+    """
+    environment = load_environment(root, ".env.testing.host")
+    return runner.run(
+        python_command(root, "wait_for_services.py", service),
+        environment,
+    ).code
+
+
+def testing_smtp_integration_tests(root: Path, runner: Runner, mode: str) -> int:
+    """Run the real SMTP lifecycle assertions from one required test mode.
+
+    Overrides only the backend selection while retaining the mode's generated service addresses
+    and credentials, then executes every profile-gated account and direct mail integration test.
+
+    Arguments:
+        root: Repository root holding the host environment file.
+        runner: External command adapter.
+        mode: ``host`` or ``container``.
+
+    Returns:
+        Pytest process exit code.
+
+    Raises:
+        ValueError: If the mode is unsupported.
+    """
+    pytest_arguments = (*SMTP_INTEGRATION_TESTS, "--no-cov", "-q")
+    if mode == "host":
+        environment = load_environment(root, ".env.testing.host")
+        environment["EMAIL_BACKEND"] = SMTP_BACKEND
+        return runner.run(
+            (sys.executable, "-m", "pytest", *pytest_arguments),
+            environment,
+        ).code
+    if mode == "container":
+        return runner.run(
+            compose_command(
+                TESTING,
+                "exec",
+                "-T",
+                "-e",
+                f"EMAIL_BACKEND={SMTP_BACKEND}",
+                "django-test-dt5qx",
+                "pytest",
+                *pytest_arguments,
+            )
+        ).code
+
+    msg = f"unsupported SMTP integration mode: {mode}"
+    raise ValueError(msg)
+
+
+def finalize_testing_mailpit(root: Path, runner: Runner) -> int:
+    """Clear, verify, and stop the profile-gated testing mail service.
+
+    Attempts the service stop whatever the cleanup result so a failed audit does not leave the
+    headless testing environment with profile state running or persistent marker messages.
+
+    Arguments:
+        root: Repository root holding the host environment file.
+        runner: External command adapter.
+
+    Returns:
+        The first cleanup failure, or zero when the store is empty and the service is stopped.
+    """
+    results = [
+        testing_runtime_probe(root, runner, "mailpit-clear", mode) for mode in ("host", "container")
+    ]
+    if EXIT_OK in results:
+        results.extend(
+            testing_runtime_probe(root, runner, "mailpit-empty", mode)
+            for mode in ("host", "container")
+        )
+    results.append(runner.run(compose_command(TESTING, "rm", "-f", "-s", "mailpit-tm7bh")).code)
+
+    return next((code for code in results if code != EXIT_OK), EXIT_OK)
+
+
+def testing_cache_degradation_audit(root: Path, runner: Runner) -> int:
+    """Stop the real cache, observe isolated degradation, and restore readiness.
+
+    Restarts and waits for the dependency even when a degraded probe fails, preserving the first
+    assertion failure while never intentionally returning with the cache stopped.
+
+    Arguments:
+        root: Repository root holding the host environment file.
+        runner: External command adapter.
+
+    Returns:
+        Zero when degradation and recovery pass, otherwise the first failure.
+    """
+    stop_code = runner.run(compose_command(TESTING, "stop", "valkey-cache-tv4kq")).code
+    degraded_code = EXIT_OK
+    if stop_code == EXIT_OK:
+        degraded_code = testing_runtime_probe_both(root, runner, "health-degraded")
+    restore_code = runner.run(
+        compose_command(
+            TESTING,
+            "up",
+            "-d",
+            "--no-build",
+            "valkey-cache-tv4kq",
+        )
+    ).code
+    ready_code = EXIT_OK
+    if restore_code == EXIT_OK:
+        restore_code = wait_for_testing_service(root, runner, "valkey-cache")
+    if restore_code == EXIT_OK:
+        ready_code = testing_runtime_probe_both(root, runner, "health-ready")
+
+    if stop_code != EXIT_OK:
+        return stop_code
+    if degraded_code != EXIT_OK:
+        return degraded_code
+    if restore_code != EXIT_OK:
+        return restore_code
+
+    return ready_code
+
+
+def testing_integration_audit(
+    root: Path,
+    runner: Runner,
+    *,
+    http_probe: Callable[[str, str], bool],
+    sleep: Callable[[float], None],
+    now: Callable[[], float],
+) -> int:
+    """Prove persistence and real degraded readiness in both test modes.
+
+    Starts and verifies the ordinary testing environment before the profile-gated mail service,
+    exercises both execution modes, restores every transitioned service, and preserves the first
+    failure while completing Mailpit cleanup.
+
+    Arguments:
+        root: Repository root holding environment files.
+        runner: External command adapter.
+        http_probe: HTTP readiness adapter.
+        sleep: Callable pausing between health polls.
+        now: Monotonic clock.
+
+    Returns:
+        Zero when every transition and assertion passes, otherwise the first failure.
+    """
+    code = up(
+        root,
+        runner,
+        TESTING,
+        recreate=False,
+        proxy_only=False,
+        sleep=sleep,
+        now=now,
+    )
+    if code != EXIT_OK:
+        return code
+    code = health(root, runner, TESTING, http_probe=http_probe)
+    if code != EXIT_OK:
+        return code
+
+    initial_steps = (
+        compose_command(
+            TESTING,
+            "--profile",
+            "smtp",
+            "up",
+            "-d",
+            "--no-build",
+            "mailpit-tm7bh",
+        ),
+        python_command(root, "wait_for_services.py", "mailpit"),
+    )
+    host_environment = load_environment(root, ".env.testing.host")
+    code = runner.run(initial_steps[0]).code
+    if code == EXIT_OK:
+        code = runner.run(initial_steps[1], host_environment).code
+    if code != EXIT_OK:
+        runner.run(compose_command(TESTING, "rm", "-f", "-s", "mailpit-tm7bh"))
+        return code
+
+    mailpit_steps: tuple[Callable[[], int], ...] = (
+        lambda: testing_runtime_probe(root, runner, "mailpit-clear", "host"),
+        lambda: testing_runtime_probe(root, runner, "mailpit-seed", "host", "host"),
+        lambda: testing_runtime_probe(
+            root,
+            runner,
+            "mailpit-seed",
+            "container",
+            "container",
+        ),
+        lambda: testing_runtime_probe_both(root, runner, "mailpit-verify"),
+        lambda: (
+            runner.run(
+                compose_command(
+                    TESTING,
+                    "--profile",
+                    "smtp",
+                    "up",
+                    "-d",
+                    "--no-build",
+                    "--force-recreate",
+                    "--no-deps",
+                    "mailpit-tm7bh",
+                )
+            ).code
+        ),
+        lambda: wait_for_testing_service(root, runner, "mailpit"),
+        lambda: testing_runtime_probe_both(root, runner, "mailpit-verify"),
+        lambda: testing_runtime_probe(root, runner, "mailpit-clear", "host"),
+        lambda: testing_runtime_probe_both(root, runner, "mailpit-empty"),
+        lambda: testing_smtp_integration_tests(root, runner, "host"),
+        lambda: testing_smtp_integration_tests(root, runner, "container"),
+    )
+    body_code = EXIT_OK
+    for step in mailpit_steps:
+        body_code = step()
+        if body_code != EXIT_OK:
+            break
+
+    if body_code == EXIT_OK:
+        body_code = testing_cache_degradation_audit(root, runner)
+
+    cleanup_code = finalize_testing_mailpit(root, runner)
+    return body_code if body_code != EXIT_OK else cleanup_code
+
+
 def testing_verify(
     root: Path,
     runner: Runner,
@@ -2039,6 +2369,7 @@ def build_parser() -> argparse.ArgumentParser:
         "testing-test-container",
         "testing-test-host",
         "testing-test-both",
+        "testing-integration-audit",
         "testing-verify",
     )
     parser = argparse.ArgumentParser(description="Operate LocalForge environments.")
@@ -2126,6 +2457,17 @@ def main(  # noqa: C901, PLR0911, PLR0912, PLR0913
             active_runner,
             command.removeprefix("testing-test-"),
             ensure_up=True,
+            http_probe=http_probe,
+            sleep=sleep,
+            now=now,
+        )
+    if command == "testing-integration-audit":
+        missing = require_environment_file(root, TESTING)
+        if missing != EXIT_OK:
+            return missing
+        return testing_integration_audit(
+            root,
+            active_runner,
             http_probe=http_probe,
             sleep=sleep,
             now=now,

@@ -111,11 +111,17 @@ Environment setup and rebuild commands never execute tests. Test execution is ex
 ```console
 uv run poe testing-test-container
 uv run poe testing-test-host
+uv run poe testing-integration-audit
 ```
 
 The testing environment keeps `django-test-dt5qx` running as a Compose service. Container-mode tests use
 `docker compose exec`, so Docker Desktop keeps the runner under `localforge-test` and no `*-run-*` container is
 created. `testing-verify` remains an explicit full-suite workflow and is not part of setup:
+
+`testing-integration-audit` starts and verifies the normal testing environment, starts the profile-gated Mailpit
+service, proves host and container SMTP messages survive a container recreate and can be deleted, then stops the
+real testing cache while both modes observe degraded readiness before restoring healthy state. It clears and removes
+the Mailpit container before returning, including after a failed assertion, while preserving the named volume.
 
 ```console
 uv run poe testing-verify

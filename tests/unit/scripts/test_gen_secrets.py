@@ -669,6 +669,8 @@ def test_development_and_testing_never_share_a_credential(repository: Path) -> N
         ("VALKEY_CHANNELS_HOST", "valkey-channels-tv9zw"),
         ("RABBITMQ_HOST", "rabbitmq-tr6mc"),
         ("S3_ENDPOINT_URL", "http://seaweedfs-ts3jd:8333"),
+        ("SEAWEEDFS_MASTER_PORT", "9333"),
+        ("SEAWEEDFS_FILER_PORT", "8888"),
         ("EMAIL_BACKEND", "django.core.mail.backends.locmem.EmailBackend"),
         ("CELERY_TASK_ALWAYS_EAGER", "true"),
     ],
@@ -728,6 +730,8 @@ def test_host_mode_reaches_every_service_through_the_loopback_interface(reposito
     assert values["RABBITMQ_PORT"] == "25672"
     assert values["EMAIL_PORT"] == "21025"
     assert values["S3_ENDPOINT_URL"] == "http://127.0.0.1:28333"
+    assert values["SEAWEEDFS_MASTER_PORT"] == "29333"
+    assert values["SEAWEEDFS_FILER_PORT"] == "28888"
 
 
 @pytest.mark.unit

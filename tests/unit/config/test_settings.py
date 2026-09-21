@@ -119,6 +119,8 @@ REQUIRED_ENVIRONMENT = {
     "DJANGO_SITE_NAME": "LocalForge",
     "DJANGO_SITE_URL": "http://localforge.localhost:8080",
     "S3_ENDPOINT_URL": "http://seaweedfs-sw9cr:8333",
+    "SEAWEEDFS_MASTER_PORT": "9333",
+    "SEAWEEDFS_FILER_PORT": "8888",
     "S3_ACCESS_KEY_ID": secrets.token_hex(20),
     "S3_SECRET_ACCESS_KEY": secrets.token_hex(20),
     "S3_BUCKET_NAME": "localforge-media",
@@ -400,6 +402,8 @@ def test_uploaded_media_uses_private_object_storage() -> None:
     assert options["secret_key"] == REQUIRED_ENVIRONMENT["S3_SECRET_ACCESS_KEY"]
     assert options["bucket_name"] == REQUIRED_ENVIRONMENT["S3_BUCKET_NAME"]
     assert options["region_name"] == REQUIRED_ENVIRONMENT["S3_REGION_NAME"]
+    assert int(REQUIRED_ENVIRONMENT["SEAWEEDFS_MASTER_PORT"]) == module.SEAWEEDFS_MASTER_PORT
+    assert int(REQUIRED_ENVIRONMENT["SEAWEEDFS_FILER_PORT"]) == module.SEAWEEDFS_FILER_PORT
     client_config = cast("dict[str, object]", vars(options["client_config"]))
     assert client_config["connect_timeout"] == module.S3_CONNECT_TIMEOUT_SECONDS
     assert client_config["read_timeout"] == module.S3_READ_TIMEOUT_SECONDS

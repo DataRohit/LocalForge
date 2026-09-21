@@ -85,6 +85,7 @@ Listed so scope creep is recognisable. None exists.
 | `tests/factories.py` | Valid-by-default account and credential-state factories shared by unit and integration tests |
 | `tests/unit/conftest.py` | Guard refusing network access from the unit layer |
 | `tests/integration/conftest.py` | Guard requiring each integration test to declare its services |
+| `tests/integration/config/runtime_probe.py` | Host/container probe for Mailpit recreation and genuinely stopped dependency readiness |
 | `tests/unit/test_dependencies.py` | Asserts the dependency baseline is declared, installed, and importable |
 | `tests/unit/test_harness.py` | Asserts the suite's own guards and namespacing behave |
 | `tests/unit/<package>/test_*.py` | Unit tests mirroring the application packages |

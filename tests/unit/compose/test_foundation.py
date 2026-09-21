@@ -1821,7 +1821,7 @@ def test_the_broker_support_review_date_is_recorded() -> None:
 
 STORAGE_INSTANCES = {
     "development": ("seaweedfs-sw9cr", {"9333:9333", "8082:8080", "8888:8888", "8333:8333"}),
-    "testing": ("seaweedfs-ts3jd", {"28333:8333", "29333:9333"}),
+    "testing": ("seaweedfs-ts3jd", {"28333:8333", "29333:9333", "28888:8888"}),
 }
 
 STORAGE_REQUIRED_FLAGS = (
