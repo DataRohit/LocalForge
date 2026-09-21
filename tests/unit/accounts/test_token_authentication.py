@@ -8,6 +8,9 @@ import json
 import logging
 import secrets
 from ipaddress import ip_network
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
+from unittest.mock import MagicMock, patch
 
 import pytest
 from django.conf import settings
@@ -21,12 +24,21 @@ from accounts.authentication import (
     JWTAuthenticationScheme,
     PrimaryTokenAuthenticationScheme,
 )
+from accounts.login_throttle import ThrottleDecision
+from accounts.models import User
 from accounts.request_throttling import (
     trusted_client_address,
     trusted_client_address_from_scope,
 )
+from accounts.token_authentication import TokenLoginThrottle, resolve_login_account
 from config.celery import redact_published_arguments
 from config.logs import StructuredFormatter
+from tests.factories import build_user
+
+if TYPE_CHECKING:
+    from rest_framework.views import APIView
+
+LOGIN_RETRY_AFTER_SECONDS = 41
 
 
 @pytest.mark.unit
@@ -291,3 +303,82 @@ def test_token_values_are_redacted_from_request_logs_and_task_messages() -> None
     assert token not in repr(headers)
     assert headers["kwargsrepr"] == "{'token': '********'}"
     assert settings.CELERY_TASK_SEND_SENT_EVENT is False
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "decision",
+    [
+        ThrottleDecision(admitted=True, retry_after_seconds=LOGIN_RETRY_AFTER_SECONDS),
+        ThrottleDecision(admitted=False, retry_after_seconds=LOGIN_RETRY_AFTER_SECONDS),
+    ],
+)
+def test_token_login_throttle_returns_the_authoritative_decision(
+    decision: ThrottleDecision,
+) -> None:
+    """Expose both login allow and deny outcomes.
+
+    Replaces only primary admission storage while retaining address and account rule construction,
+    correlation, and retry-delay propagation.
+
+    Arguments:
+        decision: Authoritative admission outcome to propagate.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If throttle decision or wait behavior differs.
+    """
+    request = cast(
+        "Request",
+        SimpleNamespace(
+            data={"username": "login-user", "password": "password"},
+            META={"REMOTE_ADDR": "192.0.2.10", "request_id": "request-id"},
+        ),
+    )
+    throttle = TokenLoginThrottle()
+    connection = MagicMock()
+    connection.cursor.return_value.__enter__.return_value.fetchone.return_value = ("login-user",)
+    accounts = MagicMock()
+    accounts.using.return_value.alias.return_value.get.side_effect = User.DoesNotExist
+
+    with (
+        patch.object(User, "objects", accounts),
+        patch("accounts.token_authentication.connections", {"default": connection}),
+        patch(
+            "accounts.token_authentication.PostgresLoginThrottleStore.admit",
+            return_value=decision,
+        ),
+    ):
+        result = throttle.allow_request(request, cast("APIView", object()))
+
+    assert result is decision.admitted
+    assert throttle.wait() == float(LOGIN_RETRY_AFTER_SECONDS)
+
+
+@pytest.mark.unit
+def test_login_account_resolver_returns_match_or_none() -> None:
+    """Resolve primary account state with PostgreSQL lowercase semantics.
+
+    Substitutes the ORM expression chain and verifies matching and missing outcomes through the
+    public helper.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If lookup result or missing classification differs.
+    """
+    account = build_user()
+    accounts = MagicMock()
+    query = accounts.using.return_value.alias.return_value
+    query.get.return_value = account
+
+    with patch.object(User, "objects", accounts):
+        assert resolve_login_account("Login-User") is account
+        query.get.side_effect = User.DoesNotExist
+        assert resolve_login_account("Login-User") is None

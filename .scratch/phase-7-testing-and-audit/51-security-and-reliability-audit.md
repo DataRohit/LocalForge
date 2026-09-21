@@ -48,4 +48,7 @@ adversarial or degraded conditions, with every finding either fixed or recorded 
       sensible status rather than hanging or crashing, and recovers when the service returns.
 - [ ] Restart resilience is exercised: the whole stack is stopped and started, and it comes back healthy with data
       intact.
+- [ ] An idle soak and each degraded or recovery exercise include bounded container-log review. Every
+      warning-or-higher record is fixed or documented as an accepted risk; successful HTTP, task, scheduler, and
+      WebSocket outcomes are never represented by failure-level terminal logs.
 - [ ] Findings are recorded, with fixes applied and accepted risks written into the relevant decision record.

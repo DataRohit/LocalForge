@@ -29,6 +29,7 @@ from config.health import (
     _run_readiness_check,
     _validate_database_pool,
     context_preserving_executor,
+    readiness_get,
     run_timed_database_check,
 )
 from config.logs import NO_REQUEST_ID, request_identifier
@@ -42,6 +43,7 @@ BLOCKING_CHECK_SECONDS = 0.5
 CANCELLATION_SETTLE_SECONDS = 0.05
 MAXIMUM_CANCELLATION_SECONDS = 0.2
 PROBE_TIMEOUT_SECONDS = 0.01
+READINESS_SETTLE_TURNS = 100
 
 
 class SynchronousReadinessProbe:
@@ -72,6 +74,189 @@ class SynchronousReadinessProbe:
         Raises:
             None.
         """
+
+
+class BlockingAsyncReadinessProbe:
+    """Hold one asynchronous readiness operation until released.
+
+    Inherits nothing and records startup and completion so exceptional collection can prove whether
+    sibling work finished before a programming defect propagated.
+
+    Attributes:
+        started: Event set when the probe begins.
+        release: Event controlling completion.
+        completed: Whether the probe returned normally.
+
+    Members:
+        run: Wait for release and mark completion.
+    """
+
+    def __init__(self, started: asyncio.Event, release: asyncio.Event) -> None:
+        """Bind synchronization events to one probe.
+
+        Stores caller-owned events without starting asynchronous work.
+        Each test receives independent completion state.
+
+        Arguments:
+            started: Event set on probe entry.
+            release: Event allowing the probe to finish.
+
+        Returns:
+            None.
+        """
+        self.started = started
+        self.release = release
+        self.completed = False
+
+    async def run(self) -> None:
+        """Wait until the test releases the probe.
+
+        Marks completion only after the release event, providing an exact observation of sibling
+        lifetime when another probe raises.
+
+        Arguments:
+            None.
+
+        Returns:
+            None.
+        """
+        self.started.set()
+        await self.release.wait()
+        for _turn in range(READINESS_SETTLE_TURNS):
+            await asyncio.sleep(0)
+        self.completed = True
+
+
+class FailingAsyncReadinessProbe:
+    """Raise one programming defect after its sibling starts.
+
+    Inherits nothing and coordinates the exceptional path so collection order is deterministic
+    rather than scheduler-dependent.
+
+    Attributes:
+        sibling_started: Event proving concurrent sibling execution began.
+        message: Programming-defect text raised by the probe.
+
+    Members:
+        run: Raise after sibling startup.
+    """
+
+    def __init__(
+        self,
+        sibling_started: asyncio.Event,
+        sibling_release: asyncio.Event,
+        message: str,
+    ) -> None:
+        """Store the sibling-start event.
+
+        Retains only the synchronization boundary needed for deterministic failure ordering.
+        The probe carries no dependency state.
+
+        Arguments:
+            sibling_started: Event set by the blocking probe.
+            sibling_release: Event allowing the sibling to settle.
+            message: Programming-defect text to raise.
+
+        Returns:
+            None.
+        """
+        self.sibling_started = sibling_started
+        self.sibling_release = sibling_release
+        self.message = message
+
+    async def run(self) -> None:
+        """Raise after concurrent sibling startup.
+
+        Waits for the sibling so the failure always occurs with unfinished readiness work active.
+        The exception represents an unexpected programming defect rather than dependency loss.
+
+        Arguments:
+            None.
+
+        Returns:
+            Never returns.
+
+        Raises:
+            RuntimeError: Always after sibling startup.
+        """
+        await self.sibling_started.wait()
+        self.sibling_release.set()
+        raise RuntimeError(self.message)
+
+
+@pytest.mark.unit
+def test_readiness_view_finishes_siblings_before_propagating_defect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Finish concurrent probes before exposing one unexpected exception.
+
+    Reproduces the suite-worker shutdown race without real services and requires collection to own
+    every sibling through completion before the programming defect escapes.
+
+    Arguments:
+        monkeypatch: Fixture replacing the readiness inventory.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the defect propagates while sibling work remains active.
+    """
+    started = asyncio.Event()
+    release = asyncio.Event()
+    blocking = BlockingAsyncReadinessProbe(started, release)
+    failing = FailingAsyncReadinessProbe(
+        started,
+        release,
+        "readiness programming defect",
+    )
+    monkeypatch.setattr(
+        "config.health._readiness_checks",
+        lambda: (("blocking", blocking), ("failing", failing)),
+    )
+    request = SimpleNamespace(
+        user=SimpleNamespace(is_authenticated=False, is_staff=False),
+    )
+    with pytest.raises(RuntimeError, match="readiness programming defect"):
+        readiness_get(object(), request)
+    completed_when_raised = blocking.completed
+
+    assert completed_when_raised is True
+
+
+@pytest.mark.unit
+def test_readiness_view_raises_first_unexpected_failure_in_inventory_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Preserve deterministic exception order after every probe completes.
+
+    Supplies two concurrent programming defects and requires the first registered check to govern
+    the propagated failure.
+
+    Arguments:
+        monkeypatch: Fixture replacing the readiness inventory.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If completion order replaces inventory order.
+    """
+    started = asyncio.Event()
+    started.set()
+    release = asyncio.Event()
+    first = FailingAsyncReadinessProbe(started, release, "first readiness defect")
+    second = FailingAsyncReadinessProbe(started, release, "second readiness defect")
+    monkeypatch.setattr(
+        "config.health._readiness_checks",
+        lambda: (("first", first), ("second", second)),
+    )
+    request = SimpleNamespace(
+        user=SimpleNamespace(is_authenticated=False, is_staff=False),
+    )
+
+    with pytest.raises(RuntimeError, match="first readiness defect"):
+        readiness_get(object(), request)
 
 
 @pytest.mark.unit

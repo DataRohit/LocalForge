@@ -81,6 +81,29 @@ For a development machine where port 8000 is already owned by another process, `
 `environments-setup`, `development-up`, `development-rebuild`, and `development-reset`. Every other command rejects
 the option before running a subprocess.
 
+## Runtime verification
+
+Tests and static checks are not the final runtime verdict. After a source rebuild or any service-facing change, run:
+
+```console
+uv run poe development-health
+uv run poe testing-health
+uv run poe docker-audit
+uv run poe development-logs django-uv5n2
+```
+
+Exercise the changed route, socket, task, scheduler, storage, mail, or operator command against the running stack,
+then inspect the affected containers over a bounded window beginning before that exercise. Completion requires:
+
+- Every registered container running and every configured health check healthy.
+- The aggregate health endpoint returning `ready` with all seven dependency checks `working`.
+- The changed public or operator behavior succeeding through the deployed path.
+- No unexplained `WARNING`, `ERROR`, or `CRITICAL` record in affected service logs.
+- Success being logged as success: a `2xx` response must not emit a failure-level terminal record.
+
+An expected warning must be named and justified in its governing ADR or service inventory. A green test command
+does not waive contradictory runtime evidence.
+
 ## Testing environments
 
 Environment setup and rebuild commands never execute tests. Test execution is explicit:

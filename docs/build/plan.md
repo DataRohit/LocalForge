@@ -82,6 +82,7 @@ Listed so scope creep is recognisable. None exists.
 | `src/notifications/` | Authenticated WebSocket protocol, notification consumer, and user-targeted publisher |
 | `tests/integration/<package>/test_*.py` | One test per service integration, mirroring the package it covers |
 | `tests/conftest.py` | Per-worker namespace every externally allocated name is built from |
+| `tests/factories.py` | Valid-by-default account and credential-state factories shared by unit and integration tests |
 | `tests/unit/conftest.py` | Guard refusing network access from the unit layer |
 | `tests/integration/conftest.py` | Guard requiring each integration test to declare its services |
 | `tests/unit/test_dependencies.py` | Asserts the dependency baseline is declared, installed, and importable |
@@ -93,6 +94,11 @@ Listed so scope creep is recognisable. None exists.
 
 Nine phases. **A phase may not begin until the previous gate passes.** If a gate fails, stop and fix it. Never
 weaken a gate to make it pass.
+
+Every phase gate that starts or changes a runtime service also applies the
+[runtime truth rule](../../AGENTS.md#rules): verify the affected environment health, run the project-scoped Docker
+audit, exercise the changed deployed seam, and inspect bounded affected-container logs. Unexplained warning-or-higher
+records, restarts, unhealthy state, or success logged as failure make the gate fail even when tests pass.
 
 ### Phase 1 — Read
 

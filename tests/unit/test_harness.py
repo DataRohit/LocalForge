@@ -18,10 +18,24 @@ from typing import Any, cast
 import psycopg
 import pytest
 
+from tests.factories import (
+    build_activation_token,
+    build_login_throttle_event,
+    build_password_reset_token,
+    build_user,
+    build_username_reset_token,
+)
 from tests.integration import conftest as integration_conftest
 from tests.unit.conftest import NetworkAccessInUnitTestError
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent
+SOURCE_ROOT = REPOSITORY_ROOT / "src"
+UNIT_ROOT = REPOSITORY_ROOT / "tests" / "unit"
+DIGEST_HEX_LENGTH = 64
+BEHAVIORAL_PACKAGE_TESTS = {
+    Path("config/__init__.py"): UNIT_ROOT / "config" / "test_package.py",
+    Path("config/settings/__init__.py"): UNIT_ROOT / "config" / "settings" / "test_package.py",
+}
 TOKEN_AUTHENTICATION_TEST = (
     REPOSITORY_ROOT / "tests" / "integration" / "accounts" / "test_token_authentication.py"
 )
@@ -253,6 +267,124 @@ def test_the_worker_namespace_carries_the_worker_identity(worker_namespace: str)
     """
     assert worker_namespace.startswith("localforge-test-")
     assert worker_namespace != "localforge-test-"
+
+
+@pytest.mark.unit
+def test_every_source_module_has_one_mirrored_unit_module() -> None:
+    """Keep unit coverage discoverable from each source path.
+
+    Maps every hand-written source module to the exact unit-test path that owns its isolated
+    behavior, excluding only package markers and generated migrations.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any source module lacks its exact mirrored unit module.
+    """
+    source_modules = {
+        path.relative_to(SOURCE_ROOT)
+        for path in SOURCE_ROOT.rglob("*.py")
+        if path.name != "__init__.py" and "migrations" not in path.parts
+    }
+    expected_tests = {
+        UNIT_ROOT / source.parent / f"test_{source.name}" for source in source_modules
+    } | set(BEHAVIORAL_PACKAGE_TESTS.values())
+    missing = sorted(
+        path.relative_to(REPOSITORY_ROOT).as_posix()
+        for path in expected_tests
+        if not path.is_file()
+    )
+
+    assert missing == []
+
+
+@pytest.mark.unit
+def test_shared_factories_build_valid_objects_without_services() -> None:
+    """Build default account and credential-state objects in isolation.
+
+    Verifies every shared factory supplies the required identifiers and safe digest-shaped state
+    without persisting or opening a service connection.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a default factory object is incomplete or credential-bearing.
+    """
+    account = build_user()
+    login_event = build_login_throttle_event()
+    activation = build_activation_token()
+    password_reset = build_password_reset_token()
+    username_reset = build_username_reset_token()
+
+    account.clean_fields()
+
+    assert account.username
+    assert account.email.endswith("@localforge.invalid")
+    assert account.has_usable_password()
+    assert login_event.bucket
+    assert login_event.request_id
+    assert login_event.occurred_at is not None
+    for token in (activation, password_reset, username_reset):
+        assert token.subject_id is not None
+        assert len(token.digest) == DIGEST_HEX_LENGTH
+
+
+@pytest.mark.unit
+def test_user_factory_preserves_explicit_falsey_overrides() -> None:
+    """Build the exact invalid values a negative unit test requests.
+
+    Supplies empty identifiers and password and verifies the factory does not replace them with
+    valid defaults.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If falsey overrides are discarded.
+    """
+    account = build_user(username="", email="", password="")
+
+    assert account.username == ""
+    assert account.email == ""
+    assert account.check_password("")
+
+
+@pytest.mark.unit
+def test_state_factories_preserve_explicit_falsey_overrides() -> None:
+    """Build exact empty identifiers and digests for negative tests.
+
+    Supplies falsey overrides to every non-user factory and verifies none are replaced by generated
+    defaults.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a falsey state override is discarded.
+    """
+    login_event = build_login_throttle_event(request_id="")
+    activation = build_activation_token(digest="")
+    password_reset = build_password_reset_token(digest="")
+    username_reset = build_username_reset_token(digest="")
+
+    assert login_event.request_id == ""
+    assert activation.digest == ""
+    assert password_reset.digest == ""
+    assert username_reset.digest == ""
 
 
 @pytest.mark.unit

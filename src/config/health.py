@@ -798,13 +798,20 @@ async def _collect_readiness() -> tuple[tuple[str, ReadinessResult], ...]:
         Stable dependency names paired with completed health-check results.
 
     Raises:
-        None.
+        BaseException: After every sibling probe finishes, if any probe raises an unexpected
+            programming defect.
     """
     checks = _readiness_checks()
     with context_preserving_executor(None) as executor:
-        results = await asyncio.gather(
-            *(_run_readiness_check(check, executor) for _name, check in checks)
+        completed = await asyncio.gather(
+            *(_run_readiness_check(check, executor) for _name, check in checks),
+            return_exceptions=True,
         )
+    results: list[ReadinessResult] = []
+    for result in completed:
+        if isinstance(result, BaseException):
+            raise result
+        results.append(result)
 
     return tuple((name, result) for (name, _check), result in zip(checks, results, strict=True))
 
@@ -929,7 +936,8 @@ def readiness_get(_view: object, request: ReadinessRequest) -> JsonResponse:
         JSON readiness response with status 200 or 503.
 
     Raises:
-        None.
+        BaseException: If a readiness probe raises an unexpected programming defect after every
+            sibling probe finishes.
     """
     results = async_to_sync(_collect_readiness)()
     checks = {name: "unavailable" if result.error else "working" for name, result in results}

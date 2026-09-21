@@ -86,6 +86,16 @@ Exactly two, and there is no third.
 5. Pinned versions only. `latest` is forbidden, including Dockerfile base images.
 6. Use `uv run` for every Python command. Bare `python` here is 3.12.10, not the required 3.14.6.
 7. Keep the quality gate where it is: 100% branch coverage, Ruff `select = ["ALL"]`, mypy `strict`. Fix the code.
+8. **Runtime truth is a separate gate.** Tests prove controlled cases; they do not prove the running stack is
+   healthy. After any runtime, integration, infrastructure, observability, or test-harness change:
+    - Start or rebuild every affected environment through its supported Poe command.
+    - Require environment health and the project-scoped Docker audit to pass.
+    - Exercise the changed behavior through its deployed public or operator seam.
+    - Inspect a bounded post-start/post-exercise log window for every affected container.
+    - Treat any unexplained `WARNING`, `ERROR`, or `CRITICAL`, restart, unhealthy state, missing service, or
+      success response logged as failure as a blocker.
+   A passing test suite never overrides contradictory live health or log evidence. Every audit package records the
+   exact health, behavior, log commands, time window, findings, and disposition.
 
 ## Scope
 

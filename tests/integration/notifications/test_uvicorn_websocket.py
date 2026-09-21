@@ -17,7 +17,7 @@ from http import HTTPStatus
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast, override
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from channels.db import database_sync_to_async
@@ -1106,9 +1106,10 @@ async def test_uvicorn_exposes_every_authentication_close(
     Raises:
         AssertionError: If any authentication category receives another close code.
     """
+    suffix = uuid4().hex
     expired_account = await database_sync_to_async(django_user_model.objects.create_user)(
-        "uvicorn-expired",
-        "uvicorn-expired@localforge.invalid",
+        f"uvicorn-expired-{suffix}",
+        f"uvicorn-expired-{suffix}@localforge.invalid",
         "valid-password",
         is_active=True,
     )
@@ -1117,8 +1118,8 @@ async def test_uvicorn_exposes_every_authentication_close(
         expired = await issue_access_token(expired_account)
 
     inactive = await database_sync_to_async(django_user_model.objects.create_user)(
-        "uvicorn-inactive",
-        "uvicorn-inactive@localforge.invalid",
+        f"uvicorn-inactive-{suffix}",
+        f"uvicorn-inactive-{suffix}@localforge.invalid",
         "valid-password",
         is_active=True,
     )
@@ -1127,8 +1128,8 @@ async def test_uvicorn_exposes_every_authentication_close(
     await database_sync_to_async(inactive.save)(using="default", update_fields=["is_active"])
 
     deleted = await database_sync_to_async(django_user_model.objects.create_user)(
-        "uvicorn-deleted",
-        "uvicorn-deleted@localforge.invalid",
+        f"uvicorn-deleted-{suffix}",
+        f"uvicorn-deleted-{suffix}@localforge.invalid",
         "valid-password",
         is_active=True,
     )
@@ -1143,20 +1144,20 @@ async def test_uvicorn_exposes_every_authentication_close(
         ([deleted_access], WebSocketOutcome.ACCOUNT_NOT_FOUND),
     ]
     database_name = cast("str", connections["default"].settings_dict["NAME"])
-    for port_offset, (subprotocols, outcome) in enumerate(cases):
-        async with running_uvicorn(
-            worker_id,
-            "config.asgi:application",
-            {"POSTGRES_DB": database_name},
-            port_offset,
-        ) as uri:
+    async with running_uvicorn(
+        worker_id,
+        "config.asgi:application",
+        {"POSTGRES_DB": database_name},
+        0,
+    ) as uri:
+        for subprotocols, outcome in cases:
             code = await observed_close_code(
                 uri,
                 origin="http://localhost:8080",
                 subprotocols=subprotocols,
             )
 
-        assert code == outcome.required_close_code()
+            assert code == outcome.required_close_code()
 
 
 @pytest.mark.asyncio

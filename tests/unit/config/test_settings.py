@@ -253,8 +253,8 @@ def test_worker_runtime_policy_comes_from_the_environment() -> None:
             "CELERY_WORKER_SHUTDOWN_TIMEOUT_SECONDS must be positive",
         ),
         (
-            {"CELERY_WORKER_HEALTH_TIMEOUT_SECONDS": "0"},
-            "CELERY_WORKER_HEALTH_TIMEOUT_SECONDS must be positive",
+            {"CELERY_WORKER_HEALTH_TIMEOUT_SECONDS": "2"},
+            "CELERY_WORKER_HEALTH_TIMEOUT_SECONDS must exceed the probe time limit",
         ),
         (
             {"CELERY_BEAT_MAX_LOOP_INTERVAL_SECONDS": "0"},

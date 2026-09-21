@@ -278,7 +278,7 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `CELERY_WORKER_CONCURRENCY` | `celery-worker-cw8rt` | worker process concurrency | `2` | no | yes |
 | `CELERY_WORKER_PREFETCH_MULTIPLIER` | `celery-worker-cw8rt` | tasks reserved per worker process | `1` | no | yes |
 | `CELERY_WORKER_SHUTDOWN_TIMEOUT_SECONDS` | `celery-worker-cw8rt` | bounded grace period for in-flight tasks during stop | `300` | no | yes |
-| `CELERY_WORKER_HEALTH_TIMEOUT_SECONDS` | `celery-worker-cw8rt` | broker-backed worker ping timeout | `10` | no | yes |
+| `CELERY_WORKER_HEALTH_TIMEOUT_SECONDS` | `celery-worker-cw8rt` | transient worker-reply timeout, greater than the two-second hard task limit | `10` | no | yes |
 | `CELERY_BEAT_MAX_LOOP_INTERVAL_SECONDS` | `celery-beat-cb4hq` | maximum delay before the database scheduler checks for edits | `5` | no | yes |
 | `CELERY_TOMBSTONE_CLEANUP_BATCH_SIZE` | `celery-beat-cb4hq` | maximum expired rows removed from each account-token table per run | `100` | no | yes |
 | `CELERY_TOMBSTONE_CLEANUP_INTERVAL_SECONDS` | `celery-beat-cb4hq` | persisted account-token cleanup interval and message expiry | `300` | no | yes |
@@ -566,6 +566,21 @@ work begins.
 
 Exit `0` means every requested step passed. A child command's non-zero status is returned unchanged; usage and
 missing-environment-file refusals return `2`.
+
+### 4.12 `scripts/celery_worker_health.py`
+
+Compose-only health command for `celery-worker-cw8rt`; it is not a host operator workflow. Inputs are
+`--destination celery@celery-worker-cw8rt` and `--timeout`, supplied from
+`CELERY_WORKER_HEALTH_TIMEOUT_SECONDS`.
+
+The command first requires PID 1's null-delimited command line to be the Celery worker subcommand with the exact
+registered hostname. It creates a uniquely named exclusive, auto-deleting direct exchange and reply queue on one
+context-managed Kombu connection, then publishes an `ignore_result` task through that queue's producer. Broker
+delivery expires `two seconds` before the caller deadline; one-second soft and two-second hard execution limits keep
+any started task inside the remaining window. Healthy requires the worker to echo the random identifier through the
+transient reply queue before the full timeout. Closing the queue and connection deletes every reply resource, and no
+result-backend record exists on success, timeout, expiry, or revocation. Exit `0` means the exact reply arrived; `1`
+means identity, process-file, broker, worker, or reply readiness failed. It never prints credentials or payload data.
 
 ## 5. Secret handling
 

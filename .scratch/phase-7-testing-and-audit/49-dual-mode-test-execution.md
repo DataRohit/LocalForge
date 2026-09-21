@@ -31,3 +31,5 @@ failures.
 - [ ] The testing stack runs concurrently with the development stack without colliding on any name, volume,
       network, or port.
 - [ ] Total wall-clock time for the parallel run is recorded, so a later regression in test speed is visible.
+- [ ] After each mode, testing health and Docker ownership still pass, no test-created process or resource remains,
+      and the affected testing and development logs contain no unexplained warning-or-higher record.

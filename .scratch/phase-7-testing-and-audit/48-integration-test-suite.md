@@ -40,3 +40,5 @@ broker, real channel layer, real object storage — covering every documented ro
 - [ ] Shared state in external services is namespaced per worker, so parallel workers cannot collide on cache keys,
       queues, buckets, or channel groups.
 - [ ] Branch coverage across the project meets the enforced threshold with the unit layer.
+- [ ] The deployed development and testing paths are exercised after the suite, both environments remain healthy,
+      and every affected container log is free of unexplained warning-or-higher records.

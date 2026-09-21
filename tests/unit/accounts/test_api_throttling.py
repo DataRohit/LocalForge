@@ -19,7 +19,9 @@ from rest_framework.permissions import AllowAny
 
 from accounts.api_throttling import (
     AnonymousApiThrottle,
+    AuthenticatedReadThrottle,
     AuthenticationRecoveryThrottle,
+    AuthenticationRecoveryWriteThrottle,
     CacheScopeThrottle,
     boundary_address_admission,
 )
@@ -78,19 +80,22 @@ class RecordingThrottleCache:
         atomic_fixed_window_admit: Record one admitted decision.
     """
 
-    def __init__(self) -> None:
-        """Initialize an empty admission history.
+    def __init__(self, *, admitted: bool = True, retry_after_seconds: int = 0) -> None:
+        """Initialize one configurable admission history.
 
-        Creates one process-local list so each test can compare submitted key groups in order.
-        No cache or network client is constructed.
+        Creates one process-local list and a fixed decision so tests can compare both submitted
+        keys and allow/deny propagation without a network client.
 
         Arguments:
-            None.
+            admitted: Whether the fake admits the request.
+            retry_after_seconds: Fixed retry delay returned with the decision.
 
         Returns:
             None.
         """
         self.calls: list[tuple[str, ...]] = []
+        self.admitted = admitted
+        self.retry_after_seconds = retry_after_seconds
 
     def atomic_fixed_window_admit(
         self,
@@ -117,7 +122,7 @@ class RecordingThrottleCache:
         del limit, window_seconds, now_milliseconds
         self.calls.append(keys)
 
-        return True, 0
+        return self.admitted, self.retry_after_seconds
 
 
 @pytest.mark.unit
@@ -328,6 +333,108 @@ def test_base_cache_scope_applies_without_an_additional_filter() -> None:
     throttle = CacheScopeThrottle()
 
     assert throttle.applies(cast("Any", object()), cast("Any", object())) is True
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("throttle_type", "method", "authenticated"),
+    [
+        (AnonymousApiThrottle, "GET", False),
+        (AuthenticationRecoveryThrottle, "POST", False),
+        (AuthenticatedReadThrottle, "GET", True),
+        (AuthenticationRecoveryWriteThrottle, "PATCH", True),
+    ],
+)
+@pytest.mark.parametrize("admitted", [True, False])
+def test_every_cache_throttle_propagates_allow_and_deny(
+    monkeypatch: pytest.MonkeyPatch,
+    throttle_type: type[CacheScopeThrottle],
+    method: str,
+    *,
+    authenticated: bool,
+    admitted: bool,
+) -> None:
+    """Return the cache adapter's decision for every reusable throttle class.
+
+    Supplies anonymous or authenticated request state and verifies both successful admission and
+    denial with its exact retry delay.
+
+    Arguments:
+        monkeypatch: Fixture replacing the external cache adapter.
+        throttle_type: Concrete cache-backed throttle class.
+        method: HTTP method selected by that throttle.
+        authenticated: Whether the request carries an account.
+        admitted: Fixed cache decision to propagate.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any concrete throttle hides denial or retry state.
+    """
+    retry_after_seconds = 13
+    cache = RecordingThrottleCache(
+        admitted=admitted,
+        retry_after_seconds=retry_after_seconds,
+    )
+    user = SimpleNamespace(
+        is_authenticated=authenticated,
+        pk=UUID("018f4f10-7b6a-7c80-8a5f-444444444444") if authenticated else None,
+    )
+    request = SimpleNamespace(
+        user=user,
+        method=method,
+        META={"REMOTE_ADDR": "198.51.100.214"},
+        data={},
+    )
+    monkeypatch.setattr("accounts.api_throttling.caches", {"default": cache})
+
+    throttle = throttle_type()
+    result = throttle.allow_request(cast("Any", request), cast("Any", object()))
+
+    assert result is admitted
+    assert throttle.wait() == (None if admitted else float(retry_after_seconds))
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("throttle", "method", "authenticated"),
+    [
+        (AnonymousApiThrottle(), "GET", True),
+        (AuthenticationRecoveryThrottle(), "GET", False),
+        (AuthenticatedReadThrottle(), "POST", True),
+        (AuthenticatedReadThrottle(), "GET", False),
+        (AuthenticationRecoveryWriteThrottle(), "GET", True),
+    ],
+)
+def test_concrete_cache_throttles_bypass_non_applicable_requests(
+    throttle: CacheScopeThrottle,
+    method: str,
+    *,
+    authenticated: bool,
+) -> None:
+    """Skip every documented non-applicable request shape.
+
+    Calls each concrete applicability seam with authenticated and method combinations that must not
+    consume its scope.
+
+    Arguments:
+        throttle: Concrete throttle instance to exercise.
+        method: HTTP method outside its applicable policy.
+        authenticated: Whether the request carries a resolved account.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a bypass branch begins charging requests.
+    """
+    request = SimpleNamespace(
+        user=SimpleNamespace(is_authenticated=authenticated),
+        method=method,
+    )
+
+    assert throttle.applies(cast("Any", request), cast("Any", object())) is False
 
 
 @pytest.mark.unit

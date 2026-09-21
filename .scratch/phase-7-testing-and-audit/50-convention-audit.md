@@ -31,3 +31,5 @@ drifted name is caught mechanically rather than by reading a Compose file.
 - [ ] Bind mounts are read-only except where documented, and the only writable exceptions are justified.
 - [ ] The audit runs for both environments and exits non-zero on any violation, printing the object and the rule.
 - [ ] Violations found are fixed and the audit re-run in full, not just the failing check.
+- [ ] The audit also proves every required service is running or intentionally stopped, health status matches the
+      inventory, and a bounded idle and exercise log window has no unexplained warning-or-higher record.

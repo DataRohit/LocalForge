@@ -187,8 +187,10 @@ def test_development_worker_reuses_the_application_image_with_bounded_runtime_se
         "valkey-cache-vc5tn": {"condition": "service_healthy"},
     }
     health = " ".join(worker["healthcheck"]["test"])
-    assert "inspect ping" in health
+    assert "scripts/celery_worker_health.py" in health
+    assert "--destination" in health
     assert "celery-worker-cw8rt" in health
+    assert "--timeout" in health
     assert "$$CELERY_WORKER_HEALTH_TIMEOUT_SECONDS" in health
 
 
@@ -235,7 +237,8 @@ def test_flower_is_an_authenticated_development_only_application_companion() -> 
     """Expose queue monitoring on the registered host port without edge publication.
 
     Requires Flower to reuse the application image, read its prefixed authentication and broker
-    API variables, wait only for RabbitMQ, and stay absent from the headless testing environment.
+    API variables, wait for the worker it inspects, and stay absent from the headless testing
+    environment.
 
     Arguments:
         None.
@@ -244,7 +247,7 @@ def test_flower_is_an_authenticated_development_only_application_companion() -> 
         None.
 
     Raises:
-        AssertionError: If Flower is unauthenticated, misnetworked, or coupled to worker health.
+        AssertionError: If Flower is unauthenticated, misnetworked, or starts before worker health.
     """
     development = merged(DEVELOPMENT_FILE)["services"]
     flower = development["flower-fl9zd"]
@@ -254,7 +257,10 @@ def test_flower_is_an_authenticated_development_only_application_companion() -> 
     assert flower["ports"] == ["5555:5555"]
     assert set(flower["networks"]) == {"app-net-na6hy", "access-net-ha4mz"}
     assert flower["command"][0:4] == ["celery", "-A", "config", "flower"]
-    assert flower["depends_on"] == {"rabbitmq-rq4sx": {"condition": "service_healthy"}}
+    assert flower["depends_on"] == {
+        "celery-worker-cw8rt": {"condition": "service_healthy"},
+        "rabbitmq-rq4sx": {"condition": "service_healthy"},
+    }
     assert "labels" not in flower
     assert "healthcheck" in flower
     health = " ".join(flower["healthcheck"]["test"])
@@ -2247,6 +2253,37 @@ def test_the_proxy_matches_its_registered_image_ports_and_network() -> None:
 
 
 @pytest.mark.unit
+def test_the_proxy_rejects_ambiguous_encoded_path_characters() -> None:
+    """Fail closed for every encoded path character Traefik makes configurable.
+
+    Pins both entrypoints to explicit rejection so version-default changes cannot reintroduce a
+    proxy-versus-Django path interpretation split or an unresolved startup warning.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If either entrypoint permits or leaves one encoded character implicit.
+    """
+    entrypoints = load(PROXY_CONFIG)["entryPoints"]
+    expected = {
+        "allowEncodedBackSlash": False,
+        "allowEncodedHash": False,
+        "allowEncodedNullCharacter": False,
+        "allowEncodedPercent": False,
+        "allowEncodedQuestionMark": False,
+        "allowEncodedSemicolon": False,
+        "allowEncodedSlash": False,
+    }
+
+    assert entrypoints["web"]["http"]["encodedCharacters"] == expected
+    assert entrypoints["dashboard"]["http"]["encodedCharacters"] == expected
+
+
+@pytest.mark.unit
 def test_the_application_direct_port_is_bound_to_host_loopback() -> None:
     """Restrict the proxy-bypassing application publication to the local host.
 
@@ -2759,6 +2796,9 @@ def test_the_visualisation_service_is_provisioned_and_closed_to_anonymous_use() 
     assert 'GF_SECURITY_ADMIN_PASSWORD="$$GRAFANA_ADMIN_PASSWORD"' in command
     assert "GF_AUTH_ANONYMOUS_ENABLED=false" in command
     assert "GF_USERS_ALLOW_SIGN_UP=false" in command
+    provisioning = REPOSITORY_ROOT / "docker" / "grafana" / "provisioning"
+    assert (provisioning / "alerting").is_dir()
+    assert (provisioning / "plugins").is_dir()
 
 
 @pytest.mark.unit

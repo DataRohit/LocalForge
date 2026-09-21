@@ -1401,15 +1401,15 @@ async def test_receive_disconnect_finalizes_stream_failure(
         ("/stream/", b"mode=asynchronous-success"),
     ],
 )
-async def test_ready_receive_disconnect_beats_non_yielding_terminal_send(
+async def test_terminal_send_success_beats_ready_post_response_disconnect(
     caplog: pytest.LogCaptureFixture,
     path_value: str,
     query_string: bytes,
 ) -> None:
-    """Record failure when terminal send returns without yielding to a ready disconnect.
+    """Record success when transport accepts the terminal body.
 
-    Models Uvicorn's disconnected transport path, where send completes synchronously after the
-    receive listener can already return ``http.disconnect``.
+    Models a short-lived client whose disconnect becomes readable immediately after a synchronous
+    terminal send, and treats the accepted terminal event as completed delivery.
 
     Arguments:
         caplog: Fixture collecting records emitted during the request.
@@ -1420,7 +1420,7 @@ async def test_ready_receive_disconnect_beats_non_yielding_terminal_send(
         None.
 
     Raises:
-        AssertionError: If the discarded response is recorded as successful.
+        AssertionError: If an orderly post-response disconnect becomes a false stream failure.
     """
     request_received = False
     terminal_body_seen = asyncio.Event()
@@ -1478,7 +1478,7 @@ async def test_ready_receive_disconnect_beats_non_yielding_terminal_send(
         and record.getMessage() in {"request completed", "request stream failed"}
     )
 
-    assert terminal.getMessage() == "request stream failed"
+    assert terminal.getMessage() == "request completed"
 
 
 @pytest.mark.integration

@@ -1733,7 +1733,6 @@ class _ASGIResponseObserver:
             raise
 
         if message["type"] == "http.response.body" and not message.get("more_body", False):
-            await asyncio.sleep(0)
             self.active_finalizer().complete(failed=self.disconnected)
 
     def complete_failure(self) -> None:

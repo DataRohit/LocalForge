@@ -13,7 +13,9 @@ resolved from the repository, never reconstructed from a ticket title.
 2. Work the **frontier**: any ticket whose linked blockers are all done.
 3. Read every linked governing source before starting. [AGENTS.md](../AGENTS.md) defines repository-wide rules.
 4. `/clear` context between tickets. Each is self-contained by construction.
-5. A ticket is done when every acceptance criterion is checked **and** `uv run poe check` is green.
+5. A ticket is done when every acceptance criterion is checked, `uv run poe check` is green, and the
+   [runtime truth gate](../AGENTS.md#rules) passes for every affected environment and container. Unexplained live
+   warnings or errors block completion even when tests pass.
 
 ## Phase order
 
@@ -154,6 +156,11 @@ with a marker and justify it in its docstring. No suite may hang: every network-
 [docs/platform/conventions.md](../docs/platform/conventions.md).
 
 **Names come from the registry.** Never invent a container, volume, or network name.
+
+**Runtime truth, not test-shaped confidence.** After the complete test gate, run the affected stack, exercise the
+changed seam, inspect project-scoped health and ownership, and review a bounded log window. A healthy endpoint that
+emits a failure-level terminal record is a defect. Record expected warnings in their governing source; never
+silently accept them because the response or tests succeeded.
 
 ## Definition of done for the whole set
 

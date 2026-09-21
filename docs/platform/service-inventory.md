@@ -119,28 +119,31 @@ run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data /
 | 2 | `postgres-replica-pg6vy`, `pgbackrest-pb2wj` | `postgres-pg3ka` healthy |
 | 3 | `django-uv5n2` | tier 1 healthy, plus `postgres-replica-pg6vy` healthy |
 | 4 | `celery-worker-cw8rt`, `celery-beat-cb4hq` | `rabbitmq-rq4sx` and `valkey-cache-vc5tn` healthy, and `django-uv5n2` healthy so migrations have run |
-| 5 | `traefik-tk2jp`, `flower-fl9zd`, `pgadmin-pa7fe` | their backends healthy |
-| 6 | `postgres-exporter-pe4rk`, `valkey-cache-exporter-ve7ts`, `valkey-channels-exporter-vx4nq`, `cadvisor-cv8mh`, `alloy-al6wz` | their scrape targets healthy |
-| 7 | `prometheus-pm5db` | `django-uv5n2` and health-checkable exporters healthy; remaining exporters started |
-| 8 | `grafana-gf7qv` | `prometheus-pm5db` healthy, `loki-lk3ny` started — that image carries no probe, so it can never report healthy |
+| 5 | `traefik-tk2jp`, `pgadmin-pa7fe` | their backends healthy |
+| 6 | `flower-fl9zd` | broker and `celery-worker-cw8rt` healthy |
+| 7 | `postgres-exporter-pe4rk`, `valkey-cache-exporter-ve7ts`, `valkey-channels-exporter-vx4nq`, `cadvisor-cv8mh`, `alloy-al6wz` | their scrape targets healthy |
+| 8 | `prometheus-pm5db` | `django-uv5n2` and health-checkable exporters healthy; remaining exporters started |
+| 9 | `grafana-gf7qv` | `prometheus-pm5db` healthy, `loki-lk3ny` started — that image carries no probe, so it can never report healthy |
 
 `django-uv5n2` runs migrations in its entrypoint **before** binding its port, so tier 4 waiting on it healthy also
 waits on the schema being current. Celery workers never run migrations: they reuse the same image and pass their own
 command to the entrypoint, which waits for dependencies and then hands over.
 
 `celery-worker-cw8rt` consumes the explicit durable default and slow queues with environment-controlled concurrency
-and prefetch. Its health check pings the registered node through RabbitMQ, its Compose stop grace is bounded by the
-environment inventory, and terminal failures publish scrubbed records to the durable dead-letter queue, which the
-worker does not consume. Task logs retain only exception types, never arbitrary exception text or tracebacks. One slow
-task cannot starve ordinary work because the configured concurrency may not fall below two, and the operational slow
-probe cannot exceed the worker soft time limit even when executed eagerly.
+and prefetch. Its health check executes one opaque task and result round trip after confirming the registered local
+node identity, its Compose stop grace is bounded by the environment inventory, and terminal failures publish scrubbed
+records to the durable dead-letter queue, which the worker does not consume. Task logs retain only exception types,
+never arbitrary exception text or tracebacks. One slow task cannot starve ordinary work because the configured
+concurrency may not fall below two, and the operational slow probe cannot exceed the worker soft time limit even when
+executed eagerly.
 
 `flower-fl9zd` reads worker execution events and the authenticated RabbitMQ management API to show registered workers,
 active tasks, default and slow queue depths, and recent outcomes. Basic authentication applies to the UI and API;
-unauthenticated API mode is not enabled. Flower depends only on the broker, sits on the application and access
-networks, carries no edge labels, and is excluded from testing. Before event dispatch, successful results become type
-names and retry/failure exception plus traceback fields are redacted, so task history cannot recover a value hidden
-from arguments or logs.
+unauthenticated API mode is not enabled. Flower waits for the broker and the worker health check before starting, so
+its initial inspection cannot race worker registration and emit false warning records. It sits on the application and
+access networks, carries no edge labels, and is excluded from testing. Before event dispatch, successful results
+become type names and retry/failure exception plus traceback fields are redacted, so task history cannot recover a
+value hidden from arguments or logs.
 
 Ticket 43 makes `celery-beat-cb4hq` operationally responsible for running SimpleJWT's upstream
 `flushexpiredtokens` command once daily. The command's delete is routed to `default`, the authoritative primary;
@@ -197,11 +200,48 @@ outage, but `/health/` reports `readiness: not_ready` and returns `503`. Compose
 so an unavailable instance leaves proxy rotation without being killed or restarted merely because one dependency
 is temporarily down.
 
+**Worker health proves a current round trip.** The probe confirms PID 1 is the exact registered Celery node, then
+creates an exclusive auto-deleting direct exchange and reply queue on one context-managed Kombu connection. It
+publishes an `ignore_result` task through that queue's producer, with delivery expiry reserving the final two seconds
+for the task's one-second soft and two-second hard execution limits. Healthy requires the worker to echo the opaque
+identifier through the transient queue before the full timeout. Closing the queue and connection deletes every reply
+resource, no result-backend key can be recreated later, and the explicit contexts prevent RabbitMQ abandoned-client
+warnings.
+
 **WebSocket admission uses the dedicated channel instance.** After Host, Origin, and JSON web token authentication,
 the application applies the configured per-account fixed-window connection rate through one atomic Valkey script.
 All Django workers share the count; store timeout or loss fails closed. Complete messages are limited to 65,536
 bytes in the application, while Uvicorn independently rejects messages above its configured 131,072-byte transport
 ceiling before ASGI dispatch.
+
+### 2.2 Runtime truth gate
+
+Container health is necessary but not sufficient. After startup, rebuild, failure recovery, or a service-facing
+change, record one bounded observation window beginning before the exercised behavior:
+
+1. Run environment health and the project-scoped Docker ownership audit.
+2. Exercise the changed deployed route, WebSocket, task, schedule, storage, mail, dashboard, or operator seam.
+3. Inspect every affected container's logs for that exact window.
+4. Reconcile response or task outcome with log severity and message.
+
+Pass requires the documented behavior plus no unexplained `WARNING`, `ERROR`, or `CRITICAL`. In particular, a
+successful terminal HTTP body is logged as `request completed` at info level; `request stream failed` at warning
+level is reserved for actual body-delivery interruption. Expected warnings must be listed in the owning ADR or this
+inventory with their trigger and safety argument. Absence of a test failure is never evidence that a live warning
+is acceptable.
+
+The following vendor startup records are expected only between process start and the service becoming ready. They
+must not recur in a post-readiness exercise window:
+
+| Service | Record | Trigger and disposition |
+| --- | --- | --- |
+| `grafana-gf7qv` | `skipped registering status sub-resource that does not support dual writing` | Grafana 13 registers its bundled recording-rule API while unified storage is enabled. The resource remains available and `/api/health` must pass. |
+| `loki-lk3ny` | `error getting ingester clients`, `empty ring` | Loki's single process initializes the query path before its ingester joins the in-memory ring. `/ready` must pass after the documented delay. |
+| `prometheus-pm5db` | `A lockfile from a previous execution already existed. It was replaced` | A source-preserving Docker recreation can leave the exclusive-volume lock file behind after the old container has stopped. WAL replay and `/-/ready` must pass, and only one container may own the volume. |
+| `rabbitmq-rq4sx` | deprecated `management_metrics_collection` warning | RabbitMQ 4.3 reports the management plugin's metrics collector that Flower uses for queue depth. The authenticated management API and Prometheus endpoint must both pass. |
+| `rabbitmq-rq4sx` | deprecated `global_qos` error followed by worker readiness | Celery 5.6.3 requests RabbitMQ's pre-3.3 global QoS scope during worker bootstrap. RabbitMQ 4.3 refuses that deprecated scope, Celery continues with supported consumer prefetch, and a queued round trip plus the configured prefetch count must pass. |
+| `seaweedfs-sw9cr` | info-level `Not current leader` or local gRPC socket connection failure | SeaweedFS all-in-one components begin dialing before the embedded Raft leader and local sockets exist. Both `/healthz` probes and an S3 byte round trip must pass. |
+| `traefik-tk2jp` | encoded-character rejection warning | Traefik 3.7 warns when the entrypoint explicitly rejects encoded slash, backslash, null, semicolon, percent, question-mark, and hash characters. Both entrypoints pin every option to `false` to prevent proxy/backend split views. |
 
 ## 3. Dashboards
 

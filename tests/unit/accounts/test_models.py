@@ -8,21 +8,55 @@ reach.
 import secrets
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
+from unittest.mock import patch
 
 import pytest
 from django.contrib.admin import AdminSite
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
+from django.db import models
 from django.db.models.functions import Lower
 
 from accounts.admin import AccountAdmin
-from accounts.models import User
+from accounts.models import ActivationToken, PasswordResetToken, User, UsernameResetToken
 from accounts.normalisation import normalise_email
+from tests.factories import (
+    build_activation_token,
+    build_login_throttle_event,
+    build_password_reset_token,
+    build_username_reset_token,
+)
 
 if TYPE_CHECKING:
+    from typing import Protocol
+
     from django.db.models import UniqueConstraint
     from django.http import HttpRequest
 
+    class CredentialRecordProtocol(Protocol):
+        """Describe shared credential-record state for type checking.
+
+        Inherits from ``Protocol`` and defines only the dynamic foreign-key identifier and
+        timestamps common to all three models. Runtime assertions use concrete model objects.
+
+        Attributes:
+            account_id: Nullable related account identifier.
+            used_at: Optional consumption timestamp.
+            delivery_claimed_at: Optional delivery-claim timestamp.
+            delivered_at: Optional successful-delivery timestamp.
+
+        Members:
+            None.
+        """
+
+        account_id: object | None
+        used_at: object | None
+        delivery_claimed_at: object | None
+        delivered_at: object | None
+
+
 PASSWORD = secrets.token_urlsafe(16)
+TOKEN_DIGEST_LENGTH = 64
 
 
 @pytest.mark.unit
@@ -157,6 +191,88 @@ def test_an_address_is_normalised_before_it_is_stored() -> None:
 
 
 @pytest.mark.unit
+def test_field_cleaning_normalises_the_address_before_validation() -> None:
+    """Validate the canonical address rather than the caller's spelling.
+
+    Calls the model's public field-cleaning seam with surrounding space and mixed case, proving the
+    stored-form transformation happens before Django's email validator runs.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If field cleaning validates or retains the non-canonical address.
+    """
+    account = User(
+        username="clean-fields-user",
+        email=" Clean-Fields@LOCALFORGE.Invalid ",
+    )
+    account.set_password(PASSWORD)
+
+    account.clean_fields()
+
+    assert account.email == "clean-fields@localforge.invalid"
+
+
+@pytest.mark.unit
+def test_saving_normalises_and_validates_before_persistence() -> None:
+    """Persist only a canonical, syntactically valid address.
+
+    Substitutes the database write while exercising the model's public save method, proving its
+    normalization completes before control reaches Django persistence.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If save forwards a non-canonical address or changes caller arguments.
+    """
+    account = User(
+        username="save-user",
+        email=" Save-User@LOCALFORGE.Invalid ",
+    )
+
+    with patch.object(models.Model, "save") as save:
+        account.save(force_insert=True)
+
+    assert account.email == "save-user@localforge.invalid"
+    save.assert_called_once_with(force_insert=True)
+
+
+@pytest.mark.unit
+def test_saving_rejects_an_invalid_address_before_persistence() -> None:
+    """Refuse an invalid address before the model reaches the database.
+
+    Calls the public save seam with malformed input and verifies Django's validator stops the write
+    rather than leaving the database or a constraint to discover it.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If invalid input reaches model persistence.
+    """
+    account = User(username="invalid-email-user", email="not-an-address")
+
+    with (
+        patch.object(models.Model, "save") as save,
+        pytest.raises(ValidationError),
+    ):
+        account.save()
+
+    save.assert_not_called()
+
+
+@pytest.mark.unit
 def test_the_identifiers_are_unique_without_regard_to_case() -> None:
     """Constrain both identifiers case-insensitively.
 
@@ -228,6 +344,99 @@ def test_an_account_is_inactive_until_it_is_activated() -> None:
     """
     assert User().is_active is False
     assert User().is_staff is False
+
+
+@pytest.mark.unit
+def test_login_event_metadata_and_rendering_are_safe() -> None:
+    """Describe one throttle event without recovering submitted identity.
+
+    Uses the shared factory to verify table, indexes, uniqueness, and string rendering remain
+    limited to persisted opaque identifiers.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If metadata or rendering exposes another shape.
+    """
+    event = build_login_throttle_event(bucket="opaque-bucket", request_id="request-id")
+
+    assert event._meta.db_table == "accounts_login_throttle_event"  # noqa: SLF001
+    assert {index.name for index in event._meta.indexes} == {  # noqa: SLF001
+        "accounts_login_bucket_time",
+        "accounts_login_occurred_id",
+    }
+    assert {constraint.name for constraint in event._meta.constraints} == {  # noqa: SLF001
+        "accounts_login_bucket_request_unique"
+    }
+    assert str(event) == "opaque-bucket:request-id"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("record", "subject_index", "retention_index"),
+    [
+        (
+            build_activation_token(),
+            "accounts_act_subject_used",
+            "accounts_activation_issued_id",
+        ),
+        (
+            build_password_reset_token(),
+            "accounts_reset_subject_used",
+            "accounts_reset_issued_id",
+        ),
+        (
+            build_username_reset_token(),
+            "accounts_username_subject_used",
+            "accounts_username_issued_id",
+        ),
+    ],
+)
+def test_credential_records_share_safe_defaults_metadata_and_rendering(
+    record: ActivationToken | PasswordResetToken | UsernameResetToken,
+    subject_index: str,
+    retention_index: str,
+) -> None:
+    """Keep token tombstones ordered, indexed, nullable, and bearer-free.
+
+    Compares each model's defaults and metadata while verifying string rendering contains the
+    immutable subject and row key but never the digest.
+
+    Arguments:
+        record: Unsaved credential-state record to inspect.
+        subject_index: Expected account-state lookup index.
+        retention_index: Expected chronological cleanup index.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If defaults, metadata, ordering, or safe rendering drift.
+    """
+    record.pk = 7
+    rendered = str(record)
+    credential = cast("CredentialRecordProtocol", record)
+
+    assert credential.account_id is None
+    assert credential.used_at is None
+    assert credential.delivery_claimed_at is None
+    assert credential.delivered_at is None
+    assert record._meta.ordering == ("-issued_at", "-id")  # noqa: SLF001
+    assert {index.name for index in record._meta.indexes} == {  # noqa: SLF001
+        subject_index,
+        retention_index,
+    }
+    assert str(record.subject_id) in rendered
+    assert rendered.endswith(":7")
+    assert record.digest not in rendered
+    digest_field = record._meta.get_field("digest")  # noqa: SLF001
+    assert isinstance(digest_field, models.CharField)
+    assert digest_field.max_length == TOKEN_DIGEST_LENGTH
+    assert digest_field.unique is True
 
 
 @pytest.mark.unit

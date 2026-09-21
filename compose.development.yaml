@@ -735,10 +735,9 @@ services:
       test:
         - CMD-SHELL
         - >-
-          celery -A config inspect ping
+          exec python scripts/celery_worker_health.py
           --destination celery@celery-worker-cw8rt
           --timeout "$$CELERY_WORKER_HEALTH_TIMEOUT_SECONDS"
-          | grep -q pong
       interval: 15s
       timeout: 15s
       retries: 10
@@ -806,6 +805,8 @@ services:
       - --port=5555
 
     depends_on:
+      celery-worker-cw8rt:
+        condition: service_healthy
       rabbitmq-rq4sx:
         condition: service_healthy
 

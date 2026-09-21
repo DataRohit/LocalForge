@@ -17,6 +17,7 @@ from django.conf import settings
 from django.core.management import call_command
 from django.db import connections
 from django.utils import timezone
+from kombu import Exchange, Producer
 
 from accounts.models import ActivationToken, PasswordResetToken, UsernameResetToken
 from config.celery import app
@@ -141,6 +142,66 @@ class SlowWorkerProbeTask(Protocol):
         ...
 
 
+class WorkerHealthProbeTask(Protocol):
+    """Callable worker-health probe task interface.
+
+    Inherits from ``Protocol`` and exposes direct execution plus bounded publication without a
+    result backend, retaining the concrete surface Celery's dynamic decorator does not publish.
+
+    Attributes:
+        app: Celery application the deployed worker loads.
+        name: Registered task name used by the health command.
+
+    Members:
+        __call__: Publish one transient health reply.
+        apply_async: Enqueue one bounded health probe.
+    """
+
+    app: Celery
+    name: str
+
+    def __call__(self, probe_id: str, reply_name: str) -> None:
+        """Publish one immediate health reply.
+
+        Models direct task execution while preserving the transient reply contract used by the
+        deployed health command.
+
+        Arguments:
+            probe_id: Opaque caller-owned identifier.
+            reply_name: Transient reply exchange and queue name.
+
+        Returns:
+            None.
+        """
+        ...
+
+    def apply_async(
+        self,
+        args: tuple[str, str],
+        *,
+        producer: object,
+        expires: float,
+        soft_time_limit: float,
+        time_limit: float,
+    ) -> AsyncResult:
+        """Publish one bounded health probe.
+
+        Uses the caller-owned producer, broker expiry, and execution limits while returning a
+        handle the health command deliberately ignores because the task stores no result.
+
+        Arguments:
+            args: Opaque probe identifier and transient reply name.
+            producer: Explicit context-managed Kombu producer.
+            expires: Broker delivery expiry.
+            soft_time_limit: Cooperative execution limit.
+            time_limit: Hard execution limit.
+
+        Returns:
+            Celery result handle with no backend state.
+        """
+        ...
+
+
 class PeriodicMaintenanceTask(Protocol):
     """Callable periodic maintenance task interface.
 
@@ -207,6 +268,42 @@ def run_worker_probe(probe_id: str) -> str:
         The supplied probe identifier.
     """
     return probe_id
+
+
+def run_worker_health_probe(probe_id: str, reply_name: str) -> None:
+    """Publish one transient worker-health reply.
+
+    Opens explicitly managed broker resources in the worker child and sends the opaque identifier
+    to the caller's auto-deleting direct exchange without creating a result-backend record.
+
+    Arguments:
+        probe_id: Opaque caller-owned identifier.
+        reply_name: Transient reply exchange and queue name.
+
+    Returns:
+        None.
+
+    Raises:
+        KombuError: If the broker refuses the transient reply.
+    """
+    exchange = Exchange(
+        reply_name,
+        type="direct",
+        durable=False,
+        auto_delete=True,
+    )
+    with (
+        app.connection_for_write() as connection,
+        Producer(connection) as producer,
+    ):
+        producer.publish(
+            {"probe_id": probe_id},
+            exchange=exchange,
+            routing_key=reply_name,
+            serializer="json",
+            retry=False,
+            delivery_mode="transient",
+        )
 
 
 def run_slow_worker_probe(task: Task, probe_id: str, delay_seconds: float) -> str:
@@ -387,6 +484,11 @@ def run_cleanup_expired_account_tokens() -> dict[str, int]:
 worker_probe = cast(
     "WorkerProbeTask",
     app.task(name="config.worker_probe")(run_worker_probe),
+)
+
+worker_health_probe = cast(
+    "WorkerHealthProbeTask",
+    app.task(name="config.worker_health_probe", ignore_result=True)(run_worker_health_probe),
 )
 
 slow_worker_probe = cast(

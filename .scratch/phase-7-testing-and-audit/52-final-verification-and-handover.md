@@ -33,6 +33,8 @@ matching what was actually built.
 - [ ] Every release-lag gate is recorded as resolved in its decision record, naming which fallback was taken.
 - [ ] Documentation is reconciled with reality: any place where the built system differs from what
       `docs/` describes is corrected in `docs/`, not left as a known discrepancy.
+- [ ] The freshly started stack completes an idle and exercised observation window with all services healthy and no
+      unexplained warning-or-higher logs; the handover includes the commands, window, expected records, and findings.
 - [ ] The handover report lists what was built, what was deferred, every accepted risk, and the review dates that
       fall due, including the message broker's community support window.
 - [ ] Work stops here. No application feature beyond the documented surface is started.
