@@ -8,8 +8,8 @@ services:
       - .env.development
 
     ports:
-      - "8080:80"
-      - "8081:8080"
+      - "127.0.0.1:8080:80"
+      - "127.0.0.1:8081:8080"
 
     networks:
       - edge-net-ne2vk
@@ -42,6 +42,7 @@ services:
     build:
       context: .
       dockerfile: docker/pgbackrest/Dockerfile
+      provenance: false
     container_name: postgres-pg3ka
     restart: unless-stopped
 
@@ -49,7 +50,7 @@ services:
       - .env.development
 
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
 
     networks:
       data-net-nd9pc:
@@ -80,7 +81,7 @@ services:
       - .env.development
 
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
 
     networks:
       - data-net-nd9pc
@@ -114,6 +115,7 @@ services:
     build:
       context: .
       dockerfile: docker/pgbackrest/Dockerfile
+      provenance: false
     container_name: pgbackrest-pb2wj
     restart: on-failure:5
     user: postgres
@@ -152,7 +154,7 @@ services:
       - .env.development
 
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
 
     networks:
       - app-net-na6hy
@@ -187,7 +189,7 @@ services:
       - .env.development
 
     ports:
-      - "6380:6379"
+      - "127.0.0.1:6380:6379"
 
     networks:
       - app-net-na6hy
@@ -221,8 +223,8 @@ services:
       - .env.development
 
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
 
     networks:
       - app-net-na6hy
@@ -251,10 +253,7 @@ services:
       - .env.development
 
     ports:
-      - "9333:9333"
-      - "8082:8080"
-      - "8888:8888"
-      - "8333:8333"
+      - "127.0.0.1:8333:8333"
 
     networks:
       - app-net-na6hy
@@ -296,8 +295,8 @@ services:
       - .env.development
 
     ports:
-      - "1025:1025"
-      - "8025:8025"
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
 
     networks:
       - app-net-na6hy
@@ -330,12 +329,8 @@ services:
     env_file:
       - .env.development
 
-    ports:
-      - "8090:8080"
-
     networks:
       - obsv-net-nb4xt
-      - access-net-ha4mz
 
     volumes:
       - /:/rootfs:ro
@@ -358,13 +353,9 @@ services:
     env_file:
       - .env.development
 
-    ports:
-      - "9187:9187"
-
     networks:
       - data-net-nd9pc
       - obsv-net-nb4xt
-      - access-net-ha4mz
 
     volumes:
       - ./docker/postgres-exporter/auth_modules.yaml:/etc/pe/auth_modules.yaml.template:ro
@@ -395,13 +386,9 @@ services:
     env_file:
       - .env.development
 
-    ports:
-      - "9121:9121"
-
     networks:
       - app-net-na6hy
       - obsv-net-nb4xt
-      - access-net-ha4mz
 
     command:
       - --redis.addr=redis://valkey-cache-vc5tn:6379
@@ -415,13 +402,9 @@ services:
     env_file:
       - .env.development
 
-    ports:
-      - "9122:9121"
-
     networks:
       - app-net-na6hy
       - obsv-net-nb4xt
-      - access-net-ha4mz
 
     command:
       - --redis.addr=redis://valkey-channels-vh8dm:6379
@@ -435,12 +418,8 @@ services:
     env_file:
       - .env.development
 
-    ports:
-      - "3100:3100"
-
     networks:
       - obsv-net-nb4xt
-      - access-net-ha4mz
 
     volumes:
       - loki-lk3ny-data:/loki
@@ -458,12 +437,8 @@ services:
     env_file:
       - .env.development
 
-    ports:
-      - "12345:12345"
-
     networks:
       - obsv-net-nb4xt
-      - access-net-ha4mz
 
     depends_on:
       loki-lk3ny:
@@ -500,12 +475,8 @@ services:
     env_file:
       - .env.development
 
-    ports:
-      - "9090:9090"
-
     networks:
       - obsv-net-nb4xt
-      - access-net-ha4mz
 
     depends_on:
       postgres-exporter-pe4rk:
@@ -547,7 +518,7 @@ services:
       - .env.development
 
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
 
     networks:
       - obsv-net-nb4xt
@@ -593,7 +564,7 @@ services:
       - .env.development
 
     ports:
-      - "5050:80"
+      - "127.0.0.1:5050:80"
 
     networks:
       - data-net-nd9pc
@@ -631,6 +602,7 @@ services:
     build:
       context: .
       dockerfile: docker/django/Dockerfile
+      provenance: false
       target: runtime
     container_name: django-uv5n2
     restart: unless-stopped
@@ -698,6 +670,7 @@ services:
     build:
       context: .
       dockerfile: docker/django/Dockerfile
+      provenance: false
       target: runtime
     container_name: celery-worker-cw8rt
     hostname: celery-worker-cw8rt
@@ -720,7 +693,7 @@ services:
       - --loglevel=${DJANGO_LOG_LEVEL}
       - --concurrency=${CELERY_WORKER_CONCURRENCY}
       - --prefetch-multiplier=${CELERY_WORKER_PREFETCH_MULTIPLIER}
-      - --queues=${CELERY_DEFAULT_QUEUE},${CELERY_SLOW_QUEUE}
+      - --queues=localforge.v2.default,localforge.v2.slow
       - --events
 
     depends_on:
@@ -748,6 +721,7 @@ services:
     build:
       context: .
       dockerfile: docker/django/Dockerfile
+      provenance: false
       target: runtime
     container_name: celery-beat-cb4hq
     hostname: celery-beat-cb4hq
@@ -782,6 +756,7 @@ services:
     build:
       context: .
       dockerfile: docker/django/Dockerfile
+      provenance: false
       target: runtime
     container_name: flower-fl9zd
     hostname: flower-fl9zd
@@ -791,7 +766,7 @@ services:
       - .env.development
 
     ports:
-      - "5555:5555"
+      - "127.0.0.1:5555:5555"
 
     networks:
       - app-net-na6hy

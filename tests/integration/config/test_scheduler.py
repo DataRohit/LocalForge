@@ -99,6 +99,68 @@ def test_database_schedules_are_seeded_editable_and_persistent() -> None:
 
 @pytest.mark.integration
 @pytest.mark.services("postgres")
+@pytest.mark.django_db(databases=["default", "replica"], transaction=True)
+def test_persisted_schedules_migrate_to_versioned_broker_queues() -> None:
+    """Version every persisted queue route without losing schedule state.
+
+    Seeds representative default, slow, and dead-letter routes, applies the forward and reverse
+    data migration, and proves only queue names change.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any legacy route remains or reversal loses its original value.
+    """
+    schedules = import_module("accounts.migrations.0008_schedule_maintenance")
+    queues = import_module("accounts.migrations.0009_version_celery_queues")
+    with connections["default"].schema_editor() as schema_editor:
+        schedules.seed_schedules(django_apps, schema_editor)
+
+    jwt = PeriodicTask.objects.using("default").get(name=JWT_SCHEDULE_NAME)
+    tombstones = PeriodicTask.objects.using("default").get(name=TOMBSTONE_SCHEDULE_NAME)
+    jwt.queue = queues.LEGACY_DEFAULT_QUEUE
+    jwt.save(using="default", update_fields=("queue",))
+    tombstones.queue = queues.LEGACY_SLOW_QUEUE
+    tombstones.save(using="default", update_fields=("queue",))
+    dead_letter = PeriodicTask.objects.using("default").create(
+        name="localforge.queue-migration-dead-letter",
+        task=TOMBSTONE_TASK_NAME,
+        interval=tombstones.interval,
+        queue=queues.LEGACY_DEAD_LETTER_QUEUE,
+        enabled=False,
+    )
+
+    with connections["default"].schema_editor() as schema_editor:
+        queues.version_queues(django_apps, schema_editor)
+
+    jwt.refresh_from_db(using="default")
+    tombstones.refresh_from_db(using="default")
+    dead_letter.refresh_from_db(using="default")
+    assert jwt.queue == queues.VERSIONED_DEFAULT_QUEUE
+    assert tombstones.queue == queues.VERSIONED_SLOW_QUEUE
+    assert dead_letter.queue == queues.VERSIONED_DEAD_LETTER_QUEUE
+
+    with connections["default"].schema_editor() as schema_editor:
+        queues.restore_queues(django_apps, schema_editor)
+
+    jwt.refresh_from_db(using="default")
+    tombstones.refresh_from_db(using="default")
+    dead_letter.refresh_from_db(using="default")
+    assert jwt.queue == queues.LEGACY_DEFAULT_QUEUE
+    assert tombstones.queue == queues.LEGACY_SLOW_QUEUE
+    assert dead_letter.queue == queues.LEGACY_DEAD_LETTER_QUEUE
+
+    dead_letter.delete(using="default")
+    with connections["default"].schema_editor() as schema_editor:
+        schedules.remove_schedules(django_apps, schema_editor)
+
+
+@pytest.mark.integration
+@pytest.mark.services("postgres")
 def test_scheduler_models_are_available_through_the_django_admin() -> None:
     """Expose persisted schedules through the existing administration interface.
 

@@ -130,7 +130,9 @@ is `127.0.0.1:8000:8000`, so host diagnostics remain available without exposing 
 **A published host port does not work on an internal network.** Docker drops the publication silently — no warning,
 no error, no non-zero exit — so the container runs healthily while the port is unreachable. Every service the
 inventory gives a host port therefore also joins its environment's access zone, which is the only reason those two
-zones exist. Measured 2026-09-13; see
+zones exist. The inverse is enforced: a service without a host publication must not join an access zone, because
+doing so restores internet egress despite its internal service network. Measured 2026-09-13 and re-audited
+2026-09-22; see
 [../adr/0021-access-zone-for-published-ports.md](../adr/0021-access-zone-for-published-ports.md).
 
 ### 2.5 Volumes
@@ -272,9 +274,6 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `CELERY_BROKER_URL` | `celery-worker-cw8rt` | AMQP URL | composed from the five above | **yes** | yes |
 | `CELERY_RESULT_BACKEND` | `celery-worker-cw8rt` | result store, DB 1 | composed | **yes** | yes |
 | `CELERY_TASK_ALWAYS_EAGER` | `django-test-dt5qx` | run tasks inline | `false` dev, `true` testing | no | no |
-| `CELERY_DEFAULT_QUEUE` | `celery-worker-cw8rt` | default queue for bounded ordinary work | `localforge.default` | no | yes |
-| `CELERY_SLOW_QUEUE` | `celery-worker-cw8rt` | isolated queue for work that may occupy a worker slot | `localforge.slow` | no | yes |
-| `CELERY_DEAD_LETTER_QUEUE` | `celery-worker-cw8rt` | terminal scrubbed failure records after retry exhaustion | `localforge.dead-letter` | no | yes |
 | `CELERY_WORKER_CONCURRENCY` | `celery-worker-cw8rt` | worker process concurrency | `2` | no | yes |
 | `CELERY_WORKER_PREFETCH_MULTIPLIER` | `celery-worker-cw8rt` | tasks reserved per worker process | `1` | no | yes |
 | `CELERY_WORKER_SHUTDOWN_TIMEOUT_SECONDS` | `celery-worker-cw8rt` | bounded grace period for in-flight tasks during stop | `300` | no | yes |
@@ -291,6 +290,7 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `EMAIL_HOST` | `django-uv5n2` | SMTP host | `mailpit-mp6gb` | no | yes |
 | `EMAIL_PORT` | `django-uv5n2` | SMTP port | `1025` | no | yes |
 | `MAILPIT_WEB_PORT` | `mailpit-mp6gb` | web and readiness port the dependency gate probes | `8025` | no | no |
+| `MP_UI_AUTH` | `mailpit-mp6gb` | web UI and API Basic authentication credentials | `<GENERATED>` | **yes** | yes |
 | `DEFAULT_FROM_EMAIL` | `django-uv5n2` | envelope sender | `no-reply@localforge.invalid` | no | yes |
 | `DJANGO_SITE_NAME` | `django-uv5n2` | application name rendered in email | `LocalForge` | no | yes |
 | `DJANGO_SITE_URL` | `django-uv5n2` | absolute base URL for email links | `http://localforge.localhost:8080` | no | yes |
@@ -458,7 +458,7 @@ image with no Python. The development machine is Windows, so a `.sh` entrypoint 
 | --- | --- |
 | Responsibility | Create or top up `.env.development`, `.env.testing`, `.env.testing.host` |
 | Inputs | `--environment {development,testing,all}`, `--force`; `.env.example` is the variable manifest |
-| Generation | Independent `secrets.token_urlsafe(64)` values for `DJANGO_SECRET_KEY`, `DJANGO_JWT_SIGNING_KEY`, and `DJANGO_API_THROTTLE_IDENTITY_HMAC_KEY`; `token_urlsafe(32)` for passwords; `token_hex(20)` for S3 keys; bcrypt at cost 12 for `TRAEFIK_DASHBOARD_AUTH`, which is **composed from** `TRAEFIK_DASHBOARD_PASSWORD` rather than from a password thrown away at generation, because a dashboard credential nobody holds cannot be used to log in. `FLOWER_BASIC_AUTH` is a **plaintext** `user:password` pair, because Flower compares its configured value literally — hashing it would make the digest itself the password. `FLOWER_BROKER_API` is composed from the existing RabbitMQ credential and management endpoint, so queue-depth access creates no second broker secret. Generated plaintext files remain comment-free and use blank lines between logical service groups; encrypted SOPS dotenv files cannot preserve those separators. |
+| Generation | Independent `secrets.token_urlsafe(64)` values for `DJANGO_SECRET_KEY`, `DJANGO_JWT_SIGNING_KEY`, and `DJANGO_API_THROTTLE_IDENTITY_HMAC_KEY`; `token_urlsafe(32)` for passwords; `token_hex(20)` for S3 keys; bcrypt at cost 12 for `TRAEFIK_DASHBOARD_AUTH`, which is **composed from** `TRAEFIK_DASHBOARD_PASSWORD` rather than from a password thrown away at generation, because a dashboard credential nobody holds cannot be used to log in. `FLOWER_BASIC_AUTH` and `MP_UI_AUTH` are **plaintext** `user:password` pairs, because those services compare their configured values literally — hashing one would make the digest itself the password. `FLOWER_BROKER_API` is composed from the existing RabbitMQ credential and management endpoint, so queue-depth access creates no second broker secret. Generated plaintext files remain comment-free and use blank lines between logical service groups; encrypted SOPS dotenv files cannot preserve those separators. |
 | HMAC startup validation | Requires the exact unpadded textual alphabet `[A-Za-z0-9_-]+`, rejecting standard Base64 `+` and `/` plus `=` padding, then decodes at least 32 bytes and rejects clearly degenerate repeated bytes or known placeholder text. The decoded bytes, not their encoded text, are the runtime HMAC key. The encoded value must remain distinct from both signing keys. These structural checks do not prove randomness; `scripts/gen_secrets.py` remains the only supported source and uses `secrets.token_urlsafe(64)` |
 | Quoting | A value containing `$` is written single-quoted. Compose expands unquoted values in **both** `env_file:` and `--env-file`, so a bare bcrypt hash loses everything from its third `$` onward and yields a credential that cannot authenticate. Verified against Compose v5.5.1 on 2026-09-13 |
 | Idempotency | Default run **never overwrites an existing value**, and never discards one it does not recognise; it appends only absent variables, so adding an inventory row fills the gap without invalidating a running stack. A composed value is derived when absent and **refused when present but disagreeing** with the variables it is built from, because the generator cannot prove whether such a value is stale or a deliberate edit. `--force` regenerates everything and warns that credential-derived volumes must be recreated |
@@ -529,11 +529,33 @@ resolve an external name. Invoke `uv run python -m scripts.audit_naming` with
 `--environment {development,testing,all}`. Exit `0` clean; `1` violations, printed as
 `FAIL convention <check> <object> <detail>`.
 
-### 4.9 `scripts/run_tests.py`
+### 4.9 `scripts/audit_security.py`
+
+Runs the Phase 7 security gates without printing secret values. Scopes are `deployment`, `history`,
+`dependencies`, `images`, `runtime`, and `all`. The deployment scope requires exactly the four warnings created by
+the documented local plaintext transport. The history scope uses pinned Gitleaks 8.28.0 with `--log-opts=--all` to
+scan every revision reachable from any ref plus an isolated snapshot of every current tracked and untracked
+non-ignored project file, always with redaction and the exact anchored fixture allowlist in `.gitleaks.toml`; a
+separate staged scan reads index blobs rather than their working-tree paths. The dependency scope exports the
+locked runtime resolution and runs pinned `pip-audit` 2.10.1.
+
+The image scope runs pinned Trivy 0.68.2 against every unique registered local image and compares normalized
+fixable high/critical findings with
+[../security/image-vulnerability-policy.json](../security/image-vulnerability-policy.json). The policy stores the
+exact result digest, package finding count, vulnerability identifiers, and image-filesystem secret findings for
+each image, together with its immutable Docker and Trivy artifact IDs. Every required live container must run that
+identity, and Trivy scans the identity rather than a mutable tag. Any added, removed, or changed finding fails until
+a dated review updates both policy and findings document. Scanner output must have the complete Trivy image-report
+schema. The runtime scope proves exact dashboard
+rejection, explicit TCP refusal on private ports, exact broker accounts, and absence of every manifest-generated
+credential from image history metadata and all retained required-container logs. Exit `0` all selected checks pass;
+`1` at least one named scope fails.
+
+### 4.10 `scripts/run_tests.py`
 
 `--mode {container,host,both}`. Exit `0` both pass; `1` container failed; `2` host failed; `3` both failed.
 
-### 4.10 `scripts/check_docstrings.py`
+### 4.11 `scripts/check_docstrings.py`
 
 Enforces the documentation standard in [documentation-standard.md](./documentation-standard.md), which is the part
 of [../adr/0020-no-comments-structured-docstrings.md](../adr/0020-no-comments-structured-docstrings.md) that the
@@ -547,7 +569,7 @@ file written by `makemigrations` cannot be held to a hand-written standard.
 Exit `0` clean; `1` violations, printed one per line as `FAIL <path>:<line> <rule> <detail>` followed by a count.
 Runs in `uv run poe check` and as a pre-commit hook.
 
-### 4.11 `scripts/manage_platform.py`
+### 4.12 `scripts/manage_platform.py`
 
 Cross-platform operator adapter exposed by the `uv run poe ...` tasks. It centralizes Compose file selection,
 environment preparation, safe rebuilds, explicitly destructive resets, readiness checks, logs, and host/container
@@ -574,7 +596,7 @@ work begins.
 Exit `0` means every requested step passed. A child command's non-zero status is returned unchanged; usage and
 missing-environment-file refusals return `2`.
 
-### 4.12 `scripts/celery_worker_health.py`
+### 4.13 `scripts/celery_worker_health.py`
 
 Compose-only health command for `celery-worker-cw8rt`; it is not a host operator workflow. Inputs are
 `--destination celery@celery-worker-cw8rt` and `--timeout`, supplied from

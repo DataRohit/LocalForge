@@ -14,28 +14,28 @@ would otherwise have surfaced as a mysterious failure at build time.
 
 | Container name | Role | Host ports | Internal | Networks |
 | --- | --- | --- | --- | --- |
-| `traefik-tk2jp` | reverse proxy, Docker label discovery | `8080` web, `8081` dashboard | 80, 8080 | `edge-net-ne2vk` |
+| `traefik-tk2jp` | reverse proxy, Docker label discovery | `127.0.0.1:8080` web, `127.0.0.1:8081` dashboard | 80, 8080, 8082 health internal only | `edge-net-ne2vk` |
 | `django-uv5n2` | Django ASGI app plus observability-only metrics listener | `127.0.0.1:8000` | 8000 app, 8001 metrics on `obsv-net-nb4xt` only | `edge-net-ne2vk`, `app-net-na6hy`, `data-net-nd9pc`, `obsv-net-nb4xt`, `access-net-ha4mz` |
-| `postgres-pg3ka` | PostgreSQL 18.6 primary | `5432` | 5432 | `data-net-nd9pc`, `access-net-ha4mz` |
-| `postgres-replica-pg6vy` | PostgreSQL 18.6 hot standby | `5433` | 5432 | `data-net-nd9pc`, `access-net-ha4mz` |
+| `postgres-pg3ka` | PostgreSQL 18.6 primary | `127.0.0.1:5432` | 5432 | `data-net-nd9pc`, `access-net-ha4mz` |
+| `postgres-replica-pg6vy` | PostgreSQL 18.6 hot standby | `127.0.0.1:5433` | 5432 | `data-net-nd9pc`, `access-net-ha4mz` |
 | `pgbackrest-pb2wj` | backup agent, scheduled | none | — | `data-net-nd9pc` |
-| `pgadmin-pa7fe` | PostgreSQL dashboard | `5050` | 80 | `data-net-nd9pc`, `access-net-ha4mz` |
-| `valkey-cache-vc5tn` | cache (DB 0) + Celery results (DB 1) | `6379` | 6379 | `app-net-na6hy`, `access-net-ha4mz` |
-| `valkey-channels-vh8dm` | Channels layer | `6380` | 6379 | `app-net-na6hy`, `access-net-ha4mz` |
-| `rabbitmq-rq4sx` | Celery broker | `5672` AMQP, `15672` management | 5672, 15672, 15692 | `app-net-na6hy`, `access-net-ha4mz` |
+| `pgadmin-pa7fe` | PostgreSQL dashboard | `127.0.0.1:5050` | 80 | `data-net-nd9pc`, `access-net-ha4mz` |
+| `valkey-cache-vc5tn` | cache (DB 0) + Celery results (DB 1) | `127.0.0.1:6379` | 6379 | `app-net-na6hy`, `access-net-ha4mz` |
+| `valkey-channels-vh8dm` | Channels layer | `127.0.0.1:6380` | 6379 | `app-net-na6hy`, `access-net-ha4mz` |
+| `rabbitmq-rq4sx` | Celery broker | `127.0.0.1:5672` AMQP, `127.0.0.1:15672` management | 5672, 15672, 15692 | `app-net-na6hy`, `access-net-ha4mz` |
 | `celery-worker-cw8rt` | task worker | none | — | `app-net-na6hy`, `data-net-nd9pc` |
 | `celery-beat-cb4hq` | periodic task scheduler, including daily credential cleanup | none | — | `app-net-na6hy`, `data-net-nd9pc` |
-| `flower-fl9zd` | Celery dashboard | `5555` | 5555 | `app-net-na6hy`, `access-net-ha4mz` |
-| `mailpit-mp6gb` | SMTP capture | `1025` SMTP, `8025` web | 1025, 8025 | `app-net-na6hy`, `access-net-ha4mz` |
-| `seaweedfs-sw9cr` | S3 storage, all-in-one | `9333` master, `8082` volume, `8888` filer, `8333` S3 | 9333, 8080, 8888, 8333 | `app-net-na6hy`, `access-net-ha4mz` |
-| `prometheus-pm5db` | metrics collection | `9090` | 9090 | `obsv-net-nb4xt`, `access-net-ha4mz` |
-| `grafana-gf7qv` | metrics + logs visualization | `3000` | 3000 | `obsv-net-nb4xt`, `access-net-ha4mz` |
-| `loki-lk3ny` | log storage and query | `3100` | 3100 | `obsv-net-nb4xt`, `access-net-ha4mz` |
-| `alloy-al6wz` | log collection | `12345` | 12345 | `obsv-net-nb4xt`, `access-net-ha4mz` |
-| `cadvisor-cv8mh` | container metrics | `8090` | 8080 | `obsv-net-nb4xt`, `access-net-ha4mz` |
-| `postgres-exporter-pe4rk` | PostgreSQL metrics, both nodes | `9187` | 9187 | `data-net-nd9pc`, `obsv-net-nb4xt`, `access-net-ha4mz` |
-| `valkey-cache-exporter-ve7ts` | cache Valkey metrics | `9121` | 9121 | `app-net-na6hy`, `obsv-net-nb4xt`, `access-net-ha4mz` |
-| `valkey-channels-exporter-vx4nq` | channels Valkey metrics | `9122` | 9121 | `app-net-na6hy`, `obsv-net-nb4xt`, `access-net-ha4mz` |
+| `flower-fl9zd` | Celery dashboard | `127.0.0.1:5555` | 5555 | `app-net-na6hy`, `access-net-ha4mz` |
+| `mailpit-mp6gb` | SMTP capture | `127.0.0.1:1025` SMTP, `127.0.0.1:8025` web | 1025, 8025 | `app-net-na6hy`, `access-net-ha4mz` |
+| `seaweedfs-sw9cr` | S3 storage, all-in-one | `127.0.0.1:8333` S3 only | 9333 master, 8080 volume, 8888 filer, 8333 S3 | `app-net-na6hy`, `access-net-ha4mz` |
+| `prometheus-pm5db` | metrics collection | none | 9090 | `obsv-net-nb4xt` |
+| `grafana-gf7qv` | metrics + logs visualization | `127.0.0.1:3000` | 3000 | `obsv-net-nb4xt`, `access-net-ha4mz` |
+| `loki-lk3ny` | log storage and query | none | 3100 | `obsv-net-nb4xt` |
+| `alloy-al6wz` | log collection | none | 12345 | `obsv-net-nb4xt` |
+| `cadvisor-cv8mh` | container metrics | none | 8080 | `obsv-net-nb4xt` |
+| `postgres-exporter-pe4rk` | PostgreSQL metrics, both nodes | none | 9187 | `data-net-nd9pc`, `obsv-net-nb4xt` |
+| `valkey-cache-exporter-ve7ts` | cache Valkey metrics | none | 9121 | `app-net-na6hy`, `obsv-net-nb4xt` |
+| `valkey-channels-exporter-vx4nq` | channels Valkey metrics | none | 9121 | `app-net-na6hy`, `obsv-net-nb4xt` |
 
 ### 1.1 Why two Valkey exporters
 
@@ -59,14 +59,14 @@ Each is a deliberate remap. Reverting one reintroduces a collision.
 
 | Service | Default | Published as | Reason |
 | --- | --- | --- | --- |
-| `seaweedfs-sw9cr` volume | 8080 | `8082` | `traefik-tk2jp` owns host 8080 |
-| `cadvisor-cv8mh` | 8080 | `8090` | same |
 | `postgres-replica-pg6vy` | 5432 | `5433` | both PostgreSQL nodes reachable from the host at once |
 | `valkey-channels-vh8dm` | 6379 | `6380` | both Valkey instances reachable at once |
-| `valkey-channels-exporter-vx4nq` | 9121 | `9122` | both exporters reachable at once |
 
-The direct Django publication is additionally bound to host loopback. It remains useful for local diagnostics and
-health checks, but Traefik is the only remotely reachable application entry point. `edge-net-ne2vk` is fixed at
+Every published development port is bound to host loopback. Native SeaweedFS administration, Prometheus, Loki,
+Alloy, cAdvisor, and exporter ports remain container-internal; Grafana is the authenticated observability surface.
+Services without a host publication do not join the non-internal access zone, so the observability backends and
+exporters retain only their internal service networks and cannot reach the internet.
+The direct Django publication remains useful for local diagnostics and health checks. `edge-net-ne2vk` is fixed at
 `10.89.2.0/24`; Django trusts forwarded client addresses only when the immediate peer belongs to that explicit
 proxy subnet. The Traefik web entrypoint keeps insecure forwarded-header trust disabled, replaces untrusted client
 metadata, and supplies its own standard forwarded address. Testing has no trusted proxy subnet and uses
@@ -240,7 +240,7 @@ must not recur in a post-readiness exercise window:
 | `prometheus-pm5db` | `A lockfile from a previous execution already existed. It was replaced` | A source-preserving Docker recreation can leave the exclusive-volume lock file behind after the old container has stopped. WAL replay and `/-/ready` must pass, and only one container may own the volume. |
 | `pgadmin-pa7fe` | Python `SyntaxWarning: 'return' in a 'finally' block` from `sshtunnel.py` | pgAdmin's vendored dependency is compiled during Python 3.14 startup and warns about syntax that remains executable. The warning must occur only before readiness; the dashboard health check and authenticated database connection must pass. |
 | `rabbitmq-rq4sx` | deprecated `management_metrics_collection` warning | RabbitMQ 4.3 reports the management plugin's metrics collector that Flower uses for queue depth. The authenticated management API and Prometheus endpoint must both pass. |
-| `rabbitmq-*` | deprecated `global_qos` error followed by worker readiness | Celery 5.6.3 requests RabbitMQ's pre-3.3 global QoS scope during worker bootstrap. RabbitMQ 4.3 refuses that deprecated scope, Celery continues with supported consumer prefetch, and a queued round trip plus the configured prefetch count must pass. |
+| `rabbitmq-*` | none for worker QoS | Consumed task queues are quorum queues and Celery detects that topology, so it uses consumer-scoped QoS instead of RabbitMQ's removed global QoS mode. Any `global_qos` record is a blocker. |
 | `rabbitmq-tr6mc` | `client unexpectedly closed TCP connection` during the bounded suite window | Separate-process worker tests use Celery's remote shutdown before their bounded fallback, but Celery and pytest worker process exit still close AMQP sockets without RabbitMQ's close handshake. This is accepted only inside an identified window whose containing mode passes collection, suite, health, ownership, and residue gates; every per-test queue must be deleted and broker health green afterward. Combined-mode parity and the other mode are evaluated separately. Any idle or non-test occurrence is a blocker. |
 | `postgres-tp8vn` | Account duplicate-key violations, the two named diagnostic-marker cast failures, or missing `accounts_login_throttle_event` during a bounded suite window | Integration tests deliberately exercise PostgreSQL uniqueness races, redacted driver diagnostics, and authoritative throttle-table loss. Only the exact registered constraint/table names and marker values are accepted, only when the containing mode passes collection, suite, health, ownership, and residue gates. Combined-mode parity and the other mode are evaluated separately. Any other PostgreSQL warning-or-higher record or any idle occurrence is a blocker. |
 | `seaweedfs-*` | info-level `Not current leader` or local gRPC socket connection failure | SeaweedFS all-in-one components begin dialing before the embedded Raft leader and local sockets exist. Both `/healthz` probes and an S3 byte round trip must pass. |
@@ -270,18 +270,17 @@ Every service either exposes a native UI or is given a companion.
 | `rabbitmq-rq4sx` | management plugin | `http://localhost:15672/` | native | `RABBITMQ_DEFAULT_USER` + `RABBITMQ_DEFAULT_PASS` |
 | `celery-worker-cw8rt` | Flower | `http://localhost:5555/` | **companion** | `FLOWER_BASIC_AUTH` |
 | `celery-beat-cb4hq` | django-celery-beat admin pages | `http://localhost:8000/admin/django_celery_beat/` | companion, via Django admin | Django superuser |
-| `mailpit-mp6gb` | Mailpit web UI | `http://localhost:8025/` | native | none locally |
-| `seaweedfs-sw9cr` | master status UI | `http://localhost:9333/` | native | none locally |
-| `seaweedfs-sw9cr` | filer browser | `http://localhost:8888/` | native | none locally |
-| `prometheus-pm5db` | expression browser, targets | `http://localhost:9090/targets` | native | none locally |
+| `mailpit-mp6gb` | Mailpit web UI | `http://localhost:8025/` | native | `MP_UI_AUTH` |
+| `seaweedfs-sw9cr` | master status and filer browser | container-internal only | native | not host-published |
+| `prometheus-pm5db` | metrics through Grafana | `http://localhost:3000/` | **companion** | Grafana login |
 | `grafana-gf7qv` | Grafana | `http://localhost:3000/` | native | `GRAFANA_ADMIN_USER` + `GRAFANA_ADMIN_PASSWORD` |
 | `loki-lk3ny` | Grafana Explore | `http://localhost:3000/explore` | **companion** | Grafana login |
-| `alloy-al6wz` | Alloy component UI | `http://localhost:12345/` | native | none locally |
-| `cadvisor-cv8mh` | cAdvisor UI | `http://localhost:8090/containers/` | native | none locally |
+| `alloy-al6wz` | component state through its internal API and Grafana-fed logs | container-internal only | native + companion | not host-published |
+| `cadvisor-cv8mh` | container metrics through Grafana | `http://localhost:3000/` | **companion** | Grafana login |
 | `pgbackrest-pb2wj` | `pgbackrest info`, plus its logs in Loki | CLI and Grafana Explore | **companion** | container shell |
-| `postgres-exporter-pe4rk` | metrics page | `http://localhost:9187/metrics` | native, minimal | none locally |
-| `valkey-cache-exporter-ve7ts` | metrics page | `http://localhost:9121/metrics` | native, minimal | none locally |
-| `valkey-channels-exporter-vx4nq` | metrics page | `http://localhost:9122/metrics` | native, minimal | none locally |
+| `postgres-exporter-pe4rk` | metrics through Grafana | `http://localhost:3000/` | **companion** | Grafana login |
+| `valkey-cache-exporter-ve7ts` | metrics through Grafana | `http://localhost:3000/` | **companion** | Grafana login |
+| `valkey-channels-exporter-vx4nq` | metrics through Grafana | `http://localhost:3000/` | **companion** | Grafana login |
 
 The schema, Swagger UI, and ReDoc entries are three optional infrastructure routes on the existing Django service.
 Their `/static/drf_spectacular_sidecar/` browser dependencies are static resources intercepted by the development
@@ -363,20 +362,20 @@ Seven services, one profile-gated. Every dashboard and UI service is dropped; no
 | Container name | Role | Host ports | Networks | Default |
 | --- | --- | --- | --- | --- |
 | `django-test-dt5qx` | persistent pytest runner, idle until explicit `compose exec` | none | `app-net-nt5rk`, `data-net-nt8fq` | yes |
-| `postgres-tp8vn` | PostgreSQL 18.6, single node | `25432` | `data-net-nt8fq`, `access-net-ht6pn` | yes |
-| `valkey-cache-tv4kq` | cache | `26379` | `app-net-nt5rk`, `access-net-ht6pn` | yes |
-| `valkey-channels-tv9zw` | Channels layer | `26380` | `app-net-nt5rk`, `access-net-ht6pn` | yes |
-| `rabbitmq-tr6mc` | Celery broker, no management plugin | `25672` | `app-net-nt5rk`, `access-net-ht6pn` | yes |
-| `seaweedfs-ts3jd` | S3 storage | `28333` S3, `29333` master, `28888` filer | `app-net-nt5rk`, `access-net-ht6pn` | yes |
-| `mailpit-tm7bh` | SMTP capture | `21025` SMTP, `28025` web | `app-net-nt5rk`, `access-net-ht6pn` | **no — profile `smtp`** |
+| `postgres-tp8vn` | PostgreSQL 18.6, single node | `127.0.0.1:25432` | `data-net-nt8fq`, `access-net-ht6pn` | yes |
+| `valkey-cache-tv4kq` | cache | `127.0.0.1:26379` | `app-net-nt5rk`, `access-net-ht6pn` | yes |
+| `valkey-channels-tv9zw` | Channels layer | `127.0.0.1:26380` | `app-net-nt5rk`, `access-net-ht6pn` | yes |
+| `rabbitmq-tr6mc` | Celery broker, no management plugin | `127.0.0.1:25672` | `app-net-nt5rk`, `access-net-ht6pn` | yes |
+| `seaweedfs-ts3jd` | S3 storage | `127.0.0.1:28333` S3 only | `app-net-nt5rk`, `access-net-ht6pn` | yes |
+| `mailpit-tm7bh` | SMTP capture | `127.0.0.1:21025` SMTP, `127.0.0.1:28025` web | `app-net-nt5rk`, `access-net-ht6pn` | **no — profile `smtp`** |
 
 Three networks, not five: there is no `edge` zone because no proxy runs, and no `obsv` zone because every
 observability service is excluded. The two service zones are `internal: true`; `access-net-ht6pn` is not, because
 every testing service publishes a host port and Docker drops a publication made from an internal network. See
 [../adr/0021-access-zone-for-published-ports.md](../adr/0021-access-zone-for-published-ports.md).
 
-Host ports are the development port plus 20000. That is what lets both stacks run at once and what makes host mode
-possible.
+Published host ports are loopback-only. Testing ports are the development port plus 20000 where a development
+publication remains; SeaweedFS master and filer are intentionally internal in both environments.
 
 `django-test-dt5qx` bind-mounts `.env.development` and `.env.testing` read-only. The suite asserts that each
 environment file carries the credentials its services were started with — a distinct password per Valkey instance,

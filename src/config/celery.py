@@ -177,9 +177,10 @@ def publish_dead_letter(record: DeadLetterRecord) -> None:
     queue_name = str(app.conf.dead_letter_queue)
     terminal_queue = Queue(
         queue_name,
-        Exchange(queue_name, type="direct", durable=True),
+        Exchange(queue_name, type="topic", durable=True),
         routing_key=queue_name,
         durable=True,
+        queue_arguments={"x-queue-type": "quorum"},
     )
     with app.connection_for_write() as connection:
         producer = Producer(connection)

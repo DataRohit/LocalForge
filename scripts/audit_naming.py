@@ -218,51 +218,35 @@ def ports(
 DEVELOPMENT_PORTS = ports(
     {
         "traefik-tk2jp": {
-            "80/tcp": ("8080", WILDCARD_HOSTS),
-            "8080/tcp": ("8081", WILDCARD_HOSTS),
+            "80/tcp": ("8080", LOOPBACK_HOSTS),
+            "8080/tcp": ("8081", LOOPBACK_HOSTS),
         },
         "django-uv5n2": {"8000/tcp": ("8000", LOOPBACK_HOSTS)},
-        "postgres-pg3ka": {"5432/tcp": ("5432", WILDCARD_HOSTS)},
-        "postgres-replica-pg6vy": {"5432/tcp": ("5433", WILDCARD_HOSTS)},
-        "pgadmin-pa7fe": {"80/tcp": ("5050", WILDCARD_HOSTS)},
-        "valkey-cache-vc5tn": {"6379/tcp": ("6379", WILDCARD_HOSTS)},
-        "valkey-channels-vh8dm": {"6379/tcp": ("6380", WILDCARD_HOSTS)},
+        "postgres-pg3ka": {"5432/tcp": ("5432", LOOPBACK_HOSTS)},
+        "postgres-replica-pg6vy": {"5432/tcp": ("5433", LOOPBACK_HOSTS)},
+        "pgadmin-pa7fe": {"80/tcp": ("5050", LOOPBACK_HOSTS)},
+        "valkey-cache-vc5tn": {"6379/tcp": ("6379", LOOPBACK_HOSTS)},
+        "valkey-channels-vh8dm": {"6379/tcp": ("6380", LOOPBACK_HOSTS)},
         "rabbitmq-rq4sx": {
-            "5672/tcp": ("5672", WILDCARD_HOSTS),
-            "15672/tcp": ("15672", WILDCARD_HOSTS),
+            "5672/tcp": ("5672", LOOPBACK_HOSTS),
+            "15672/tcp": ("15672", LOOPBACK_HOSTS),
         },
-        "flower-fl9zd": {"5555/tcp": ("5555", WILDCARD_HOSTS)},
+        "flower-fl9zd": {"5555/tcp": ("5555", LOOPBACK_HOSTS)},
         "mailpit-mp6gb": {
-            "1025/tcp": ("1025", WILDCARD_HOSTS),
-            "8025/tcp": ("8025", WILDCARD_HOSTS),
+            "1025/tcp": ("1025", LOOPBACK_HOSTS),
+            "8025/tcp": ("8025", LOOPBACK_HOSTS),
         },
-        "seaweedfs-sw9cr": {
-            "9333/tcp": ("9333", WILDCARD_HOSTS),
-            "8080/tcp": ("8082", WILDCARD_HOSTS),
-            "8888/tcp": ("8888", WILDCARD_HOSTS),
-            "8333/tcp": ("8333", WILDCARD_HOSTS),
-        },
-        "prometheus-pm5db": {"9090/tcp": ("9090", WILDCARD_HOSTS)},
-        "grafana-gf7qv": {"3000/tcp": ("3000", WILDCARD_HOSTS)},
-        "loki-lk3ny": {"3100/tcp": ("3100", WILDCARD_HOSTS)},
-        "alloy-al6wz": {"12345/tcp": ("12345", WILDCARD_HOSTS)},
-        "cadvisor-cv8mh": {"8080/tcp": ("8090", WILDCARD_HOSTS)},
-        "postgres-exporter-pe4rk": {"9187/tcp": ("9187", WILDCARD_HOSTS)},
-        "valkey-cache-exporter-ve7ts": {"9121/tcp": ("9121", WILDCARD_HOSTS)},
-        "valkey-channels-exporter-vx4nq": {"9121/tcp": ("9122", WILDCARD_HOSTS)},
+        "seaweedfs-sw9cr": {"8333/tcp": ("8333", LOOPBACK_HOSTS)},
+        "grafana-gf7qv": {"3000/tcp": ("3000", LOOPBACK_HOSTS)},
     }
 )
 TESTING_PORTS = ports(
     {
-        "postgres-tp8vn": {"5432/tcp": ("25432", WILDCARD_HOSTS)},
-        "valkey-cache-tv4kq": {"6379/tcp": ("26379", WILDCARD_HOSTS)},
-        "valkey-channels-tv9zw": {"6379/tcp": ("26380", WILDCARD_HOSTS)},
-        "rabbitmq-tr6mc": {"5672/tcp": ("25672", WILDCARD_HOSTS)},
-        "seaweedfs-ts3jd": {
-            "8333/tcp": ("28333", WILDCARD_HOSTS),
-            "8888/tcp": ("28888", WILDCARD_HOSTS),
-            "9333/tcp": ("29333", WILDCARD_HOSTS),
-        },
+        "postgres-tp8vn": {"5432/tcp": ("25432", LOOPBACK_HOSTS)},
+        "valkey-cache-tv4kq": {"6379/tcp": ("26379", LOOPBACK_HOSTS)},
+        "valkey-channels-tv9zw": {"6379/tcp": ("26380", LOOPBACK_HOSTS)},
+        "rabbitmq-tr6mc": {"5672/tcp": ("25672", LOOPBACK_HOSTS)},
+        "seaweedfs-ts3jd": {"8333/tcp": ("28333", LOOPBACK_HOSTS)},
     }
 )
 DEVELOPMENT_MEMBERSHIPS = {
@@ -288,18 +272,14 @@ DEVELOPMENT_MEMBERSHIPS = {
     "flower-fl9zd": frozenset({"app-net-na6hy", "access-net-ha4mz"}),
     "mailpit-mp6gb": frozenset({"app-net-na6hy", "access-net-ha4mz"}),
     "seaweedfs-sw9cr": frozenset({"app-net-na6hy", "access-net-ha4mz"}),
-    "prometheus-pm5db": frozenset({"obsv-net-nb4xt", "access-net-ha4mz"}),
+    "prometheus-pm5db": frozenset({"obsv-net-nb4xt"}),
     "grafana-gf7qv": frozenset({"obsv-net-nb4xt", "access-net-ha4mz"}),
-    "loki-lk3ny": frozenset({"obsv-net-nb4xt", "access-net-ha4mz"}),
-    "alloy-al6wz": frozenset({"obsv-net-nb4xt", "access-net-ha4mz"}),
-    "cadvisor-cv8mh": frozenset({"obsv-net-nb4xt", "access-net-ha4mz"}),
-    "postgres-exporter-pe4rk": frozenset({"data-net-nd9pc", "obsv-net-nb4xt", "access-net-ha4mz"}),
-    "valkey-cache-exporter-ve7ts": frozenset(
-        {"app-net-na6hy", "obsv-net-nb4xt", "access-net-ha4mz"}
-    ),
-    "valkey-channels-exporter-vx4nq": frozenset(
-        {"app-net-na6hy", "obsv-net-nb4xt", "access-net-ha4mz"}
-    ),
+    "loki-lk3ny": frozenset({"obsv-net-nb4xt"}),
+    "alloy-al6wz": frozenset({"obsv-net-nb4xt"}),
+    "cadvisor-cv8mh": frozenset({"obsv-net-nb4xt"}),
+    "postgres-exporter-pe4rk": frozenset({"data-net-nd9pc", "obsv-net-nb4xt"}),
+    "valkey-cache-exporter-ve7ts": frozenset({"app-net-na6hy", "obsv-net-nb4xt"}),
+    "valkey-channels-exporter-vx4nq": frozenset({"app-net-na6hy", "obsv-net-nb4xt"}),
 }
 TESTING_MEMBERSHIPS = {
     "django-test-dt5qx": frozenset({"app-net-nt5rk", "data-net-nt8fq"}),

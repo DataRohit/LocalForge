@@ -1,6 +1,36 @@
-FROM python:3.14.6-slim AS builder
+FROM python:3.14.6-slim@sha256:7bec7ddcddeff7975d6ba9b4be7dd6f6b2f55e7491539145e2978f7f97ce9144 AS base
 
-COPY --from=ghcr.io/astral-sh/uv:0.12.1 /uv /usr/local/bin/uv
+RUN apt-get update \
+    && apt-get install --no-install-recommends --assume-yes \
+        base-files=13.8+deb13u7 \
+        bash=5.2.37-2+b10 \
+        bsdutils=1:2.41.5-0+deb13u1 \
+        gzip=1.13-1+deb13u1 \
+        libaudit-common=1:4.0.2-2+deb13u1 \
+        libaudit1=1:4.0.2-2+deb13u1 \
+        libblkid1=2.41.5-0+deb13u1 \
+        libc-bin=2.41-12+deb13u4 \
+        libc6=2.41-12+deb13u4 \
+        libcap2=1:2.75-10+deb13u1+b3 \
+        liblastlog2-2=2.41.5-0+deb13u1 \
+        libmount1=2.41.5-0+deb13u1 \
+        libpcre2-8-0=10.46-1~deb13u2 \
+        libsmartcols1=2.41.5-0+deb13u1 \
+        libsqlite3-0=3.46.1-7+deb13u2 \
+        libssl3t64=3.5.7-1~deb13u2 \
+        libuuid1=2.41.5-0+deb13u1 \
+        login=1:4.16.0-2+really2.41.5-0+deb13u1 \
+        mount=2.41.5-0+deb13u1 \
+        openssl=3.5.7-1~deb13u2 \
+        openssl-provider-legacy=3.5.7-1~deb13u2 \
+        perl-base=5.40.1-6+deb13u1 \
+        tzdata=2026c-0+deb13u1 \
+        util-linux=2.41.5-0+deb13u1 \
+    && rm -rf /var/lib/apt/lists/*
+
+FROM base AS builder
+
+COPY --from=ghcr.io/astral-sh/uv:0.12.1@sha256:cf4eedcaa81655197f625739489effcbe71b61ceb1506f332c3facae5deceded /uv /usr/local/bin/uv
 
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_COMPILE_BYTECODE=1 \
@@ -16,7 +46,7 @@ FROM builder AS test-builder
 
 RUN uv sync --frozen --no-install-project
 
-FROM python:3.14.6-slim AS runtime
+FROM base AS runtime
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -53,7 +83,7 @@ COPY --from=test-builder /opt/venv /opt/venv
 COPY --chown=root:root tests ./tests
 COPY --chown=root:root docs ./docs
 COPY --chown=root:root docker ./docker
-COPY --chown=root:root pyproject.toml uv.lock .sops.yaml ./
+COPY --chown=root:root pyproject.toml uv.lock .dockerignore .sops.yaml .gitleaks.toml ./
 COPY --chown=root:root compose.yaml compose.development.yaml compose.testing.yaml ./
 COPY --chown=root:root .env.example .env.development.sops .env.testing.sops ./
 

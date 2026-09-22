@@ -1,0 +1,16 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Documented non-secret test credentials and protocol examples"
+regexTarget = "secret"
+regexes = [
+    '''^0123456789abcdef0123456789abcdef01234567$''',
+    '''^Correct-Horse-Battery-Staple-32$''',
+    '''^Correct-Horse-Battery-Staple-33$''',
+    '''^Correct-Horse-Battery-Staple-34$''',
+    '''^Different-Correct-Horse-Battery-34$''',
+    '''^Third-Correct-Horse-Battery-35$''',
+    '''^dGhlIHNhbXBsZSBub25jZQ==$''',
+    '''^djang0-0123456789abcdef0123456789abcdef(?:\.nonce)?$''',
+]

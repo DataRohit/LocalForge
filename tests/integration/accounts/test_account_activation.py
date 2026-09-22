@@ -8,6 +8,7 @@ import http.client
 import json
 import time
 import uuid
+from base64 import b64encode
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from http import HTTPStatus
@@ -357,7 +358,12 @@ def _mailpit_request(method: str, path: str) -> object | None:
         timeout=MAILPIT_TIMEOUT_SECONDS,
     )
     try:
-        connection.request(method, path, headers={"Host": "localhost"})
+        token = b64encode(settings.MAILPIT_UI_AUTH.encode()).decode()
+        connection.request(
+            method,
+            path,
+            headers={"Authorization": f"Basic {token}", "Host": "localhost"},
+        )
         response = connection.getresponse()
         payload = response.read()
     finally:

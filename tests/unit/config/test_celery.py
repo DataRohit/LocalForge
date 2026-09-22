@@ -213,10 +213,10 @@ def test_the_result_backend_marks_a_running_task_before_worker_loss() -> None:
 
 @pytest.mark.unit
 def test_the_worker_queues_are_explicit_durable_and_isolated() -> None:
-    """Declare ordinary, slow, and terminal work as separate durable queues.
+    """Declare ordinary and slow work as separate durable quorum queues.
 
-    Confirms the default and slow queues are consumed intentionally while terminal failure records
-    have their own durable queue that a long task cannot use to starve ordinary work.
+    Confirms only consumed queues participate in worker delayed-delivery setup while terminal
+    records retain a distinct name and are declared only when a failure is published.
 
     Arguments:
         None.
@@ -232,10 +232,14 @@ def test_the_worker_queues_are_explicit_durable_and_isolated() -> None:
     assert set(queues) == {
         settings.CELERY_DEFAULT_QUEUE,
         settings.CELERY_SLOW_QUEUE,
-        settings.CELERY_DEAD_LETTER_QUEUE,
     }
     assert settings.CELERY_DEFAULT_QUEUE != settings.CELERY_SLOW_QUEUE
     assert all(configured.durable for configured in queues.values())
+    assert all(configured.exchange.type == "topic" for configured in queues.values())
+    assert all(
+        configured.queue_arguments == {"x-queue-type": "quorum"} for configured in queues.values()
+    )
+    assert queue.app.conf.dead_letter_queue == settings.CELERY_DEAD_LETTER_QUEUE
     assert queue.app.conf.task_default_queue == settings.CELERY_DEFAULT_QUEUE
     assert queue.app.conf.task_routes[queue_tasks.slow_worker_probe.name] == {
         "queue": settings.CELERY_SLOW_QUEUE

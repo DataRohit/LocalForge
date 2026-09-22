@@ -80,6 +80,12 @@ Run `uv run poe convention-audit` for the deeper live registry comparison: exact
 flags, anonymous-volume rejection, and active offline probes for both projects. Environment-specific variants are
 `convention-audit-development` and `convention-audit-testing`.
 
+Run `uv run poe security-audit` for the deployment, full-history secret, locked dependency, exact image
+vulnerability policy, protected-dashboard/private-port, broker-account, image-layer, and runtime-log gates.
+`security-audit-static` and `security-audit-runtime` split the network/scanner-heavy and live-environment portions.
+Accepted findings and review dates are in
+[docs/security/security-audit.md](docs/security/security-audit.md).
+
 For a development machine where port 8000 is already owned by another process, `--proxy-only` is accepted by
 `environments-setup`, `development-up`, `development-rebuild`, and `development-reset`. Every other command rejects
 the option before running a subprocess.

@@ -31,3 +31,8 @@ RAM to satisfy a need that is really "query my container logs by label".
 Alloy reads the Docker socket to discover container logs, mounted read-only. It and Traefik are the only services
 permitted to see it. In Kubernetes Alloy becomes a DaemonSet reading node log paths — the one workload in this
 platform whose replica count is a function of cluster size.
+
+**Accepted risk, reviewed 2026-09-22; review again 2026-12-22.** A read-only Docker socket still grants
+root-equivalent API access. The filtering-proxy trade-off and local-only acceptance are owned by
+[0007](./0007-traefik-reverse-proxy.md). Alloy's component UI and Loki's API are no longer host-published; Grafana
+is the authenticated operator surface for both logs and collector-derived state.

@@ -121,6 +121,7 @@ convention = "google"
 "scripts/preflight.py" = ["S603"]
 "scripts/sops_env.py" = ["S603"]
 "scripts/manage_platform.py" = ["S603"]
+"scripts/audit_security.py" = ["S603"]
 "tests/**/*.py" = ["S101"]
 "tests/unit/test_harness.py" = ["S101", "S603"]
 "tests/unit/scripts/test_django_entrypoint.py" = ["S101", "S603"]
@@ -272,6 +273,23 @@ cmd = "python -m scripts.audit_naming --environment development"
 [tool.poe.tasks.convention-audit-testing]
 help = "Audit live Docker conventions for testing"
 cmd = "python -m scripts.audit_naming --environment testing"
+
+[tool.poe.tasks.security-audit]
+help = "Run deployment, history, dependency, image, exposure, and runtime secret audits"
+cmd = "python -m scripts.audit_security --scope all"
+
+[tool.poe.tasks.security-audit-static]
+help = "Run deployment, history, dependency, and image vulnerability audits"
+sequence = [
+    { cmd = "python -m scripts.audit_security --scope deployment" },
+    { cmd = "python -m scripts.audit_security --scope history" },
+    { cmd = "python -m scripts.audit_security --scope dependencies" },
+    { cmd = "python -m scripts.audit_security --scope images" },
+]
+
+[tool.poe.tasks.security-audit-runtime]
+help = "Verify protected dashboards, private ports, broker users, image layers, and logs"
+cmd = "python -m scripts.audit_security --scope runtime"
 
 [tool.poe.tasks.secrets-generate]
 help = "Create or top up local environment files without replacing existing values"

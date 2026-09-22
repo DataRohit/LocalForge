@@ -24,6 +24,7 @@ from channels.db import database_sync_to_async
 from channels.testing import WebsocketCommunicator
 from django.conf import settings
 from django.test import Client as DjangoClient
+from kombu import Exchange, Queue
 from kombu.exceptions import OperationalError
 from rest_framework.authtoken.models import Token
 
@@ -133,12 +134,25 @@ def _worker(queue_name: str, node_name: str, log_path: Path) -> Iterator[None]:
     """
     environment = dict(os.environ)
     environment["CELERY_TASK_ALWAYS_EAGER"] = "false"
-    environment["CELERY_DEFAULT_QUEUE"] = queue_name
+    environment["LOCALFORGE_TEST_CELERY_DEFAULT_QUEUE"] = queue_name
+    slow_queue = f"{queue_name}.slow"
+    environment["LOCALFORGE_TEST_CELERY_SLOW_QUEUE"] = slow_queue
+    environment["LOCALFORGE_TEST_CELERY_DEAD_LETTER_QUEUE"] = f"{queue_name}.dead"
     environment["POSTGRES_DB"] = str(settings.DATABASES["default"]["NAME"])
     python_path = [str(REPOSITORY_ROOT / "src"), str(REPOSITORY_ROOT)]
     if environment.get("PYTHONPATH"):
         python_path.append(environment["PYTHONPATH"])
     environment["PYTHONPATH"] = os.pathsep.join(python_path)
+    with app.connection_for_write() as connection:
+        channel = connection.channel()
+        for isolated_queue in (queue_name, slow_queue):
+            Queue(
+                isolated_queue,
+                Exchange(isolated_queue, type="topic", durable=True),
+                routing_key=isolated_queue,
+                durable=True,
+                queue_arguments={"x-queue-type": "quorum"},
+            )(channel).declare()
     with log_path.open("ab") as log:
         process = subprocess.Popen(
             [
@@ -165,6 +179,11 @@ def _worker(queue_name: str, node_name: str, log_path: Path) -> Iterator[None]:
             yield
         finally:
             _stop_worker(process, node_name)
+            with app.connection_for_write() as connection:
+                channel = connection.channel()
+                channel.queue_delete(slow_queue)
+                channel.exchange_delete(slow_queue)
+            app.amqp.queues.pop(slow_queue, None)
 
 
 async def _issue_access_token(account: User) -> str:
@@ -360,4 +379,7 @@ async def test_username_change_request_fans_out_after_real_worker_completion(
         if other_communicator is not None and not other_communicator.future.done():
             await other_communicator.disconnect()
         with app.connection_for_write() as connection:
-            connection.channel().queue_delete(queue_name)
+            channel = connection.channel()
+            channel.queue_delete(queue_name)
+            channel.exchange_delete(queue_name)
+        app.amqp.queues.pop(queue_name, None)

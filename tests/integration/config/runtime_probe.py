@@ -10,19 +10,35 @@ import argparse
 import http.client
 import json
 import smtplib
+import time
+from base64 import b64encode
 from email.message import EmailMessage
 from http import HTTPStatus
-from typing import TypedDict, cast
+from typing import Any, TypedDict, cast
 
 import django
 from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.core.cache import cache
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
+from django.core.mail import send_mail
 from django.test import Client
+from kombu import Connection, Exchange, Producer, Queue
 
 MAILPIT_TIMEOUT_SECONDS = 15
 HOST_RECIPIENT = "runtime-host@localforge.invalid"
 CONTAINER_RECIPIENT = "runtime-container@localforge.invalid"
 RUNTIME_SUBJECT = "LocalForge Mailpit recreation audit"
 EXPECTED_RECIPIENTS = frozenset({HOST_RECIPIENT, CONTAINER_RECIPIENT})
+RESTART_AUDIT_USERNAME = "phase7-restart-audit"
+RESTART_AUDIT_EMAIL = "phase7-restart-audit@localforge.invalid"
+RESTART_AUDIT_CACHE_KEY = "phase7:restart:audit"
+RESTART_AUDIT_VALUE = b"phase7-restart-persistence"
+RESTART_AUDIT_OBJECT = "phase7-restart-audit/persistence.bin"
+RESTART_AUDIT_QUEUE = "phase7.restart.audit"
+RESTART_AUDIT_SUBJECT = "LocalForge restart persistence audit"
+RESTART_REPLICA_TIMEOUT_SECONDS = 30
 EXPECTED_HEALTH_CHECKS = (
     "broker",
     "cache",
@@ -105,7 +121,12 @@ def mailpit_request(method: str) -> MailpitMessages | None:
         timeout=MAILPIT_TIMEOUT_SECONDS,
     )
     try:
-        connection.request(method, "/api/v1/messages", headers={"Host": "localhost"})
+        token = b64encode(settings.MAILPIT_UI_AUTH.encode()).decode()
+        connection.request(
+            method,
+            "/api/v1/messages",
+            headers={"Authorization": f"Basic {token}", "Host": "localhost"},
+        )
         response = connection.getresponse()
         payload = response.read()
     finally:
@@ -204,6 +225,121 @@ def verify_mailpit_empty() -> None:
     assert listing["messages"] == []
 
 
+def seed_restart_persistence() -> None:
+    """Seed durable state in every persistent application backing service.
+
+    Writes one account, cache value, private object, captured email, and quorum-queue message before
+    the operator stops the complete stack.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any backing service refuses its seed value.
+    """
+    user_model = get_user_model()
+    user_model.objects.using("default").filter(username=RESTART_AUDIT_USERNAME).delete()
+    account = user_model.objects.db_manager("default").create(
+        username=RESTART_AUDIT_USERNAME,
+        email=RESTART_AUDIT_EMAIL,
+        is_active=True,
+    )
+    account.set_unusable_password()
+    account.save(using="default", update_fields=["password"])
+    cache.set(RESTART_AUDIT_CACHE_KEY, RESTART_AUDIT_VALUE, timeout=None)
+    assert cache.get(RESTART_AUDIT_CACHE_KEY) == RESTART_AUDIT_VALUE
+    default_storage.delete(RESTART_AUDIT_OBJECT)
+    assert (
+        default_storage.save(RESTART_AUDIT_OBJECT, ContentFile(RESTART_AUDIT_VALUE))
+        == RESTART_AUDIT_OBJECT
+    )
+    assert (
+        send_mail(
+            RESTART_AUDIT_SUBJECT,
+            RESTART_AUDIT_VALUE.decode(),
+            settings.DEFAULT_FROM_EMAIL,
+            [RESTART_AUDIT_EMAIL],
+        )
+        == 1
+    )
+    exchange = Exchange(RESTART_AUDIT_QUEUE, type="direct", durable=True)
+    queue = Queue(
+        RESTART_AUDIT_QUEUE,
+        exchange,
+        routing_key=RESTART_AUDIT_QUEUE,
+        durable=True,
+        queue_arguments={"x-queue-type": "quorum"},
+    )
+    with Connection(settings.CELERY_BROKER_URL) as connection:
+        channel = connection.channel()
+        bound = queue(channel)
+        bound.delete(if_unused=False, if_empty=False)
+        bound.declare()
+        Producer(channel, exchange=exchange).publish(
+            {"value": RESTART_AUDIT_VALUE.decode()},
+            routing_key=RESTART_AUDIT_QUEUE,
+            serializer="json",
+            declare=[bound],
+        )
+
+
+def verify_restart_persistence() -> None:
+    """Verify and remove durable state after a complete stack restart.
+
+    Requires the primary and replica account row, cache bytes, private object, captured message,
+    and quorum-queue payload to survive before deleting each audit artifact.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any persistent service loses its seed value.
+    """
+    user_model = get_user_model()
+    account = user_model.objects.using("default").get(username=RESTART_AUDIT_USERNAME)
+    deadline = time.monotonic() + RESTART_REPLICA_TIMEOUT_SECONDS
+    replica_exists = False
+    while time.monotonic() < deadline:
+        replica_exists = user_model.objects.using("replica").filter(pk=account.pk).exists()
+        if replica_exists:
+            break
+        time.sleep(0.25)
+    assert replica_exists
+    assert cache.get(RESTART_AUDIT_CACHE_KEY) == RESTART_AUDIT_VALUE
+    with default_storage.open(RESTART_AUDIT_OBJECT, "rb") as stored:
+        assert stored.read() == RESTART_AUDIT_VALUE
+    listing = mailpit_request("GET")
+    assert listing is not None
+    assert any(message["Subject"] == RESTART_AUDIT_SUBJECT for message in listing["messages"])
+
+    exchange = Exchange(RESTART_AUDIT_QUEUE, type="direct", durable=True)
+    queue = Queue(
+        RESTART_AUDIT_QUEUE,
+        exchange,
+        routing_key=RESTART_AUDIT_QUEUE,
+        durable=True,
+        queue_arguments={"x-queue-type": "quorum"},
+    )
+    with Connection(settings.CELERY_BROKER_URL) as connection:
+        channel = connection.channel()
+        bound = queue(channel)
+        message = bound.get(no_ack=True)
+        assert message is not None
+        assert cast("dict[str, Any]", message.payload) == {"value": RESTART_AUDIT_VALUE.decode()}
+        bound.delete(if_unused=False, if_empty=False)
+
+    user_model.objects.using("default").filter(pk=account.pk).delete()
+    cache.delete(RESTART_AUDIT_CACHE_KEY)
+    default_storage.delete(RESTART_AUDIT_OBJECT)
+    mailpit_request("DELETE")
+
+
 def verify_health(expected: str) -> None:
     """Observe readiness while the real cache is running or stopped.
 
@@ -277,6 +413,8 @@ def build_parser() -> argparse.ArgumentParser:
             "mailpit-empty",
             "mailpit-seed",
             "mailpit-verify",
+            "restart-seed",
+            "restart-verify",
             "health-degraded",
             "health-ready",
         ),
@@ -316,6 +454,10 @@ def main(argv: list[str] | None = None) -> int:
         seed_mailpit(arguments.mode)
     elif arguments.action == "mailpit-verify":
         verify_mailpit()
+    elif arguments.action == "restart-seed":
+        seed_restart_persistence()
+    elif arguments.action == "restart-verify":
+        verify_restart_persistence()
     elif arguments.action == "health-degraded":
         verify_health("degraded")
     else:

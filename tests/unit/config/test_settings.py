@@ -98,9 +98,6 @@ REQUIRED_ENVIRONMENT = {
     "CELERY_BROKER_URL": "amqp://broker:secret@rabbitmq-rq4sx:5672/localforge",
     "CELERY_RESULT_BACKEND": "redis://:secret@valkey-cache-vc5tn:6379/1",
     "CELERY_TASK_ALWAYS_EAGER": "false",
-    "CELERY_DEFAULT_QUEUE": "localforge.default",
-    "CELERY_SLOW_QUEUE": "localforge.slow",
-    "CELERY_DEAD_LETTER_QUEUE": "localforge.dead-letter",
     "CELERY_WORKER_CONCURRENCY": "2",
     "CELERY_WORKER_PREFETCH_MULTIPLIER": "1",
     "CELERY_WORKER_SHUTDOWN_TIMEOUT_SECONDS": "300",
@@ -115,6 +112,7 @@ REQUIRED_ENVIRONMENT = {
     "EMAIL_HOST": "mailpit-mp6gb",
     "EMAIL_PORT": "1025",
     "MAILPIT_WEB_PORT": "8025",
+    "MP_UI_AUTH": "admin:mailpit-secret",
     "DEFAULT_FROM_EMAIL": "no-reply@localforge.invalid",
     "DJANGO_SITE_NAME": "LocalForge",
     "DJANGO_SITE_URL": "http://localforge.localhost:8080",
@@ -186,11 +184,11 @@ def _execute_module_in_isolation(name: str, environment: dict[str, str]) -> Modu
 
 
 @pytest.mark.unit
-def test_worker_runtime_policy_comes_from_the_environment() -> None:
-    """Load queue identity, capacity, shutdown, and health bounds from the environment.
+def test_worker_runtime_policy_uses_fixed_queue_identity_and_environment_bounds() -> None:
+    """Fix queue identity while loading capacity, shutdown, and health bounds from the environment.
 
-    Executes shared settings with non-default valid values, proving worker behavior is an
-    environment contract rather than a framework or source-code default.
+    Executes shared settings with obsolete queue variables and non-default valid bounds, proving
+    persisted environment files cannot redirect production work to a legacy topology.
 
     Arguments:
         None.
@@ -219,9 +217,9 @@ def test_worker_runtime_policy_comes_from_the_environment() -> None:
 
     module = _execute_module_in_isolation("base", environment)
 
-    assert module.CELERY_DEFAULT_QUEUE == "ordinary"
-    assert module.CELERY_SLOW_QUEUE == "slow"
-    assert module.CELERY_DEAD_LETTER_QUEUE == "terminal"
+    assert module.CELERY_DEFAULT_QUEUE == "localforge.v2.default"
+    assert module.CELERY_SLOW_QUEUE == "localforge.v2.slow"
+    assert module.CELERY_DEAD_LETTER_QUEUE == "localforge.v2.dead-letter"
     assert module.CELERY_WORKER_CONCURRENCY == WORKER_CONCURRENCY_PROBE
     assert module.CELERY_WORKER_PREFETCH_MULTIPLIER == WORKER_PREFETCH_PROBE
     assert module.CELERY_WORKER_SHUTDOWN_TIMEOUT_SECONDS == WORKER_SHUTDOWN_PROBE_SECONDS
@@ -232,6 +230,19 @@ def test_worker_runtime_policy_comes_from_the_environment() -> None:
     assert module.CELERY_JWT_CLEANUP_HOUR == JWT_CLEANUP_HOUR_PROBE
     assert module.CELERY_JWT_CLEANUP_MINUTE == JWT_CLEANUP_MINUTE_PROBE
     assert module.CELERY_JWT_CLEANUP_EXPIRY_SECONDS == JWT_CLEANUP_EXPIRY_PROBE_SECONDS
+    assert module.CELERY_WORKER_DETECT_QUORUM_QUEUES is True
+    assert module.CELERY_TASK_DEFAULT_QUEUE_TYPE == "quorum"
+    assert module.CELERY_TASK_CREATE_MISSING_QUEUE_TYPE == "quorum"
+    assert module.CELERY_TASK_CREATE_MISSING_QUEUE_EXCHANGE_TYPE == "topic"
+    assert module.CELERY_BROKER_TRANSPORT_OPTIONS == {"confirm_publish": True}
+    assert {queue.name for queue in module.CELERY_TASK_QUEUES} == {
+        "localforge.v2.default",
+        "localforge.v2.slow",
+    }
+    assert all(
+        queue.queue_arguments == {"x-queue-type": "quorum"} for queue in module.CELERY_TASK_QUEUES
+    )
+    assert all(queue.exchange.type == "topic" for queue in module.CELERY_TASK_QUEUES)
 
 
 @pytest.mark.unit
@@ -239,7 +250,10 @@ def test_worker_runtime_policy_comes_from_the_environment() -> None:
     ("overrides", "message"),
     [
         (
-            {"CELERY_SLOW_QUEUE": "localforge.default"},
+            {
+                "DJANGO_SETTINGS_MODULE": "config.settings.testing",
+                "LOCALFORGE_TEST_CELERY_SLOW_QUEUE": "localforge.v2.default",
+            },
             "Celery default, slow, and dead-letter queues must be distinct",
         ),
         (
@@ -448,6 +462,7 @@ def test_email_delivery_uses_environment_configuration() -> None:
     assert REQUIRED_ENVIRONMENT["EMAIL_HOST"] == module.EMAIL_HOST
     assert int(REQUIRED_ENVIRONMENT["EMAIL_PORT"]) == module.EMAIL_PORT
     assert int(REQUIRED_ENVIRONMENT["MAILPIT_WEB_PORT"]) == module.MAILPIT_WEB_PORT
+    assert REQUIRED_ENVIRONMENT["MP_UI_AUTH"] == module.MAILPIT_UI_AUTH
     assert REQUIRED_ENVIRONMENT["DEFAULT_FROM_EMAIL"] == module.DEFAULT_FROM_EMAIL
     assert REQUIRED_ENVIRONMENT["DJANGO_SITE_NAME"] == module.SITE_NAME
     assert REQUIRED_ENVIRONMENT["DJANGO_SITE_URL"] == module.SITE_URL

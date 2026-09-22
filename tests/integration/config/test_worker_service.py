@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import pytest
+from kombu import Exchange, Queue
 from kombu.exceptions import OperationalError
 
 from config.celery import app
@@ -160,11 +161,27 @@ def _worker(
     """
     environment = dict(os.environ)
     environment["CELERY_TASK_ALWAYS_EAGER"] = "false"
+    queue_list = queue_names.split(",")
+    default_queue = queue_list[0]
+    slow_queue = queue_list[1] if len(queue_list) > 1 else f"{default_queue}.slow"
+    environment["LOCALFORGE_TEST_CELERY_DEFAULT_QUEUE"] = default_queue
+    environment["LOCALFORGE_TEST_CELERY_SLOW_QUEUE"] = slow_queue
+    environment["LOCALFORGE_TEST_CELERY_DEAD_LETTER_QUEUE"] = f"{default_queue}.dead"
     python_path = [str(REPOSITORY_ROOT / "src"), str(REPOSITORY_ROOT)]
     if environment.get("PYTHONPATH"):
         python_path.append(environment["PYTHONPATH"])
     environment["PYTHONPATH"] = os.pathsep.join(python_path)
     concurrency = THREAD_WORKER_CONCURRENCY if pool == "threads" else 1
+    with app.connection_for_write() as connection:
+        channel = connection.channel()
+        for queue_name in {default_queue, slow_queue}:
+            Queue(
+                queue_name,
+                Exchange(queue_name, type="topic", durable=True),
+                routing_key=queue_name,
+                durable=True,
+                queue_arguments={"x-queue-type": "quorum"},
+            )(channel).declare()
     with log_path.open("ab") as log:
         process = subprocess.Popen(
             [
@@ -192,6 +209,8 @@ def _worker(
             yield process
         finally:
             _stop_worker(process, node_name, abrupt=False)
+            if slow_queue not in queue_list:
+                _delete_queue(slow_queue)
 
 
 def _delete_queue(queue_name: str) -> None:
@@ -207,7 +226,10 @@ def _delete_queue(queue_name: str) -> None:
         None.
     """
     with app.connection_for_write() as connection:
-        connection.channel().queue_delete(queue_name)
+        channel = connection.channel()
+        channel.queue_delete(queue_name)
+        channel.exchange_delete(queue_name)
+    app.amqp.queues.pop(queue_name, None)
 
 
 @pytest.mark.integration

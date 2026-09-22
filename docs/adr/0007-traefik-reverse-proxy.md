@@ -33,6 +33,19 @@ Traefik is the only service besides the log collector permitted to see it. A rea
 written; it does **not** make the API read-only, so the process stays root-equivalent over the daemon. Recorded for
 the security audit rather than pretended away.
 
+**Accepted risk, reviewed 2026-09-22; review again 2026-12-22.** Traefik and Alloy remain root-equivalent through
+the Docker API, and the official Traefik image runs as root so it can read that socket. A filtering socket proxy
+would add another network-reachable privileged service, another image and credential boundary, and another
+availability dependency without removing the daemon authority required by container discovery. This is accepted
+only for the fully local single-user platform: every host publication is loopback-only, the socket mounts are
+read-only and limited to these two registered services, and the runtime secret audit rejects credentials in their
+image histories or logs.
+
+The dashboard and public web entrypoints are loopback-only. Traefik's unauthenticated `/ping` endpoint moved to a
+dedicated internal `health` entrypoint on port 8082, which is not published; the authenticated dashboard remains
+on port 8080 inside the container and host port 8081. An unauthenticated request to dashboard API data must return
+401.
+
 **Two defaults are kept deliberately, verified 2026-09-14.** Traefik warns at every start that it rejects some
 encoded characters in request paths and suggests relaxing that when a backend is not RFC 3986 compliant. Django is,
 so the strict defaults stay and the warning is expected noise rather than an action. `global.checkNewVersion`

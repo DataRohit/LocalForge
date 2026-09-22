@@ -246,6 +246,7 @@ SECRET_RECIPES: Mapping[str, Callable[[], str]] = {
     "S3_ACCESS_KEY_ID": generate_access_key,
     "S3_SECRET_ACCESS_KEY": generate_access_key,
     "FLOWER_BASIC_AUTH": generate_plain_auth,
+    "MP_UI_AUTH": generate_plain_auth,
 }
 
 

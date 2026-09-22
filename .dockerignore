@@ -11,6 +11,8 @@ venv
 env
 __pycache__
 *.py[cod]
+**/__pycache__/
+**/*.py[cod]
 *.egg-info
 
 .pytest_cache
@@ -48,3 +50,4 @@ temp
 *.db
 
 docs/_build
+docs/security/image-vulnerability-policy.json

@@ -32,6 +32,9 @@ def test_shared_settings_publish_the_required_security_invariants() -> None:
         len({base.CELERY_DEFAULT_QUEUE, base.CELERY_SLOW_QUEUE, base.CELERY_DEAD_LETTER_QUEUE})
         == CELERY_QUEUE_COUNT
     )
+    assert base.CELERY_DEFAULT_QUEUE == "localforge.v2.default"
+    assert base.CELERY_SLOW_QUEUE == "localforge.v2.slow"
+    assert base.CELERY_DEAD_LETTER_QUEUE == "localforge.v2.dead-letter"
     cache_settings = base.CACHES["default"]
     assert isinstance(cache_settings, dict)
     cache_location = cache_settings["LOCATION"]

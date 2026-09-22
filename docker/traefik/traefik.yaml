@@ -27,12 +27,15 @@ entryPoints:
         allowEncodedQuestionMark: false
         allowEncodedHash: false
 
+  health:
+    address: ":8082"
+
 api:
   dashboard: true
   insecure: false
 
 ping:
-  entryPoint: dashboard
+  entryPoint: health
 
 providers:
   docker:

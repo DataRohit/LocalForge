@@ -153,11 +153,10 @@ def test_testing_runner_is_a_persistent_idle_compose_service() -> None:
 
 @pytest.mark.unit
 def test_development_worker_reuses_the_application_image_with_bounded_runtime_settings() -> None:
-    """Run the registered worker as a non-migrating application-image companion.
+    """Run the registered worker as a versioned application-image companion.
 
-    Requires the worker to wait for the migrated application, broker, and result backend, consume
-    both registered queues with environment-controlled capacity, and expose a broker-backed health
-    check without publishing a host port.
+    Leaves legacy broker resources untouched, waits for the application, broker, and result backend,
+    consumes both versioned queues with bounded capacity, and exposes health.
 
     Arguments:
         None.
@@ -174,12 +173,12 @@ def test_development_worker_reuses_the_application_image_with_bounded_runtime_se
     assert worker["image"] == "localforge/django:0.1.0"
     assert set(worker["networks"]) == {"app-net-na6hy", "data-net-nd9pc"}
     assert "ports" not in worker
-    assert worker["command"][0:4] == ["celery", "-A", "config", "worker"]
     command = " ".join(worker["command"])
+    assert worker["command"][0:4] == ["celery", "-A", "config", "worker"]
+    assert "migrate_broker_topology" not in command
     assert "${CELERY_WORKER_CONCURRENCY}" in command
     assert "${CELERY_WORKER_PREFETCH_MULTIPLIER}" in command
-    assert "${CELERY_DEFAULT_QUEUE}" in command
-    assert "${CELERY_SLOW_QUEUE}" in command
+    assert "--queues=localforge.v2.default,localforge.v2.slow" in command
     assert worker["stop_grace_period"] == "${CELERY_WORKER_SHUTDOWN_TIMEOUT_SECONDS}s"
     assert worker["depends_on"] == {
         "django-uv5n2": {"condition": "service_healthy"},
@@ -254,7 +253,7 @@ def test_flower_is_an_authenticated_development_only_application_companion() -> 
 
     assert flower["container_name"] == "flower-fl9zd"
     assert flower["image"] == "localforge/django:0.1.0"
-    assert flower["ports"] == ["5555:5555"]
+    assert flower["ports"] == ["127.0.0.1:5555:5555"]
     assert set(flower["networks"]) == {"app-net-na6hy", "access-net-ha4mz"}
     assert flower["command"][0:4] == ["celery", "-A", "config", "flower"]
     assert flower["depends_on"] == {
@@ -885,6 +884,30 @@ def test_every_published_service_joins_a_reachable_zone(project: dict[str, Any])
 
 
 @pytest.mark.unit
+def test_unpublished_development_services_do_not_join_the_access_zone() -> None:
+    """Keep internal-only services from acquiring unnecessary internet egress.
+
+    Requires the non-internal access zone only when a service publishes a host port.
+    Prevents private observability and worker services from bypassing their internal zones.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If an unpublished service joins the access zone.
+    """
+    services = merged(DEVELOPMENT_FILE)["services"]
+
+    for name, definition in services.items():
+        if definition.get("ports"):
+            continue
+        assert "access-net-ha4mz" not in definition["networks"], name
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("project", MERGED_PROJECTS)
 def test_a_service_is_only_awaited_when_it_reports_health(project: dict[str, Any]) -> None:
     """Wait on readiness rather than on a process existing.
@@ -1355,6 +1378,50 @@ def test_the_image_refreshes_package_lists_before_installing() -> None:
 
 
 @pytest.mark.unit
+def test_local_images_pin_base_digests_and_installed_package_versions() -> None:
+    """Make repeated local image builds fail rather than drift.
+
+    Requires immutable base references, exact security package versions, and a pinned pgBackRest
+    package while rejecting unrestricted operating-system upgrades.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a local image can resolve mutable operating-system content.
+    """
+    django = (REPOSITORY_ROOT / "docker" / "django" / "Dockerfile").read_text(encoding="utf-8")
+    pgbackrest = (REPOSITORY_ROOT / "docker" / "pgbackrest" / "Dockerfile").read_text(
+        encoding="utf-8"
+    )
+    dockerignore = (REPOSITORY_ROOT / ".dockerignore").read_text(encoding="utf-8")
+
+    assert "python:3.14.6-slim@sha256:" in django
+    assert "ghcr.io/astral-sh/uv:0.12.1@sha256:" in django
+    assert "postgres:18.6@sha256:" in pgbackrest
+    assert "apt-get upgrade" not in django
+    assert "apt-get upgrade" not in pgbackrest
+    assert "pgbackrest=2.59.1-1.pgdg13+1" in pgbackrest
+    assert "base-files=13.8+deb13u7" in django
+    assert "openssl=3.5.7-1~deb13u2" in django
+    assert "util-linux=2.41.5-0+deb13u1" in django
+    assert "docs/security/image-vulnerability-policy.json" in dockerignore
+    assert "**/__pycache__/" in dockerignore
+    assert "**/*.py[cod]" in dockerignore
+    local_builds = [
+        definition["build"]
+        for project in MERGED_PROJECTS
+        for definition in project["services"].values()
+        if isinstance(definition.get("build"), dict)
+    ]
+    assert local_builds
+    assert all(build["provenance"] is False for build in local_builds)
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("environment", sorted(VALKEY_INSTANCES))
 def test_both_valkey_instances_are_declared(environment: str) -> None:
     """Refuse to let a deleted instance look like a passing suite.
@@ -1528,7 +1595,7 @@ def test_each_valkey_instance_matches_its_registered_port_and_volume(environment
     for instance in VALKEY_INSTANCES[environment]:
         definition = declared[instance.service]
 
-        assert definition["ports"] == [f"{instance.port}:6379"], instance.service
+        assert definition["ports"] == [f"127.0.0.1:{instance.port}:6379"], instance.service
         assert definition["volumes"] == [f"{instance.service}-data:/data"], instance.service
         assert definition["container_name"] == instance.service
 
@@ -1604,8 +1671,8 @@ BROKER_NETWORKS = {
 }
 
 BROKER_PORTS = {
-    "development": {"5672:5672", "15672:15672"},
-    "testing": {"25672:5672"},
+    "development": {"127.0.0.1:5672:5672", "127.0.0.1:15672:15672"},
+    "testing": {"127.0.0.1:25672:5672"},
 }
 
 BROKER_HEALTH_COMMAND = (
@@ -1643,7 +1710,7 @@ def test_each_broker_matches_its_registered_image_port_and_volume(environment: s
     assert definition["image"] == image
     assert definition["container_name"] == service
     assert definition["hostname"] == service
-    assert f"{port}:5672" in definition["ports"]
+    assert f"127.0.0.1:{port}:5672" in definition["ports"]
     assert set(definition["ports"]) == BROKER_PORTS[environment]
     assert set(definition["networks"]) == BROKER_NETWORKS[environment]
     assert definition["volumes"] == [f"{service}-data:/var/lib/rabbitmq"]
@@ -1668,7 +1735,7 @@ def test_only_the_development_broker_publishes_a_management_interface() -> None:
     development = merged(DEVELOPMENT_FILE)["services"]["rabbitmq-rq4sx"]
     testing = merged(TESTING_FILE)["services"]["rabbitmq-tr6mc"]
 
-    assert "15672:15672" in development["ports"]
+    assert "127.0.0.1:15672:15672" in development["ports"]
     assert all("15672" not in mapping for mapping in testing["ports"])
 
 
@@ -1820,8 +1887,8 @@ def test_the_broker_support_review_date_is_recorded() -> None:
 
 
 STORAGE_INSTANCES = {
-    "development": ("seaweedfs-sw9cr", {"9333:9333", "8082:8080", "8888:8888", "8333:8333"}),
-    "testing": ("seaweedfs-ts3jd", {"28333:8333", "29333:9333", "28888:8888"}),
+    "development": ("seaweedfs-sw9cr", {"127.0.0.1:8333:8333"}),
+    "testing": ("seaweedfs-ts3jd", {"127.0.0.1:28333:8333"}),
 }
 
 STORAGE_REQUIRED_FLAGS = (
@@ -1843,7 +1910,7 @@ def test_each_storage_service_matches_its_registered_ports_and_volume(environmen
     """Pin object storage to the rows assigned to it.
 
     Confirms the registered name, published ports, and data volume match the registry, so the
-    volume port stays remapped clear of the port the proxy owns.
+    S3 gateway stays loopback-only while unauthenticated native administration ports stay private.
 
     Arguments:
         environment: Environment whose overlay is inspected.
@@ -2017,8 +2084,16 @@ def test_the_bring_up_creates_the_media_bucket() -> None:
 
 
 MAIL_INSTANCES = {
-    "development": ("mailpit-mp6gb", {"1025:1025", "8025:8025"}, None),
-    "testing": ("mailpit-tm7bh", {"21025:1025", "28025:8025"}, "smtp"),
+    "development": (
+        "mailpit-mp6gb",
+        {"127.0.0.1:1025:1025", "127.0.0.1:8025:8025"},
+        None,
+    ),
+    "testing": (
+        "mailpit-tm7bh",
+        {"127.0.0.1:21025:1025", "127.0.0.1:28025:8025"},
+        "smtp",
+    ),
 }
 
 MAIL_NETWORKS = {
@@ -2248,7 +2323,7 @@ def test_the_proxy_matches_its_registered_image_ports_and_network() -> None:
 
     assert definition["image"] == "docker.io/library/traefik:v3.7.13"
     assert definition["container_name"] == PROXY_SERVICE
-    assert set(definition["ports"]) == {"8080:80", "8081:8080"}
+    assert set(definition["ports"]) == {"127.0.0.1:8080:80", "127.0.0.1:8081:8080"}
     assert definition["networks"] == ["edge-net-ne2vk"]
 
 
@@ -2472,7 +2547,8 @@ def test_the_dashboard_is_served_securely_on_its_own_entry_point() -> None:
     assert static["api"]["insecure"] is False
     assert entry_points["web"]["address"] == ":80"
     assert entry_points["dashboard"]["address"] == ":8080"
-    assert static["ping"]["entryPoint"] == "dashboard"
+    assert entry_points["health"]["address"] == ":8082"
+    assert static["ping"]["entryPoint"] == "health"
     assert "routers.dashboard.entrypoints=dashboard" in labels
 
 
@@ -2574,20 +2650,20 @@ def test_the_testing_environment_runs_no_proxy() -> None:
 
 
 OBSERVABILITY_SERVICES = {
-    "cadvisor-cv8mh": ("ghcr.io/google/cadvisor:v0.60.5", {"8090:8080"}),
+    "cadvisor-cv8mh": ("ghcr.io/google/cadvisor:v0.60.5", set()),
     "postgres-exporter-pe4rk": (
         "quay.io/prometheuscommunity/postgres-exporter:v0.20.1",
-        {"9187:9187"},
+        set(),
     ),
-    "valkey-cache-exporter-ve7ts": ("docker.io/oliver006/redis_exporter:v1.91.1", {"9121:9121"}),
+    "valkey-cache-exporter-ve7ts": ("docker.io/oliver006/redis_exporter:v1.91.1", set()),
     "valkey-channels-exporter-vx4nq": (
         "docker.io/oliver006/redis_exporter:v1.91.1",
-        {"9122:9121"},
+        set(),
     ),
-    "loki-lk3ny": ("docker.io/grafana/loki:3.7.7", {"3100:3100"}),
-    "alloy-al6wz": ("docker.io/grafana/alloy:v1.19.2", {"12345:12345"}),
-    "prometheus-pm5db": ("docker.io/prom/prometheus:v3.14.0", {"9090:9090"}),
-    "grafana-gf7qv": ("docker.io/grafana/grafana-oss:13.0.2", {"3000:3000"}),
+    "loki-lk3ny": ("docker.io/grafana/loki:3.7.7", set()),
+    "alloy-al6wz": ("docker.io/grafana/alloy:v1.19.2", set()),
+    "prometheus-pm5db": ("docker.io/prom/prometheus:v3.14.0", set()),
+    "grafana-gf7qv": ("docker.io/grafana/grafana-oss:13.0.2", {"127.0.0.1:3000:3000"}),
 }
 
 
@@ -2636,7 +2712,7 @@ def test_each_observability_service_matches_its_registered_row(service: str) -> 
 
     assert definition["image"] == image
     assert definition["container_name"] == service
-    assert set(definition["ports"]) == ports
+    assert set(definition.get("ports", [])) == ports
 
 
 @pytest.mark.unit
@@ -3024,7 +3100,7 @@ def test_the_database_dashboard_matches_its_registered_row() -> None:
 
     assert definition["image"] == "docker.io/dpage/pgadmin4:9.17"
     assert definition["container_name"] == "pgadmin-pa7fe"
-    assert set(definition["ports"]) == {"5050:80"}
+    assert set(definition["ports"]) == {"127.0.0.1:5050:80"}
     assert set(definition["networks"]) == {"data-net-nd9pc", "access-net-ha4mz"}
     assert "pgadmin-pa7fe-data:/var/lib/pgadmin" in definition["volumes"]
 

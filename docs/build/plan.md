@@ -58,10 +58,12 @@ Listed so scope creep is recognisable. None exists.
 | `docker/postgres-exporter/auth_modules.yaml` | Probe credentials for the standby, rendered at start from the environment |
 | `scripts/*.py`, `scripts/*.sh` | The scripts in [../platform/conventions.md](../platform/conventions.md) Section 4 |
 | `scripts/manage_platform.py` | Cross-platform operator command adapter exposed through Poe; centralizes safe and destructive Compose workflows |
+| `docs/security/security-audit.md`, `docs/security/image-vulnerability-policy.json` | Dated Phase 7 findings, accepted risks, review dates, and the exact machine-enforced image scan snapshot |
 | `docs/platform/documentation-standard.md` | The worked reference for the docstring standard the checker enforces |
 | `.env.example` | Committed variable manifest, placeholders only |
 | `.env.development.sops`, `.env.testing.sops` | Committed encrypted env files |
 | `.sops.yaml` | age recipient configuration |
+| `.gitleaks.toml` | Pinned Gitleaks false-positive policy for documented test credentials and protocol examples |
 | `src/config/settings/` | `__init__.py`, `base.py`, `development.py`, `testing.py` |
 | `src/config/logs.py` | Structured log formatter the logging configuration names |
 | `src/config/routing.py` | Channels routing, empty router |

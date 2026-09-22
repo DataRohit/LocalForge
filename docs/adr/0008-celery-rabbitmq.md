@@ -35,6 +35,31 @@ Task results go to the Valkey cache instance. `django-celery-results` 2.6.0 is *
 months and Django classifiers stopping at 5.2. Routing results to Valkey removes a stale dependency and keeps a
 write path out of PostgreSQL.
 
+## Quorum queues keep QoS current
+
+Reviewed 2026-09-22 during the degraded-recovery audit. Celery's classic-queue compatibility path requests
+RabbitMQ's deprecated global QoS mode during worker reconnect. RabbitMQ 4.3 records that successful recovery as an
+error even though the worker falls back and becomes ready, violating the platform rule that success cannot be
+represented at failure level.
+
+The consumed default and slow queues are durable quorum queues, `worker_detect_quorum_queues` is enabled, and their
+exchanges are topic exchanges so Celery's native delayed-delivery topology can bind without warning. The terminal
+dead-letter queue is not a worker-consumed queue; it is declared as a durable quorum queue with a topic exchange
+only when a terminal record is published. Broker transport options require `confirm_publish`, so a producer does
+not report success until RabbitMQ confirms durable acceptance. A stopped-broker publication fails, and publication
+plus retrieval succeeds after recovery. After a broker outage the worker reconnects without `global_qos`,
+delayed-delivery, warning, error, or critical records, and its bounded round-trip health probe passes.
+
+The quorum/topic topology uses versioned names: `localforge.v2.default`, `localforge.v2.slow`, and
+`localforge.v2.dead-letter`. These registry identities are application and Compose constants rather than generated
+environment values, so an in-place upgrade ignores any obsolete queue entries preserved in an older local env file.
+Worker startup never deletes the legacy unversioned topology. Versioned names avoid the incompatible classic/direct
+redeclaration while leaving any old messages and bindings intact. An operator may remove legacy resources only in
+an explicit maintenance window after stopping every Django, worker, and scheduler process that can publish,
+positively verifying the queues are empty and unused, and retaining the previous worker image until any remaining
+work is drained. Automatic queue-then-exchange deletion is rejected because a publisher can race between those
+operations and receive acceptance for an unroutable task.
+
 Results use **logical database 1**, not the cache's 0. A `FLUSHDB` ignores the key prefix and erases the whole
 logical database, so sharing an index would mean a routine cache flush destroying every pending task result.
 
@@ -124,12 +149,12 @@ the accepted resend response makes recovery available without exposing account s
 ## Ticket 42 worker runtime
 
 Recorded 2026-09-20. The development worker reuses `localforge/django:0.1.0`, waits through the shared entrypoint,
-and never migrates. It consumes the explicit durable `localforge.default` and `localforge.slow` queues with an
+and never migrates. It consumes the explicit durable `localforge.v2.default` and `localforge.v2.slow` queues with an
 environment-controlled concurrency that may not fall below two and prefetch multiplier one, so one slow task leaves
 capacity for ordinary work. Compose grants the worker the configured bounded stop window.
 
 Terminal failure is not inferred from a transient log line. After the configured retry bound, the base task publishes
-one durable scrubbed record to `localforge.dead-letter`, carrying task name, task identifier, retry count, exception
+one durable scrubbed record to `localforge.v2.dead-letter`, carrying task name, task identifier, retry count, exception
 type, positional argument types, and cleansed keyword arguments. The worker does not consume that queue. A broker
 publication failure is separately logged as critical rather than replacing the original task failure.
 

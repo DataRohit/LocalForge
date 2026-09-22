@@ -9,16 +9,13 @@ from __future__ import annotations
 import runpy
 import sys
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from scripts import audit_naming as audit
 from scripts import manage_platform as platform
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 pytestmark = pytest.mark.unit
 FAILURE = 7
@@ -230,10 +227,17 @@ def test_mount_rules_reject_anonymous_writable_and_unregistered_mounts() -> None
     assert audit.normalize_bind_source("/") == "/"
     assert audit.normalize_bind_source("/sys/") == "/sys"
     repository = str(audit.REPOSITORY_ROOT).replace("\\", "/")
-    docker_source = (
-        f"/run/desktop/mnt/host/{repository[0].casefold()}{repository[2:]}/docker/seaweedfs/s3.json"
+    assert (
+        audit.normalize_bind_source(f"{repository}/docker/seaweedfs/s3.json")
+        == "docker/seaweedfs/s3.json"
     )
-    assert audit.normalize_bind_source(docker_source) == "docker/seaweedfs/s3.json"
+    with patch.object(audit, "REPOSITORY_ROOT", Path("Q:/projects/localforge")):
+        assert (
+            audit.normalize_bind_source(
+                "/run/desktop/mnt/host/q/projects/localforge/docker/seaweedfs/s3.json"
+            )
+            == "docker/seaweedfs/s3.json"
+        )
 
     valid = container_record(
         "django-test-dt5qx",

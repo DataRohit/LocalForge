@@ -8,7 +8,7 @@ services:
       - .env.testing
 
     ports:
-      - "25432:5432"
+      - "127.0.0.1:25432:5432"
 
     networks:
       - data-net-nt8fq
@@ -33,7 +33,7 @@ services:
       - .env.testing
 
     ports:
-      - "26379:6379"
+      - "127.0.0.1:26379:6379"
 
     networks:
       - app-net-nt5rk
@@ -68,7 +68,7 @@ services:
       - .env.testing
 
     ports:
-      - "26380:6379"
+      - "127.0.0.1:26380:6379"
 
     networks:
       - app-net-nt5rk
@@ -102,7 +102,7 @@ services:
       - .env.testing
 
     ports:
-      - "25672:5672"
+      - "127.0.0.1:25672:5672"
 
     networks:
       - app-net-nt5rk
@@ -131,9 +131,7 @@ services:
       - .env.testing
 
     ports:
-      - "28333:8333"
-      - "29333:9333"
-      - "28888:8888"
+      - "127.0.0.1:28333:8333"
 
     networks:
       - app-net-nt5rk
@@ -177,8 +175,8 @@ services:
       - .env.testing
 
     ports:
-      - "21025:1025"
-      - "28025:8025"
+      - "127.0.0.1:21025:1025"
+      - "127.0.0.1:28025:8025"
 
     networks:
       - app-net-nt5rk
@@ -208,6 +206,7 @@ services:
     build:
       context: .
       dockerfile: docker/django/Dockerfile
+      provenance: false
       target: test
     container_name: django-test-dt5qx
     restart: "no"

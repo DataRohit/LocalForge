@@ -9,6 +9,7 @@ import json
 import secrets
 import time
 import uuid
+from base64 import b64encode
 from typing import TypedDict, cast
 
 import pytest
@@ -96,7 +97,12 @@ def _mailpit_request(method: str) -> MailpitMessages | None:
     )
 
     try:
-        connection.request(method, "/api/v1/messages", headers={"Host": "localhost"})
+        token = b64encode(settings.MAILPIT_UI_AUTH.encode()).decode()
+        connection.request(
+            method,
+            "/api/v1/messages",
+            headers={"Authorization": f"Basic {token}", "Host": "localhost"},
+        )
         response = connection.getresponse()
         payload = response.read()
     finally:
@@ -107,6 +113,44 @@ def _mailpit_request(method: str) -> MailpitMessages | None:
         return None
 
     return cast("MailpitMessages", json.loads(payload))
+
+
+@pytest.mark.integration
+@pytest.mark.services("mailpit")
+@pytest.mark.timeout(MAILPIT_TIMEOUT_SECONDS)
+@pytest.mark.skipif(
+    settings.EMAIL_BACKEND != SMTP_BACKEND,
+    reason="the Mailpit authentication boundary runs only under the Compose smtp profile",
+)
+def test_mailpit_rejects_unauthenticated_api_access() -> None:
+    """Reject access to captured messages without the generated UI credential.
+
+    Calls the API without authorization and verifies metadata is unavailable even from loopback,
+    preventing captured account recovery material from becoming an unauthenticated local surface.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If Mailpit exposes message metadata without authentication.
+    """
+    connection = http.client.HTTPConnection(
+        settings.EMAIL_HOST,
+        settings.MAILPIT_WEB_PORT,
+        timeout=MAILPIT_TIMEOUT_SECONDS,
+    )
+    try:
+        connection.request("GET", "/api/v1/messages", headers={"Host": "localhost"})
+        response = connection.getresponse()
+        payload = response.read()
+    finally:
+        connection.close()
+
+    assert response.status == http.client.UNAUTHORIZED
+    assert b'"messages"' not in payload.lower()
 
 
 @pytest.mark.integration

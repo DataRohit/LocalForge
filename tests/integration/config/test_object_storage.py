@@ -5,6 +5,7 @@ explicit overwrite semantics, private anonymous access, and deletion.
 """
 
 import http.client
+import socket
 from typing import TypedDict, cast
 from urllib.parse import parse_qs, urlparse
 
@@ -99,6 +100,34 @@ def _storage_status(port: int, path: str) -> int:
     return response.status
 
 
+def _storage_refuses_connection(port: int) -> bool:
+    """Check that one unpublished SeaweedFS administration port is closed.
+
+    Connects through the host-mode S3 endpoint address and treats only a refused or unreachable
+    socket as proof that the native administration surface is not host-published.
+
+    Arguments:
+        port: Environment-specific native SeaweedFS port.
+
+    Returns:
+        True when the host boundary refuses the connection, otherwise False.
+
+    Raises:
+        AssertionError: If the configured S3 endpoint has no hostname.
+    """
+    storages = cast("dict[str, dict[str, object]]", settings.STORAGES)
+    options = cast("StorageOptions", storages["default"]["OPTIONS"])
+    hostname = urlparse(options["endpoint_url"]).hostname
+
+    assert hostname is not None
+
+    try:
+        with socket.create_connection((hostname, port), timeout=STORAGE_TIMEOUT_SECONDS):
+            return False
+    except OSError:
+        return True
+
+
 @pytest.mark.integration
 @pytest.mark.services("seaweedfs")
 @pytest.mark.timeout(STORAGE_TIMEOUT_SECONDS)
@@ -123,8 +152,12 @@ def test_every_documented_object_storage_surface_answers() -> None:
 
     assert s3_port is not None
     assert _storage_status(s3_port, "/healthz") == SUCCESS_STATUS
-    assert _storage_status(settings.SEAWEEDFS_MASTER_PORT, "/") == SUCCESS_STATUS
-    assert _storage_status(settings.SEAWEEDFS_FILER_PORT, "/") == SUCCESS_STATUS
+    if urlparse(options["endpoint_url"]).hostname in {"127.0.0.1", "localhost"}:
+        assert _storage_refuses_connection(settings.SEAWEEDFS_MASTER_PORT)
+        assert _storage_refuses_connection(settings.SEAWEEDFS_FILER_PORT)
+    else:
+        assert _storage_status(settings.SEAWEEDFS_MASTER_PORT, "/") == SUCCESS_STATUS
+        assert _storage_status(settings.SEAWEEDFS_FILER_PORT, "/") == SUCCESS_STATUS
 
 
 @pytest.mark.integration

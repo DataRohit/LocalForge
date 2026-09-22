@@ -52,6 +52,7 @@ SECRET_VARIABLES = (
     "TRAEFIK_DASHBOARD_PASSWORD",
     "TRAEFIK_DASHBOARD_AUTH",
     "FLOWER_BASIC_AUTH",
+    "MP_UI_AUTH",
 )
 CONVENTIONS_DOCUMENT = gen_secrets.REPOSITORY_ROOT / "docs" / "platform" / "conventions.md"
 
@@ -1567,6 +1568,33 @@ def test_the_task_dashboard_credential_is_plaintext(repository: Path) -> None:
     )
 
     assert user == "admin"
+    assert not password.startswith("$")
+    assert len(password) > 1
+
+
+@pytest.mark.unit
+def test_the_mail_dashboard_credential_is_plaintext(repository: Path) -> None:
+    """Give the mail dashboard a password it can actually compare.
+
+    Confirms Mailpit receives a literal username and password pair because its UI authentication
+    setting compares the configured value directly.
+
+    Arguments:
+        repository: Temporary repository holding the manifest.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the credential is missing, malformed, or hashed.
+    """
+    gen_secrets.main([], root=repository, version_control=FakeVersionControl())
+    user, separator, password = values_in(repository, ".env.development")["MP_UI_AUTH"].partition(
+        ":"
+    )
+
+    assert user == "admin"
+    assert separator == ":"
     assert not password.startswith("$")
     assert len(password) > 1
 

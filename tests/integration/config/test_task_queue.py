@@ -154,11 +154,18 @@ def broker_queue(monkeypatch: pytest.MonkeyPatch, worker_namespace: str) -> Iter
     monkeypatch.setitem(app.conf, "CELERY_TASK_ALWAYS_EAGER", eager)
 
     name = f"{worker_namespace}-{uuid.uuid4().hex}"
+    with app.connection_for_write() as connection:
+        channel = connection.channel()
+        for configured in app.conf.task_queues:
+            configured(channel).declare()
 
     yield name
 
     with app.connection_for_write() as connection:
-        connection.channel().queue_delete(name)
+        channel = connection.channel()
+        channel.queue_delete(name)
+        channel.exchange_delete(name)
+    app.amqp.queues.pop(name, None)
 
 
 @pytest.mark.integration
@@ -353,7 +360,16 @@ def test_a_published_message_carries_no_argument_on_the_wire(broker_queue: str) 
         AssertionError: If the message carries an argument value.
     """
     published: AsyncResult | None = None
+    wire_queue = Queue(
+        broker_queue,
+        Exchange(broker_queue, type="topic", durable=True),
+        routing_key=broker_queue,
+        durable=True,
+        queue_arguments={"x-queue-type": "quorum"},
+    )
     try:
+        with app.connection_for_write() as connection:
+            wire_queue(connection.channel()).declare()
         published = cast(
             "AsyncResult",
             refuse_task.apply_async(
@@ -367,7 +383,7 @@ def test_a_published_message_carries_no_argument_on_the_wire(broker_queue: str) 
         )
 
         with app.connection_for_read() as connection:
-            message = Queue(broker_queue)(connection.channel()).get(accept=["json"], no_ack=True)
+            message = wire_queue(connection.channel()).get(accept=["json"], no_ack=True)
 
         assert message is not None
 
@@ -411,9 +427,10 @@ def test_a_terminal_failure_lands_in_one_scrubbed_dead_letter_record(
     dead_letter_name = f"{worker_namespace}-dead-{uuid.uuid4().hex}"
     dead_letter_queue = Queue(
         dead_letter_name,
-        Exchange(dead_letter_name, type="direct", durable=True),
+        Exchange(dead_letter_name, type="topic", durable=True),
         routing_key=dead_letter_name,
         durable=True,
+        queue_arguments={"x-queue-type": "quorum"},
     )
     monkeypatch.setitem(app.conf, "CELERY_DEAD_LETTER_QUEUE", dead_letter_name)
 

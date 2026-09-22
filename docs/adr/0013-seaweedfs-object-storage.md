@@ -7,7 +7,8 @@ date: 2026-09-13
 
 File uploads go to SeaweedFS 4.46 (2026-09-08, Apache-2.0) through its S3 gateway. Multiple releases a month,
 repository pushed 2026-09-13, 34.6k stars, and it ships both a master status UI and a filer browser UI — so the
-dashboard requirement is met natively rather than through a companion.
+dashboard requirement is met natively rather than through a companion. Those administration UIs are
+container-internal; only the authenticated S3 gateway is published to host loopback.
 
 **This choice reverses the industry default.** MinIO is archived, its Docker Hub image is gone, and its Console was
 removed from the AGPL server; LocalStack's community edition is archived and its current image demands an auth
@@ -22,7 +23,7 @@ filer**, so `-filer` is redundant.
 Verified against the 4.46 source on 2026-09-13, that command opens more ports than the obvious four:
 
 | Port | Service | Note |
-|---|---|---|
+| --- | --- | --- |
 | 9333 | master HTTP | UI at `/` and `/ui/index.html` |
 | 8080 | volume HTTP | |
 | 8888 | filer HTTP | browser UI |
@@ -70,3 +71,8 @@ Django reaches SeaweedFS only through `S3_ENDPOINT_URL`, so swapping the impleme
 or to a real S3 — is a variable change. The client uses path-style addressing and Signature Version 4, with a
 five-second connection timeout, a fifteen-second read timeout, and one bounded standard-mode attempt. The
 client-library question is separate and is settled in [0016](./0016-accept-release-lag.md).
+
+The security review on 2026-09-22 removed host publications for master, volume, and filer because their HTTP
+surfaces have no authentication and bypass the S3 identity boundary. Host-mode integration now proves those ports
+refuse connections while container mode still proves the internal master and filer surfaces answer. The S3 host
+publication binds only to `127.0.0.1`; unsigned object reads remain forbidden.
