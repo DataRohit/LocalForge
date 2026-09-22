@@ -329,8 +329,8 @@ Gate:
 ### Phase 8 — Convention audit
 
 ```console
-uv run python scripts/audit_naming.py --environment development
-uv run python scripts/audit_naming.py --environment testing
+uv run python -m scripts.audit_naming --environment development
+uv run python -m scripts.audit_naming --environment testing
 ```
 
 Then run the five audits in [../platform/service-inventory.md](../platform/service-inventory.md) Section 6 by hand

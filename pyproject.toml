@@ -261,6 +261,18 @@ cmd = "python -m scripts.manage_platform docker-audit"
 help = "Require zero LocalForge Docker containers, networks, volumes, and images"
 cmd = "python -m scripts.manage_platform docker-clean-check"
 
+[tool.poe.tasks.convention-audit]
+help = "Audit live Docker conventions for both LocalForge environments"
+cmd = "python -m scripts.audit_naming --environment all"
+
+[tool.poe.tasks.convention-audit-development]
+help = "Audit live Docker conventions for development"
+cmd = "python -m scripts.audit_naming --environment development"
+
+[tool.poe.tasks.convention-audit-testing]
+help = "Audit live Docker conventions for testing"
+cmd = "python -m scripts.audit_naming --environment testing"
+
 [tool.poe.tasks.secrets-generate]
 help = "Create or top up local environment files without replacing existing values"
 cmd = "python -m scripts.manage_platform secrets-generate"

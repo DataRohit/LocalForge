@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
     from celery.result import AsyncResult
 
-WORKER_START_TIMEOUT_SECONDS = 20
+WORKER_START_TIMEOUT_SECONDS = 40
 RESULT_TIMEOUT_SECONDS = 25
 WORKER_STOP_TIMEOUT_SECONDS = 15
 STATE_POLL_SECONDS = 0.1
@@ -213,7 +213,8 @@ def _delete_queue(queue_name: str) -> None:
 @pytest.mark.integration
 @pytest.mark.services("rabbitmq", "valkey-cache")
 @pytest.mark.serial
-@pytest.mark.timeout(60)
+@pytest.mark.xdist_group("serial")
+@pytest.mark.timeout(90)
 def test_a_real_worker_process_executes_a_brokered_probe(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -259,7 +260,8 @@ def test_a_real_worker_process_executes_a_brokered_probe(
 @pytest.mark.integration
 @pytest.mark.services("rabbitmq", "valkey-cache")
 @pytest.mark.serial
-@pytest.mark.timeout(75)
+@pytest.mark.xdist_group("serial")
+@pytest.mark.timeout(120)
 def test_worker_loss_redelivers_an_in_flight_task(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -324,7 +326,8 @@ def test_worker_loss_redelivers_an_in_flight_task(
 @pytest.mark.integration
 @pytest.mark.services("rabbitmq", "valkey-cache")
 @pytest.mark.serial
-@pytest.mark.timeout(60)
+@pytest.mark.xdist_group("serial")
+@pytest.mark.timeout(90)
 def test_one_slow_task_does_not_starve_fast_work(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

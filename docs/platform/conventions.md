@@ -523,8 +523,11 @@ by this script: SeaweedFS reads `-s3.config` once at boot and exposes no API to 
 Phase 8. Compares live Docker objects against Section 2, **scoped by the Compose project label** so unrelated
 containers on this shared machine are ignored. Checks: every expected container exists and no unexpected one does;
 every name matches `^[a-z][a-z-]*-[a-z2-9]{5}$`; no anonymous volumes in the project; no `_default` network; every
-published port matches [service-inventory.md](./service-inventory.md). Exit `0` clean; `1` violations, printed as
-`FAIL <check> <object> <detail>`.
+published port matches [service-inventory.md](./service-inventory.md); every bind is registered and read-only; every
+network carries its registered `internal` flag; and a disposable pinned probe proves each internal network cannot
+resolve an external name. Invoke `uv run python -m scripts.audit_naming` with
+`--environment {development,testing,all}`. Exit `0` clean; `1` violations, printed as
+`FAIL convention <check> <object> <detail>`.
 
 ### 4.9 `scripts/run_tests.py`
 

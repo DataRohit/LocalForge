@@ -76,6 +76,9 @@ separately from ordinary rebuilds.
 
 Run `uv run poe docker-audit` for the complete container, label, network, volume, image, and health inventory.
 `uv run poe docker-clean-check` is the inverse precondition: it fails if any LocalForge Docker resource remains.
+Run `uv run poe convention-audit` for the deeper live registry comparison: exact names, ports, mounts, internal
+flags, anonymous-volume rejection, and active offline probes for both projects. Environment-specific variants are
+`convention-audit-development` and `convention-audit-testing`.
 
 For a development machine where port 8000 is already owned by another process, `--proxy-only` is accepted by
 `environments-setup`, `development-up`, `development-rebuild`, and `development-reset`. Every other command rejects

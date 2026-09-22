@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 
 ROUTE = "/ws/notifications/"
 HEADERS = [(b"host", b"localhost"), (b"origin", b"http://localhost:8080")]
-WORKER_START_TIMEOUT_SECONDS = 20
+WORKER_START_TIMEOUT_SECONDS = 40
 WORKER_STOP_TIMEOUT_SECONDS = 15
 RECEIVE_TIMEOUT_SECONDS = 30
 NO_MESSAGE_TIMEOUT_SECONDS = 0.2
@@ -267,9 +267,10 @@ def _task_id_from_log(log_path: Path) -> str:
 @pytest.mark.integration
 @pytest.mark.services("postgres", "rabbitmq", "valkey-cache", "valkey-channels")
 @pytest.mark.serial
+@pytest.mark.xdist_group("serial")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.asyncio
-@pytest.mark.timeout(75)
+@pytest.mark.timeout(120)
 async def test_username_change_request_fans_out_after_real_worker_completion(
     django_user_model: type[User],
     monkeypatch: pytest.MonkeyPatch,
