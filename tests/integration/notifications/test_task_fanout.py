@@ -24,6 +24,7 @@ from channels.db import database_sync_to_async
 from channels.testing import WebsocketCommunicator
 from django.conf import settings
 from django.test import Client as DjangoClient
+from kombu.exceptions import OperationalError
 from rest_framework.authtoken.models import Token
 
 from accounts.jwt_authentication import PrimaryRefreshToken
@@ -76,7 +77,7 @@ def _wait_for_worker(node_name: str) -> None:
     pytest.fail(f"worker {node_name} did not answer before the startup timeout")
 
 
-def _stop_worker(process: subprocess.Popen[bytes]) -> None:
+def _stop_worker(process: subprocess.Popen[bytes], node_name: str) -> None:
     """Stop one worker process within the cleanup budget.
 
     Requests ordinary termination and escalates only when the worker exceeds the bounded wait. The
@@ -84,18 +85,35 @@ def _stop_worker(process: subprocess.Popen[bytes]) -> None:
 
     Arguments:
         process: Worker process to stop.
+        node_name: Exact Celery node name assigned to the process.
 
     Returns:
         None.
+
+    Raises:
+        AssertionError: If the graceful shutdown request cannot reach the worker.
     """
     if process.poll() is not None:
         return
-    process.terminate()
+    shutdown_error: OSError | OperationalError | None = None
+    try:
+        app.control.shutdown(destination=[node_name])
+    except (OSError, OperationalError) as error:
+        shutdown_error = error
+        process.terminate()
     try:
         process.wait(timeout=WORKER_STOP_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait(timeout=WORKER_STOP_TIMEOUT_SECONDS)
+        process.terminate()
+        try:
+            process.wait(timeout=WORKER_STOP_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=WORKER_STOP_TIMEOUT_SECONDS)
+
+    if shutdown_error is not None:
+        msg = "worker graceful shutdown request failed"
+        raise AssertionError(msg) from shutdown_error
 
 
 @contextmanager
@@ -121,7 +139,6 @@ def _worker(queue_name: str, node_name: str, log_path: Path) -> Iterator[None]:
     if environment.get("PYTHONPATH"):
         python_path.append(environment["PYTHONPATH"])
     environment["PYTHONPATH"] = os.pathsep.join(python_path)
-
     with log_path.open("ab") as log:
         process = subprocess.Popen(
             [
@@ -147,7 +164,7 @@ def _worker(queue_name: str, node_name: str, log_path: Path) -> Iterator[None]:
             _wait_for_worker(node_name)
             yield
         finally:
-            _stop_worker(process)
+            _stop_worker(process, node_name)
 
 
 async def _issue_access_token(account: User) -> str:
@@ -249,6 +266,7 @@ def _task_id_from_log(log_path: Path) -> str:
 
 @pytest.mark.integration
 @pytest.mark.services("postgres", "rabbitmq", "valkey-cache", "valkey-channels")
+@pytest.mark.serial
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.asyncio
 @pytest.mark.timeout(75)
@@ -261,7 +279,8 @@ async def test_username_change_request_fans_out_after_real_worker_completion(
     """Deliver the username-change completion event across request, worker, and socket processes.
 
     Opens an authenticated socket, submits the existing request, executes the queued email task in
-    a separate real worker, and requires the exact public notification envelope.
+    a separate real worker, and requires the exact public notification envelope. This test is
+    serial because concurrent real-worker control startup saturates the shared testing broker.
 
     Arguments:
         django_user_model: Configured account model used to create the recipient.

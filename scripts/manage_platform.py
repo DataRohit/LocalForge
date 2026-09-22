@@ -9,13 +9,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from http import HTTPStatus
 from pathlib import Path
 from typing import Protocol
@@ -28,6 +30,10 @@ HEALTH_POLL_SECONDS = 2
 EXIT_OK = 0
 EXIT_FAILED = 1
 EXIT_USAGE = 2
+EXIT_CONTAINER_TEST_FAILED = 10
+EXIT_HOST_TEST_FAILED = 11
+EXIT_BOTH_TEST_MODES_FAILED = 12
+EXIT_TEST_COLLECTION_MISMATCH = 13
 DECRYPT_FALLBACK_CODES = frozenset({2, 3})
 TESTING_SERVICES = (
     "postgres-tp8vn",
@@ -84,6 +90,27 @@ SMTP_INTEGRATION_TESTS = (
     ),
     "tests/integration/config/test_email.py::test_a_message_round_trips_through_smtp_and_mailpit",
 )
+TEST_COLLECTION_PATTERN = re.compile(r"(?:(?P<selected>\d+)/)?(?P<total>\d+) tests? collected")
+POSTGRES_SEVERITY_PATTERN = re.compile(
+    r"^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)? [A-Z]+ \[\d+\] )?"
+    r"(?:WARNING|ERROR|FATAL|PANIC):"
+)
+VALKEY_WARNING_PATTERN = re.compile(
+    r"^\d+:[A-Z] \d{2} [A-Z][a-z]{2} \d{4} "
+    r"\d{2}:\d{2}:\d{2}\.\d{3} # "
+)
+SEAWEEDFS_SEVERITY_PATTERN = re.compile(r"^[WEF]\d{4} \d{2}:\d{2}:\d{2}\.\d+ ")
+RABBITMQ_CLOSE_PATTERN = re.compile(
+    r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+\+\d{2}:\d{2}) "
+    r"\[warning\] <(?P<process>\d+(?:\.\d+)+)> closing AMQP connection "
+    r"<(?P<connection>\d+(?:\.\d+)+)> \(.+\):$"
+)
+RABBITMQ_CLOSE_REASON_PATTERN = re.compile(
+    r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+\+\d{2}:\d{2}) "
+    r"\[warning\] <(?P<process>\d+(?:\.\d+)+)> "
+    r"client unexpectedly closed TCP connection$"
+)
+ANSI_ESCAPE_PATTERN = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 CONTAINER_PROJECTS = {
     **dict.fromkeys(DEVELOPMENT_CONTAINERS, "localforge-dev"),
     **dict.fromkeys(TESTING_CONTAINERS, "localforge-test"),
@@ -338,14 +365,24 @@ class HostRunner:
             Process exit code and optional output.
         """
         try:
-            completed = subprocess.run(
-                command,
-                cwd=self.root,
-                env=environment,
-                capture_output=capture,
-                text=True,
-                check=False,
-            )
+            if capture:
+                completed = subprocess.run(
+                    command,
+                    cwd=self.root,
+                    env=environment,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    check=False,
+                )
+            else:
+                completed = subprocess.run(
+                    command,
+                    cwd=self.root,
+                    env=environment,
+                    text=True,
+                    check=False,
+                )
         except (OSError, subprocess.SubprocessError) as error:
             print(f"command failed to start: {error}")
             return CommandResult(code=EXIT_FAILED, output="")
@@ -379,6 +416,148 @@ class EnvironmentSpec:
     overlay: str
     project: str
     services: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class TestingCollectionResult:
+    """Collection evidence for one complete testing mode.
+
+    Carries the complete collection and the two executed stage partitions, preventing matching
+    host/container totals from hiding tests omitted by both Poe stages. Inherits nothing.
+
+    Attributes:
+        mode: Stable execution mode name.
+        complete: Complete collection count, or None when unreadable.
+        core: Non-timing stage count, or None when unreadable.
+        timing: Security-timing stage count, or None when unreadable.
+        code: First collection process or validation failure.
+
+    Members:
+        valid: Whether every count is readable and partitions the complete collection.
+    """
+
+    mode: str
+    complete: int | None
+    core: int | None
+    timing: int | None
+    code: int
+
+    @property
+    def valid(self) -> bool:
+        """Report whether the two stages exactly partition complete collection.
+
+        Requires every count, a zero process status, and exact arithmetic so environment-specific
+        selection or a silently omitted marker fails before execution evidence is accepted.
+
+        Arguments:
+            None.
+
+        Returns:
+            Whether collection evidence is complete and internally consistent.
+        """
+        return (
+            self.code == EXIT_OK
+            and self.complete is not None
+            and self.core is not None
+            and self.timing is not None
+            and self.complete == self.core + self.timing
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class TestingModeResult:
+    """Execution evidence produced by one complete testing mode.
+
+    Carries precomputed collection, suite, post-check, and timing results without collapsing child
+    failures into an ambiguous process code. Inherits nothing.
+
+    Attributes:
+        collection: Collection evidence captured before any mode ran.
+        test_code: Complete suite process status.
+        non_log_post_code: Health, ownership, and residue audit status.
+        log_code: Bounded log audit status.
+        duration: Complete suite wall-clock seconds.
+        started_at: Absolute UTC suite-start boundary.
+        ended_at: Absolute UTC post-check boundary.
+
+    Members:
+        mode: Stable execution mode name.
+        failure_code: First underlying child failure.
+        passed: Whether every required result passed.
+    """
+
+    collection: TestingCollectionResult
+    test_code: int
+    non_log_post_code: int
+    log_code: int
+    duration: float
+    started_at: str
+    ended_at: str
+
+    @property
+    def mode(self) -> str:
+        """Return the execution mode named by collection evidence.
+
+        Delegates to the immutable collection value so reporting and failure classification always
+        use the same mode identity.
+
+        Arguments:
+            None.
+
+        Returns:
+            Stable mode name.
+        """
+        return self.collection.mode
+
+    @property
+    def failure_code(self) -> int:
+        """Return the first underlying child failure without remapping it.
+
+        Preserves collection, suite, then post-check precedence for supported single-mode commands.
+        Falls back to the ordinary failure code when arithmetic invalidates zero-status collection.
+
+        Arguments:
+            None.
+
+        Returns:
+            First non-zero child status, otherwise zero.
+        """
+        for code in (self.collection.code, self.test_code, self.post_code):
+            if code != EXIT_OK:
+                return code
+        if not self.collection.valid:
+            return EXIT_FAILED
+        return EXIT_OK
+
+    @property
+    def post_code(self) -> int:
+        """Return the first non-zero post-mode audit status.
+
+        Combines non-log health and ownership evidence with the bounded log result while retaining
+        their failure precedence for single-mode commands.
+
+        Arguments:
+            None.
+
+        Returns:
+            First non-zero post-mode status, otherwise zero.
+        """
+        return self.non_log_post_code if self.non_log_post_code != EXIT_OK else self.log_code
+
+    @property
+    def passed(self) -> bool:
+        """Report whether collection, execution, and post-checks passed.
+
+        Requires internally valid collection evidence and zero suite and post-check statuses.
+        The property is the sole input to dual-mode failure classification.
+
+        Arguments:
+            None.
+
+        Returns:
+            Whether the mode passed every gate.
+        """
+        return self.collection.valid and self.test_code == self.post_code == EXIT_OK
 
 
 DEVELOPMENT = EnvironmentSpec(
@@ -1924,7 +2103,590 @@ def logs(
     return EXIT_OK
 
 
-def testing_test(  # noqa: PLR0913
+def testing_mode_commands(
+    mode: str,
+) -> tuple[tuple[tuple[str, ...], ...], tuple[str, ...]]:
+    """Build all collection commands and the complete-suite command for one mode.
+
+    Keeps complete, core, and timing selection adjacent to the suite command so evidence and
+    execution cannot accidentally use different settings or service-address paths.
+
+    Arguments:
+        mode: ``container`` or ``host``.
+
+    Returns:
+        Three collection commands followed by the complete-suite command.
+
+    Raises:
+        ValueError: If the mode is unsupported.
+    """
+    selections = (
+        (),
+        ("-m", "not security_timing"),
+        ("-m", "security_timing"),
+    )
+    if mode == "container":
+        collections = tuple(
+            compose_command(
+                TESTING,
+                "exec",
+                "-T",
+                "django-test-dt5qx",
+                "pytest",
+                "--collect-only",
+                "-q",
+                "--no-cov",
+                *selection,
+            )
+            for selection in selections
+        )
+        return (
+            collections,
+            compose_command(
+                TESTING,
+                "exec",
+                "-T",
+                "django-test-dt5qx",
+                "poe",
+                "test",
+            ),
+        )
+    if mode == "host":
+        collections = tuple(
+            (
+                "uv",
+                "run",
+                "pytest",
+                "--collect-only",
+                "-q",
+                "--no-cov",
+                *selection,
+            )
+            for selection in selections
+        )
+        return collections, ("uv", "run", "poe", "test")
+
+    msg = f"unsupported testing mode: {mode}"
+    raise ValueError(msg)
+
+
+def parse_test_collection(output: str) -> int | None:
+    """Read pytest's stable collected-test total.
+
+    Selects the final count-bearing summary from otherwise verbose collection output and refuses
+    to infer a value when pytest does not emit its documented summary.
+
+    Arguments:
+        output: Captured pytest collection output.
+
+    Returns:
+        Collected test count, or None when no summary is present.
+    """
+    matches = tuple(TEST_COLLECTION_PATTERN.finditer(output))
+    if not matches:
+        return None
+
+    match = matches[-1]
+    selected = match.group("selected")
+    return int(selected if selected is not None else match.group("total"))
+
+
+def collect_testing_mode(runner: Runner, mode: str) -> TestingCollectionResult:
+    """Collect complete, core, and timing counts before any suite executes.
+
+    Runs every selection even when an earlier one fails, preserving the first child status while
+    exposing all readable counts for diagnosis and parity reporting.
+
+    Arguments:
+        runner: External command adapter.
+        mode: ``container`` or ``host``.
+
+    Returns:
+        Collection evidence for the mode.
+    """
+    collection_commands, _test_command = testing_mode_commands(mode)
+    counts: list[int | None] = []
+    codes: list[int] = []
+    for command in collection_commands:
+        result = runner.run(command, capture=True)
+        count = parse_test_collection(result.output) if result.code == EXIT_OK else None
+        code = result.code if result.code != EXIT_OK or count is not None else EXIT_FAILED
+        counts.append(count)
+        codes.append(code)
+
+    complete, core, timing = counts
+    code = next((status for status in codes if status != EXIT_OK), EXIT_OK)
+    if (
+        code == EXIT_OK
+        and complete is not None
+        and core is not None
+        and timing is not None
+        and complete != core + timing
+    ):
+        code = EXIT_FAILED
+    print(
+        f"COLLECTION mode={mode} "
+        f"complete={complete if complete is not None else '<unreadable>'} "
+        f"core={core if core is not None else '<unreadable>'} "
+        f"timing={timing if timing is not None else '<unreadable>'} status={code}"
+    )
+    return TestingCollectionResult(
+        mode=mode,
+        complete=complete,
+        core=core,
+        timing=timing,
+        code=code,
+    )
+
+
+def docker_environment_audit(runner: Runner, spec: EnvironmentSpec) -> int:
+    """Audit one environment's Docker ownership without requiring the other.
+
+    Validates registered containers, labels, images, health, networks, volumes, and local image
+    presence while ignoring unrelated projects on the shared engine.
+
+    Arguments:
+        runner: External command adapter.
+        spec: Environment whose resources are audited.
+
+    Returns:
+        Zero for exact ownership and health, otherwise failure.
+    """
+    code, containers = inspect_docker_objects(
+        runner,
+        (
+            "docker",
+            "container",
+            "ls",
+            "-aq",
+            "--filter",
+            f"label=com.docker.compose.project={spec.project}",
+        ),
+        ("docker", "container", "inspect"),
+    )
+    if code != EXIT_OK:
+        return code
+    code, networks = inspect_docker_objects(
+        runner,
+        (
+            "docker",
+            "network",
+            "ls",
+            "-q",
+            "--filter",
+            f"label=com.docker.compose.project={spec.project}",
+        ),
+        ("docker", "network", "inspect"),
+    )
+    if code != EXIT_OK:
+        return code
+    code, volumes = inspect_docker_objects(
+        runner,
+        (
+            "docker",
+            "volume",
+            "ls",
+            "-q",
+            "--filter",
+            f"label=com.docker.compose.project={spec.project}",
+        ),
+        ("docker", "volume", "inspect"),
+    )
+    if code != EXIT_OK:
+        return code
+
+    expected_containers = DEVELOPMENT_CONTAINERS if spec is DEVELOPMENT else TESTING_CONTAINERS
+    expected_networks = {
+        name: project for name, project in NETWORK_PROJECTS.items() if project == spec.project
+    }
+    expected_volumes = {
+        name: project for name, project in VOLUME_PROJECTS.items() if project == spec.project
+    }
+    required_volumes = DEVELOPMENT_VOLUMES if spec is DEVELOPMENT else TESTING_VOLUMES
+    failures = evaluate_container_inventory(containers, require_complete=False)
+    observed_containers = {record_name(record) for record in containers}
+    failures.extend(
+        f"missing-container {name}" for name in sorted(expected_containers - observed_containers)
+    )
+    failures.extend(
+        evaluate_resource_inventory(
+            networks,
+            expected_networks,
+            "network",
+            require_complete=True,
+        )
+    )
+    failures.extend(
+        evaluate_resource_inventory(
+            volumes,
+            expected_volumes,
+            "volume",
+            require_complete=True,
+            required_names=required_volumes,
+        )
+    )
+    if spec is TESTING:
+        image_result = runner.run(
+            ("docker", "image", "inspect", "--format", "{{.Id}}", "localforge/django-test:0.1.0"),
+            capture=True,
+        )
+        if image_result.code != EXIT_OK or not image_result.output:
+            failures.append("missing-image localforge/django-test:0.1.0")
+
+    if failures:
+        for failure in sorted(set(failures)):
+            print(f"FAIL {failure}")
+        return EXIT_FAILED
+
+    print(f"PASS {spec.name} Docker ownership")
+    return EXIT_OK
+
+
+def audit_testing_container_set(runner: Runner) -> int:
+    """Require exactly the six default testing containers after a suite.
+
+    Uses the Compose project label so unrelated Docker objects are ignored, while optional profile
+    containers, generated run containers, missing services, and stale project resources fail.
+
+    Arguments:
+        runner: External command adapter.
+
+    Returns:
+        Zero for the exact headless set, otherwise failure.
+    """
+    result = runner.run(
+        (
+            "docker",
+            "ps",
+            "-a",
+            "--filter",
+            "label=com.docker.compose.project=localforge-test",
+            "--format",
+            "{{.Names}}",
+        ),
+        capture=True,
+    )
+    if result.code != EXIT_OK:
+        return result.code
+
+    observed = {line for line in result.output.splitlines() if line}
+    failures = [
+        *(f"missing-container {name}" for name in sorted(TESTING_CONTAINERS - observed)),
+        *(f"unexpected-container {name}" for name in sorted(observed - TESTING_CONTAINERS)),
+    ]
+    if failures:
+        for failure in failures:
+            print(f"FAIL {failure}")
+        return EXIT_FAILED
+
+    print("PASS testing container set")
+    return EXIT_OK
+
+
+def utc_timestamp() -> str:
+    """Return one Docker-compatible absolute UTC timestamp.
+
+    Uses an RFC 3339 ``Z`` suffix so suite boundaries can be passed directly to Docker without
+    relative-window drift while post-checks and earlier container logs are inspected.
+
+    Arguments:
+        None.
+
+    Returns:
+        Current UTC timestamp.
+    """
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def normalize_log_line(line: str) -> str:
+    """Remove terminal presentation escapes from one container log line.
+
+    Docker preserves RabbitMQ's ANSI color sequences even for captured non-interactive logs, so
+    severity and exact-event parsers operate on normalized text rather than presentation bytes.
+
+    Arguments:
+        line: Raw captured container log line.
+
+    Returns:
+        Line without ANSI control sequences.
+    """
+    return ANSI_ESCAPE_PATTERN.sub("", line)
+
+
+def log_line_is_warning_or_higher(line: str) -> bool:
+    """Classify one container log line by explicit severity syntax.
+
+    Recognizes the structured formats used by LocalForge services without treating ordinary words
+    such as logger names or diagnostic text containing ``error`` as a failure-level record.
+
+    Arguments:
+        line: Container log line.
+
+    Returns:
+        Whether the line declares warning, error, or critical severity.
+    """
+    normalized = normalize_log_line(line)
+    try:
+        payload = json.loads(normalized)
+    except json.JSONDecodeError:
+        payload = None
+    if isinstance(payload, dict):
+        level = payload.get("level")
+        if isinstance(level, str) and level.casefold() in {
+            "warning",
+            "error",
+            "critical",
+        }:
+            return True
+
+    folded = normalized.casefold()
+    return (
+        "level=warn" in folded
+        or "level=error" in folded
+        or "level=critical" in folded
+        or "[warning]" in folded
+        or "[error]" in folded
+        or "[critical]" in folded
+        or POSTGRES_SEVERITY_PATTERN.match(normalized.upper()) is not None
+        or VALKEY_WARNING_PATTERN.match(normalized) is not None
+        or SEAWEEDFS_SEVERITY_PATTERN.match(normalized) is not None
+    )
+
+
+def expected_testing_log_line(container: str, line: str, *, mode_passed: bool) -> bool:
+    """Recognize the narrowly accepted testing RabbitMQ records.
+
+    Accepts only the documented focused-worker records and only after the containing mode's suite,
+    ownership, residue, and health checks have already passed.
+
+    Arguments:
+        container: Container that emitted the line.
+        line: Warning-or-higher log line.
+        mode_passed: Whether all non-log gates for the mode passed.
+
+    Returns:
+        Whether the record is documented and safe in this exact test window.
+    """
+    if not mode_passed:
+        return False
+    line = normalize_log_line(line)
+    if container == "postgres-tp8vn":
+        return any(
+            marker in line
+            for marker in (
+                'duplicate key value violates unique constraint "accounts_user_email_key"',
+                'duplicate key value violates unique constraint "accounts_user_username_key"',
+                'duplicate key value violates unique constraint "accounts_user_username_ci_unique"',
+                'invalid input syntax for type integer: "database-diagnostic-marker"',
+                'invalid input syntax for type integer: "celery-database-diagnostic-marker"',
+                'relation "accounts_login_throttle_event" does not exist',
+            )
+        )
+    if container != "rabbitmq-tr6mc":
+        return False
+    return any(
+        marker in line
+        for marker in (
+            "global_qos",
+            "By default, this feature is not permitted anymore.",
+            "The feature will be removed from a future major RabbitMQ version",
+            "To continue using this feature when it is not permitted by default",
+            "deprecated_features.permit.global_qos",
+        )
+    )
+
+
+def rabbitmq_connection_close_pair(first: str, second: str) -> bool:
+    """Recognize one documented two-line RabbitMQ test-worker close event.
+
+    Requires the generic connection-close line to be immediately followed by the exact documented
+    reason with the same timestamp and process prefix, preventing unrelated AMQP failures from
+    inheriting the exception.
+
+    Arguments:
+        first: Candidate connection-close line.
+        second: Candidate reason line.
+
+    Returns:
+        Whether the two lines are one documented event.
+    """
+    close = RABBITMQ_CLOSE_PATTERN.fullmatch(normalize_log_line(first))
+    reason = RABBITMQ_CLOSE_REASON_PATTERN.fullmatch(normalize_log_line(second))
+    if close is None or reason is None:
+        return False
+
+    close_timestamp = str(close.group("timestamp"))
+    close_process = str(close.group("process"))
+    return (
+        close_timestamp == str(reason.group("timestamp"))
+        and close_process == str(reason.group("process"))
+        and close_process == str(close.group("connection"))
+    )
+
+
+def unexpected_testing_log_count(
+    container: str,
+    lines: Sequence[str],
+    *,
+    mode_passed: bool,
+) -> int:
+    """Count unexplained warning-or-higher records for one testing container.
+
+    Handles documented single-line RabbitMQ records and its exact two-line connection-close event
+    while treating every other declared severity as unexpected.
+
+    Arguments:
+        container: Container that emitted the lines.
+        lines: Ordered bounded log records.
+        mode_passed: Whether the requested mode set passed every non-log gate.
+
+    Returns:
+        Number of unexplained warning-or-higher records.
+    """
+    unexpected = 0
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if not log_line_is_warning_or_higher(line):
+            index += 1
+            continue
+        if expected_testing_log_line(container, line, mode_passed=mode_passed):
+            index += 1
+            continue
+        if (
+            container == "rabbitmq-tr6mc"
+            and mode_passed
+            and index + 1 < len(lines)
+            and rabbitmq_connection_close_pair(line, lines[index + 1])
+        ):
+            index += 2
+            continue
+        unexpected += 1
+        index += 1
+
+    return unexpected
+
+
+def audit_testing_logs(
+    runner: Runner,
+    started_at: str,
+    ended_at: str,
+    *,
+    mode_passed: bool,
+) -> int:
+    """Audit a bounded testing-container log window after one mode.
+
+    Reads both stdout and stderr from every running project container, rejects warning-or-higher
+    records, and permits only the documented RabbitMQ test-worker records after all other mode
+    gates pass.
+
+    Arguments:
+        runner: External command adapter.
+        started_at: Absolute UTC suite-start boundary.
+        ended_at: Absolute UTC post-check boundary.
+        mode_passed: Whether collection, suite, health, ownership, and residue passed.
+
+    Returns:
+        Zero when every record is clean or documented, otherwise failure.
+    """
+    listed = runner.run(
+        (
+            "docker",
+            "ps",
+            "-a",
+            "--filter",
+            "label=com.docker.compose.project=localforge-test",
+            "--format",
+            "{{.Names}}",
+        ),
+        capture=True,
+    )
+    if listed.code != EXIT_OK:
+        return listed.code
+
+    failures: dict[str, int] = {}
+    for container in (line for line in listed.output.splitlines() if line):
+        result = runner.run(
+            (
+                "docker",
+                "logs",
+                "--since",
+                started_at,
+                "--until",
+                ended_at,
+                container,
+            ),
+            capture=True,
+        )
+        if result.code != EXIT_OK:
+            return result.code
+        unexpected = unexpected_testing_log_count(
+            container,
+            result.output.splitlines(),
+            mode_passed=mode_passed,
+        )
+        if unexpected:
+            failures[container] = unexpected
+
+    if failures:
+        for container, count in sorted(failures.items()):
+            print(f"FAIL log-severity container={container} count={count}")
+        return EXIT_FAILED
+
+    print(f"PASS testing logs since={started_at} until={ended_at}")
+    return EXIT_OK
+
+
+def run_testing_mode(
+    root: Path,
+    runner: Runner,
+    collection: TestingCollectionResult,
+    *,
+    http_probe: Callable[[str, str], bool],
+    now: Callable[[], float],
+) -> TestingModeResult:
+    """Run, time, and post-check one mode using precomputed collection evidence.
+
+    Executes only after every requested mode has been collected, then independently checks health,
+    scoped Docker ownership, and exact headless residue before recording its absolute log boundary.
+
+    Arguments:
+        root: Repository root.
+        runner: External command adapter.
+        collection: Precomputed collection evidence.
+        http_probe: HTTP readiness adapter.
+        now: Monotonic clock.
+
+    Returns:
+        Complete execution evidence for the mode.
+    """
+    _collection_commands, test_command = testing_mode_commands(collection.mode)
+    started_at = utc_timestamp()
+    started = now()
+    test_code = runner.run(test_command).code
+    duration = now() - started
+    print(f"TIMING phase=test-{collection.mode} seconds={duration:.3f} status={test_code}")
+
+    health_code = health(root, runner, TESTING, http_probe=http_probe)
+    ownership_code = docker_environment_audit(runner, TESTING)
+    residue_code = audit_testing_container_set(runner)
+    non_log_post_code = next(
+        (code for code in (health_code, ownership_code, residue_code) if code != EXIT_OK),
+        EXIT_OK,
+    )
+    ended_at = utc_timestamp()
+    return TestingModeResult(
+        collection=collection,
+        test_code=test_code,
+        non_log_post_code=non_log_post_code,
+        log_code=EXIT_OK,
+        duration=duration,
+        started_at=started_at,
+        ended_at=ended_at,
+    )
+
+
+def testing_test(  # noqa: C901, PLR0913
     root: Path,
     runner: Runner,
     mode: str,
@@ -1936,8 +2698,8 @@ def testing_test(  # noqa: PLR0913
 ) -> int:
     """Run one or both complete testing modes.
 
-    Optionally prepares and verifies the testing environment, then delegates container execution
-    to Compose and host execution to the existing complete Poe test task.
+    Collects every requested mode before any suite executes, then reports independent execution,
+    post-check, timing, and parity evidence with raw single-mode or stable dual-mode statuses.
 
     Arguments:
         root: Repository root.
@@ -1949,7 +2711,7 @@ def testing_test(  # noqa: PLR0913
         now: Monotonic clock.
 
     Returns:
-        Zero when every requested mode passes, otherwise its first failure.
+        Zero on success, raw child status for one mode, or stable dual-mode status.
     """
     if ensure_up:
         code = up(
@@ -1967,16 +2729,75 @@ def testing_test(  # noqa: PLR0913
         if code != EXIT_OK:
             return code
 
-    if mode in {"container", "both"}:
-        code = runner.run(
-            compose_command(TESTING, "exec", "-T", "django-test-dt5qx", "poe", "test")
-        ).code
-        if code != EXIT_OK:
-            return code
-    if mode in {"host", "both"}:
-        return runner.run(("uv", "run", "poe", "test")).code
+    requested_modes = ("container", "host") if mode == "both" else (mode,)
+    total_started = now()
+    collections = [
+        collect_testing_mode(runner, requested_mode) for requested_mode in requested_modes
+    ]
+    results = [
+        run_testing_mode(
+            root,
+            runner,
+            collection,
+            http_probe=http_probe,
+            now=now,
+        )
+        for collection in collections
+    ]
+    complete_counts = [result.collection.complete for result in results]
+    mismatch = (
+        mode == "both"
+        and all(count is not None for count in complete_counts)
+        and len(set(complete_counts)) != 1
+    )
+    results = [
+        replace(
+            result,
+            log_code=audit_testing_logs(
+                runner,
+                result.started_at,
+                result.ended_at,
+                mode_passed=(
+                    result.collection.valid
+                    and result.test_code == EXIT_OK
+                    and result.non_log_post_code == EXIT_OK
+                ),
+            ),
+        )
+        for result in results
+    ]
+    for result in results:
+        print(
+            f"RESULT mode={result.mode} status="
+            f"{EXIT_OK if result.passed else EXIT_FAILED} "
+            f"collection={result.collection.code} test={result.test_code} "
+            f"post={result.post_code}"
+        )
+    if mode != "both":
+        code = results[0].failure_code
+        total_duration = now() - total_started
+        print(f"TIMING phase=test-{mode} seconds={total_duration:.3f} status={code}")
+        return code
 
-    return EXIT_OK
+    failed_modes = {result.mode for result in results if not result.passed}
+    if mismatch:
+        counts = " ".join(f"{result.mode}={result.collection.complete}" for result in results)
+        print(f"FAIL collection-mismatch {counts}")
+
+    if failed_modes == {"container", "host"}:
+        code = EXIT_BOTH_TEST_MODES_FAILED
+    elif failed_modes == {"container"}:
+        code = EXIT_CONTAINER_TEST_FAILED
+    elif failed_modes == {"host"}:
+        code = EXIT_HOST_TEST_FAILED
+    elif mismatch:
+        code = EXIT_TEST_COLLECTION_MISMATCH
+    else:
+        code = EXIT_OK
+
+    total_duration = now() - total_started
+    print(f"TIMING phase=test-both seconds={total_duration:.3f} status={code}")
+    return code
 
 
 def testing_runtime_probe(

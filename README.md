@@ -128,6 +128,12 @@ uv run poe testing-verify
 uv run poe testing-down
 ```
 
+`testing-test-both` collects complete, core, and security-timing counts in both modes before either suite starts,
+then runs both modes even when one fails. It reports collection arithmetic, suite duration, health, scoped Docker
+ownership, headless residue, bounded logs, and total wall-clock duration. Exit `10` identifies container-only
+failure, `11` host-only failure, `12` failure in both modes, and `13` complete-count drift. Standalone container or
+host commands return the original failed child status unchanged.
+
 ## Quality checks
 
 The `.agents` directory is excluded from pre-commit file checks, Markdown/YAML linting, Python linting and formatting,

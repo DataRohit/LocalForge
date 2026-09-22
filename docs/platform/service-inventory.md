@@ -240,7 +240,9 @@ must not recur in a post-readiness exercise window:
 | `prometheus-pm5db` | `A lockfile from a previous execution already existed. It was replaced` | A source-preserving Docker recreation can leave the exclusive-volume lock file behind after the old container has stopped. WAL replay and `/-/ready` must pass, and only one container may own the volume. |
 | `pgadmin-pa7fe` | Python `SyntaxWarning: 'return' in a 'finally' block` from `sshtunnel.py` | pgAdmin's vendored dependency is compiled during Python 3.14 startup and warns about syntax that remains executable. The warning must occur only before readiness; the dashboard health check and authenticated database connection must pass. |
 | `rabbitmq-rq4sx` | deprecated `management_metrics_collection` warning | RabbitMQ 4.3 reports the management plugin's metrics collector that Flower uses for queue depth. The authenticated management API and Prometheus endpoint must both pass. |
-| `rabbitmq-rq4sx` | deprecated `global_qos` error followed by worker readiness | Celery 5.6.3 requests RabbitMQ's pre-3.3 global QoS scope during worker bootstrap. RabbitMQ 4.3 refuses that deprecated scope, Celery continues with supported consumer prefetch, and a queued round trip plus the configured prefetch count must pass. |
+| `rabbitmq-*` | deprecated `global_qos` error followed by worker readiness | Celery 5.6.3 requests RabbitMQ's pre-3.3 global QoS scope during worker bootstrap. RabbitMQ 4.3 refuses that deprecated scope, Celery continues with supported consumer prefetch, and a queued round trip plus the configured prefetch count must pass. |
+| `rabbitmq-tr6mc` | `client unexpectedly closed TCP connection` during the bounded suite window | Separate-process worker tests use Celery's remote shutdown before their bounded fallback, but Celery and pytest worker process exit still close AMQP sockets without RabbitMQ's close handshake. This is accepted only inside an identified window whose containing mode passes collection, suite, health, ownership, and residue gates; every per-test queue must be deleted and broker health green afterward. Combined-mode parity and the other mode are evaluated separately. Any idle or non-test occurrence is a blocker. |
+| `postgres-tp8vn` | Account duplicate-key violations, the two named diagnostic-marker cast failures, or missing `accounts_login_throttle_event` during a bounded suite window | Integration tests deliberately exercise PostgreSQL uniqueness races, redacted driver diagnostics, and authoritative throttle-table loss. Only the exact registered constraint/table names and marker values are accepted, only when the containing mode passes collection, suite, health, ownership, and residue gates. Combined-mode parity and the other mode are evaluated separately. Any other PostgreSQL warning-or-higher record or any idle occurrence is a blocker. |
 | `seaweedfs-*` | info-level `Not current leader` or local gRPC socket connection failure | SeaweedFS all-in-one components begin dialing before the embedded Raft leader and local sockets exist. Both `/healthz` probes and an S3 byte round trip must pass. |
 | `traefik-tk2jp` | encoded-character rejection warning | Traefik 3.7 warns when the entrypoint explicitly rejects encoded slash, backslash, null, semicolon, percent, question-mark, and hash characters. Both entrypoints pin every option to `false` to prevent proxy/backend split views. |
 
@@ -448,6 +450,14 @@ Core and timing evidence is written separately to `test-results/pytest-core.xml`
 complete console output and exit status provide the independently auditable container counts.
 
 Host mode is why every testing service publishes a host port even though container mode never uses them.
+
+`testing-test-both` first collects complete, core, and security-timing selections in each mode and requires
+`core + timing == complete`, then runs both complete suites even when the first fails. After each mode it verifies
+testing health, project-scoped container/network/volume/image ownership, the exact six-container headless set, and
+a bounded testing log window. It prints the two complete counts, per-mode wall-clock durations, post-mode results,
+and total duration. Exit `10` means container only failed, `11` host only, `12` both, and `13` equal-mode execution
+passed but complete collection counts differed. Standalone mode commands preserve the underlying failed child
+status.
 
 `uv run poe testing-verify` is the complete operator workflow: rebuild the source-matched test image, recreate and
 verify the dependency stack, run container mode followed by host mode, then stop the testing environment while

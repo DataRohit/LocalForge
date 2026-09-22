@@ -33,6 +33,9 @@ PREFLIGHT_FAILURE = 7
 IMAGE_FAILURE = 8
 REBUILD_FAILURE = 9
 LOG_FAILURE = 7
+TEST_COLLECTION_COUNT = 2031
+TEST_CORE_COUNT = 2008
+TEST_TIMING_COUNT = 23
 
 
 @dataclass
@@ -523,7 +526,10 @@ def test_testing_verify_rebuilds_runs_both_modes_and_stops(tmp_path: Path) -> No
     environment_files(tmp_path)
     runner = FakeRunner()
 
-    with patch.object(platform, "inspect_environment_health", return_value=0):
+    with (
+        patch.object(platform, "inspect_environment_health", return_value=0),
+        patch.object(platform, "testing_test", return_value=0) as testing_test,
+    ):
         code = platform.main(
             ["testing-verify"],
             root=tmp_path,
@@ -536,11 +542,8 @@ def test_testing_verify_rebuilds_runs_both_modes_and_stops(tmp_path: Path) -> No
     assert commands[0][-2:] == ("build", "django-test-dt5qx")
     assert "label=com.docker.compose.project=localforge-test" in commands[3]
     assert "wait_for_services.py" in commands[4][1]
-    assert "django-test-dt5qx" in commands[5]
-    assert "exec" in commands[5]
-    assert "run" not in commands[5]
-    assert commands[6] == ("uv", "run", "poe", "test")
-    assert commands[7][-2:] == ("down", "--remove-orphans")
+    testing_test.assert_called_once()
+    assert commands[5][-2:] == ("down", "--remove-orphans")
 
 
 def test_testing_verify_leaves_the_stack_running_after_a_test_failure(tmp_path: Path) -> None:
@@ -559,12 +562,790 @@ def test_testing_verify_leaves_the_stack_running_after_a_test_failure(tmp_path: 
         AssertionError: If failure is hidden or the stack is stopped.
     """
     environment_files(tmp_path)
-    runner = FakeRunner(results=[0, 0, 0, 0, 0, 1])
+    runner = FakeRunner()
 
-    code = platform.main(["testing-verify"], root=tmp_path, runner=runner)
+    with (
+        patch.object(platform, "rebuild", return_value=0),
+        patch.object(platform, "health", return_value=0),
+        patch.object(platform, "testing_test", return_value=LOG_FAILURE),
+    ):
+        code = platform.main(["testing-verify"], root=tmp_path, runner=runner)
 
-    assert code == 1
+    assert code == LOG_FAILURE
     assert all("down" not in call[0] for call in runner.calls)
+
+
+def test_both_test_modes_report_equal_collection_timings_and_postchecks(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Run and report both complete modes without hiding their independent evidence.
+
+    Requires one collection and full-suite command per mode, equal counts, per-mode and total
+    timings, and health plus residue checks after each completed run.
+
+    Arguments:
+        tmp_path: Temporary repository root.
+        capsys: Fixture capturing stable operator evidence.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If either mode, count, timing, or post-check is omitted.
+    """
+    environment_files(tmp_path)
+    runner = FakeRunner(
+        outputs=[
+            "2031 tests collected in 9.53s",
+            "2008 tests collected in 9.53s",
+            "23 tests collected in 9.53s",
+            "2031 tests collected in 9.34s",
+            "2008 tests collected in 9.34s",
+            "23 tests collected in 9.34s",
+        ]
+    )
+
+    with (
+        patch.object(platform, "health", return_value=0) as health,
+        patch.object(platform, "docker_environment_audit", return_value=0) as ownership,
+        patch.object(platform, "audit_testing_container_set", return_value=0) as residue,
+        patch.object(platform, "audit_testing_logs", return_value=0) as logs,
+    ):
+        code = platform.testing_test(
+            tmp_path,
+            runner,
+            "both",
+            ensure_up=False,
+            http_probe=lambda _url, _host: True,
+            sleep=lambda _seconds: None,
+            now=iter((0.0, 1.0, 4.0, 5.0, 9.0, 10.0)).__next__,
+        )
+
+    commands = [call[0] for call in runner.calls]
+    output = capsys.readouterr().out
+    assert code == platform.EXIT_OK
+    assert sum("--collect-only" in command for command in commands) == ENVIRONMENT_COUNT * 3
+    assert sum("poe" in command and "test" in command for command in commands) == ENVIRONMENT_COUNT
+    assert health.call_count == ENVIRONMENT_COUNT
+    assert ownership.call_count == ENVIRONMENT_COUNT
+    assert residue.call_count == ENVIRONMENT_COUNT
+    assert logs.call_count == ENVIRONMENT_COUNT
+    assert all(call.kwargs["mode_passed"] is True for call in logs.call_args_list)
+    assert "COLLECTION mode=container complete=2031 core=2008 timing=23" in output
+    assert "COLLECTION mode=host complete=2031 core=2008 timing=23" in output
+    assert "TIMING phase=test-container seconds=3.000 status=0" in output
+    assert "TIMING phase=test-host seconds=4.000 status=0" in output
+    assert "TIMING phase=test-both seconds=10.000 status=0" in output
+    assert "RESULT mode=container status=0" in output
+    assert "RESULT mode=host status=0" in output
+
+
+def test_both_test_modes_run_independently_and_return_distinct_failures(
+    tmp_path: Path,
+) -> None:
+    """Continue to host mode after container failure and classify the outcome.
+
+    Exercises container-only, host-only, and dual failures so automation can identify which mode
+    failed without parsing pytest output.
+
+    Arguments:
+        tmp_path: Temporary repository root.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a failure skips the other mode or uses an ambiguous exit code.
+    """
+    environment_files(tmp_path)
+
+    with (
+        patch.object(platform, "health", return_value=0),
+        patch.object(platform, "docker_environment_audit", return_value=0),
+        patch.object(platform, "audit_testing_container_set", return_value=0),
+        patch.object(
+            platform,
+            "audit_testing_logs",
+            side_effect=lambda _runner, _start, _end, *, mode_passed: (
+                platform.EXIT_OK if mode_passed else platform.EXIT_FAILED
+            ),
+        ) as logs,
+    ):
+        container_runner = FakeRunner(
+            results=[0, 0, 0, 0, 0, 0, LOG_FAILURE, 0],
+            outputs=[
+                "2031 tests collected",
+                "2008 tests collected",
+                "23 tests collected",
+                "2031 tests collected",
+                "2008 tests collected",
+                "23 tests collected",
+            ],
+        )
+        container_code = platform.testing_test(
+            tmp_path,
+            container_runner,
+            "both",
+            ensure_up=False,
+            http_probe=lambda _url, _host: True,
+            sleep=lambda _seconds: None,
+            now=iter((0.0, 1.0, 2.0, 3.0, 4.0, 5.0)).__next__,
+        )
+        host_runner = FakeRunner(
+            results=[0, 0, 0, 0, 0, 0, 0, LOG_FAILURE],
+            outputs=[
+                "2031 tests collected",
+                "2008 tests collected",
+                "23 tests collected",
+                "2031 tests collected",
+                "2008 tests collected",
+                "23 tests collected",
+            ],
+        )
+        host_code = platform.testing_test(
+            tmp_path,
+            host_runner,
+            "both",
+            ensure_up=False,
+            http_probe=lambda _url, _host: True,
+            sleep=lambda _seconds: None,
+            now=iter((0.0, 1.0, 2.0, 3.0, 4.0, 5.0)).__next__,
+        )
+        both_runner = FakeRunner(
+            results=[0, 0, 0, 0, 0, 0, LOG_FAILURE, IMAGE_FAILURE],
+            outputs=[
+                "2031 tests collected",
+                "2008 tests collected",
+                "23 tests collected",
+                "2031 tests collected",
+                "2008 tests collected",
+                "23 tests collected",
+            ],
+        )
+        both_code = platform.testing_test(
+            tmp_path,
+            both_runner,
+            "both",
+            ensure_up=False,
+            http_probe=lambda _url, _host: True,
+            sleep=lambda _seconds: None,
+            now=iter((0.0, 1.0, 2.0, 3.0, 4.0, 5.0)).__next__,
+        )
+
+    assert container_code == platform.EXIT_CONTAINER_TEST_FAILED
+    assert host_code == platform.EXIT_HOST_TEST_FAILED
+    assert both_code == platform.EXIT_BOTH_TEST_MODES_FAILED
+    assert ("uv", "run", "poe", "test") in [call[0] for call in container_runner.calls]
+    assert [call.kwargs["mode_passed"] for call in logs.call_args_list] == [
+        False,
+        True,
+        True,
+        False,
+        False,
+        False,
+    ]
+
+
+def test_dual_mode_collection_mismatch_and_unreadable_counts_fail(
+    tmp_path: Path,
+) -> None:
+    """Reject unequal or unparsable collection evidence.
+
+    Requires parity to be evaluated independently of successful test execution and maps a missing
+    count to the execution mode whose collection output was unusable.
+
+    Arguments:
+        tmp_path: Temporary repository root.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If collection drift or malformed evidence is accepted.
+    """
+    environment_files(tmp_path)
+
+    with (
+        patch.object(platform, "health", return_value=0),
+        patch.object(platform, "docker_environment_audit", return_value=0),
+        patch.object(platform, "audit_testing_container_set", return_value=0),
+        patch.object(
+            platform,
+            "audit_testing_logs",
+            side_effect=lambda _runner, _start, _end, *, mode_passed: (
+                platform.EXIT_OK if mode_passed else platform.EXIT_FAILED
+            ),
+        ) as logs,
+    ):
+        mismatch = platform.testing_test(
+            tmp_path,
+            FakeRunner(
+                outputs=[
+                    "2030 tests collected",
+                    "2007 tests collected",
+                    "23 tests collected",
+                    "2031 tests collected",
+                    "2008 tests collected",
+                    "23 tests collected",
+                ],
+            ),
+            "both",
+            ensure_up=False,
+            http_probe=lambda _url, _host: True,
+            sleep=lambda _seconds: None,
+            now=iter((0.0, 1.0, 2.0, 3.0, 4.0, 5.0)).__next__,
+        )
+        unreadable = platform.testing_test(
+            tmp_path,
+            FakeRunner(
+                outputs=[
+                    "collection output unavailable",
+                    "2008 tests collected",
+                    "23 tests collected",
+                ]
+            ),
+            "container",
+            ensure_up=False,
+            http_probe=lambda _url, _host: True,
+            sleep=lambda _seconds: None,
+            now=iter((0.0, 1.0, 2.0, 3.0)).__next__,
+        )
+        partly_unreadable = platform.testing_test(
+            tmp_path,
+            FakeRunner(
+                outputs=[
+                    "collection output unavailable",
+                    "2008 tests collected",
+                    "23 tests collected",
+                    "2031 tests collected",
+                    "2008 tests collected",
+                    "23 tests collected",
+                ],
+            ),
+            "both",
+            ensure_up=False,
+            http_probe=lambda _url, _host: True,
+            sleep=lambda _seconds: None,
+            now=iter((0.0, 1.0, 2.0, 3.0, 4.0, 5.0)).__next__,
+        )
+
+    assert mismatch == platform.EXIT_TEST_COLLECTION_MISMATCH
+    assert unreadable == platform.EXIT_FAILED
+    assert partly_unreadable == platform.EXIT_CONTAINER_TEST_FAILED
+    assert [call.kwargs["mode_passed"] for call in logs.call_args_list] == [
+        True,
+        True,
+        False,
+        False,
+        True,
+    ]
+
+
+def test_collection_and_testing_container_evidence_helpers() -> None:
+    """Parse final counts and reject missing, extra, or unreadable container evidence.
+
+    Covers helper failure boundaries directly so the dual-mode coordinator can remain focused on
+    sequencing while the exact headless project set is still enforced.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If parsing or project-scoped residue checks accept invalid evidence.
+        ValueError: Expected for an unsupported testing mode.
+    """
+    assert (
+        platform.parse_test_collection("2029 tests collected\n2031 tests collected in 9.0s")
+        == TEST_COLLECTION_COUNT
+    )
+    assert platform.parse_test_collection("23/2044 tests collected") == TEST_TIMING_COUNT
+    assert platform.parse_test_collection("no collection summary") is None
+    with pytest.raises(ValueError, match="unsupported testing mode"):
+        platform.testing_mode_commands("invalid")
+
+    assert platform.audit_testing_container_set(FakeRunner(results=[LOG_FAILURE])) == LOG_FAILURE
+    drifted = FakeRunner(
+        outputs=[
+            "\n".join(
+                (
+                    *sorted(platform.TESTING_CONTAINERS - {"django-test-dt5qx"}),
+                    "django-test-dt5qx-run-deadbeef",
+                )
+            )
+        ]
+    )
+    assert platform.audit_testing_container_set(drifted) == platform.EXIT_FAILED
+    exact = FakeRunner(outputs=["\n".join(sorted(platform.TESTING_CONTAINERS))])
+    assert platform.audit_testing_container_set(exact) == platform.EXIT_OK
+
+
+def test_collection_evidence_requires_all_three_exact_partitions() -> None:
+    """Reject failed, unreadable, and arithmetically incomplete stage collections.
+
+    Exercises each collection failure shape directly and verifies valid evidence drives mode result
+    properties without remapping an underlying single-mode process failure.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If incomplete collection evidence is accepted.
+    """
+    failed = platform.collect_testing_mode(
+        FakeRunner(
+            results=[LOG_FAILURE, 0, 0],
+            outputs=[
+                "2031 tests collected",
+                "2008 tests collected",
+                "23 tests collected",
+            ],
+        ),
+        "container",
+    )
+    partitioned = platform.collect_testing_mode(
+        FakeRunner(
+            outputs=[
+                "2031 tests collected",
+                "2007 tests collected",
+                "23 tests collected",
+            ]
+        ),
+        "host",
+    )
+    valid = platform.TestingCollectionResult(
+        mode="host",
+        complete=TEST_COLLECTION_COUNT,
+        core=TEST_CORE_COUNT,
+        timing=TEST_TIMING_COUNT,
+        code=0,
+    )
+    inconsistent = platform.TestingCollectionResult(
+        mode="host",
+        complete=TEST_COLLECTION_COUNT,
+        core=TEST_CORE_COUNT - 1,
+        timing=TEST_TIMING_COUNT,
+        code=0,
+    )
+
+    assert failed.code == LOG_FAILURE
+    assert failed.valid is False
+    assert partitioned.code == platform.EXIT_FAILED
+    assert partitioned.valid is False
+    assert valid.valid is True
+    assert (
+        platform.TestingModeResult(
+            collection=valid,
+            test_code=LOG_FAILURE,
+            non_log_post_code=0,
+            log_code=0,
+            duration=1.0,
+            started_at="2026-09-21T00:00:00Z",
+            ended_at="2026-09-21T00:00:01Z",
+        ).failure_code
+        == LOG_FAILURE
+    )
+    invalid_mode = platform.TestingModeResult(
+        collection=inconsistent,
+        test_code=0,
+        non_log_post_code=0,
+        log_code=0,
+        duration=1.0,
+        started_at="2026-09-21T00:00:00Z",
+        ended_at="2026-09-21T00:00:01Z",
+    )
+    assert invalid_mode.failure_code == platform.EXIT_FAILED
+    assert invalid_mode.passed is False
+
+
+def test_scoped_docker_ownership_audit_covers_both_environments() -> None:
+    """Validate complete scoped ownership and every collector failure boundary.
+
+    Reuses registered inspect fixtures while limiting each audit to one project, proving testing
+    checks do not require development and development checks do not require testing.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If scoped ownership accepts drift or hides a Docker failure.
+    """
+    testing_networks = [
+        {"Name": name, "Labels": {"com.docker.compose.project": project}}
+        for name, project in platform.NETWORK_PROJECTS.items()
+        if project == platform.TESTING.project
+    ]
+    testing_volumes = [
+        {"Name": name, "Labels": {"com.docker.compose.project": project}}
+        for name, project in platform.VOLUME_PROJECTS.items()
+        if name in platform.TESTING_VOLUMES
+    ]
+    development_networks = [
+        {"Name": name, "Labels": {"com.docker.compose.project": project}}
+        for name, project in platform.NETWORK_PROJECTS.items()
+        if project == platform.DEVELOPMENT.project
+    ]
+    development_volumes = [
+        {"Name": name, "Labels": {"com.docker.compose.project": project}}
+        for name, project in platform.VOLUME_PROJECTS.items()
+        if name in platform.DEVELOPMENT_VOLUMES
+    ]
+
+    with patch.object(
+        platform,
+        "inspect_docker_objects",
+        side_effect=[
+            (0, environment_records(platform.TESTING)),
+            (0, testing_networks),
+            (0, testing_volumes),
+        ],
+    ):
+        assert (
+            platform.docker_environment_audit(
+                FakeRunner(outputs=["sha256:test"]),
+                platform.TESTING,
+            )
+            == 0
+        )
+    with patch.object(
+        platform,
+        "inspect_docker_objects",
+        side_effect=[
+            (0, environment_records(platform.DEVELOPMENT)),
+            (0, development_networks),
+            (0, development_volumes),
+        ],
+    ):
+        assert platform.docker_environment_audit(FakeRunner(), platform.DEVELOPMENT) == 0
+
+    failure_results: tuple[list[tuple[int, list[dict[str, object]]]], ...] = (
+        [(LOG_FAILURE, [])],
+        [(0, []), (IMAGE_FAILURE, [])],
+        [(0, []), (0, []), (GENERATION_FAILURE, [])],
+    )
+    for results in failure_results:
+        with patch.object(platform, "inspect_docker_objects", side_effect=results):
+            assert platform.docker_environment_audit(FakeRunner(), platform.TESTING) != 0
+    with patch.object(
+        platform,
+        "inspect_docker_objects",
+        side_effect=[
+            (0, environment_records(platform.TESTING)),
+            (0, testing_networks),
+            (0, testing_volumes),
+        ],
+    ):
+        assert (
+            platform.docker_environment_audit(
+                FakeRunner(results=[IMAGE_FAILURE]),
+                platform.TESTING,
+            )
+            == platform.EXIT_FAILED
+        )
+    with patch.object(
+        platform,
+        "inspect_docker_objects",
+        side_effect=[(0, []), (0, []), (0, [])],
+    ):
+        assert (
+            platform.docker_environment_audit(
+                FakeRunner(outputs=["sha256:test"]),
+                platform.TESTING,
+            )
+            == platform.EXIT_FAILED
+        )
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        '{"level":"WARNING"}',
+        '{"level":"ERROR"}',
+        '{"level":"CRITICAL"}',
+        '{"level": "WARNING"}',
+        "level=WARN",
+        "level=ERROR",
+        "level=CRITICAL",
+        "[warning]",
+        "[error]",
+        "[critical]",
+        "WARNING: checkpoint delayed",
+        "2026-09-21 22:00:00.123 UTC [42] ERROR: query failed",
+        "2026-09-21 22:00:00 UTC [42] FATAL: role rejected",
+        "2026-09-21 22:00:00 UTC [42] PANIC: storage failure",
+        "1:M 22 Sep 2026 01:00:00.000 # memory warning",
+        "W0922 01:00:00.123456 warning.go:42 warning",
+        "E0922 01:00:00.123456 error.go:42 error",
+        "F0922 01:00:00.123456 fatal.go:42 fatal",
+    ],
+)
+def test_log_severity_classifier_recognizes_supported_formats(line: str) -> None:
+    """Recognize every warning-or-higher format emitted by project services.
+
+    Feeds each explicit structured or vendor severity syntax into the shared classifier.
+    Ordinary non-failure text is covered by the bounded log-audit test beside this one.
+
+    Arguments:
+        line: Representative structured or vendor log line.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a supported severity syntax is missed.
+    """
+    assert platform.log_line_is_warning_or_higher(line) is True
+
+
+def test_testing_log_audit_bounds_expected_and_unexpected_records() -> None:
+    """Accept only documented RabbitMQ records in a fully passing mode.
+
+    Covers listing and per-container command failures, clean output, documented broker warnings,
+    ordinary false-positive text, and unexpected failure-level records.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If bounded log policy accepts or rejects the wrong record.
+    """
+    assert platform.log_line_is_warning_or_higher("logger=uvicorn.error level=INFO") is False
+    assert platform.normalize_log_line("\x1b[31mERROR\x1b[0m") == "ERROR"
+    assert platform.log_line_is_warning_or_higher('{"level": "INFO"}') is False
+    assert platform.log_line_is_warning_or_higher('{"level": 10}') is False
+    assert (
+        platform.log_line_is_warning_or_higher(
+            "1:M 22 Sep 2026 01:00:00.000 * Ready to accept connections"
+        )
+        is False
+    )
+    assert platform.log_line_is_warning_or_higher("I0922 01:00:00.123456 info.go:42 ready") is False
+    for marker in (
+        "global_qos",
+        "By default, this feature is not permitted anymore.",
+        "The feature will be removed from a future major RabbitMQ version",
+        "To continue using this feature when it is not permitted by default",
+        "deprecated_features.permit.global_qos",
+    ):
+        assert (
+            platform.expected_testing_log_line(
+                "rabbitmq-tr6mc",
+                marker,
+                mode_passed=True,
+            )
+            is True
+        )
+    assert (
+        platform.expected_testing_log_line(
+            "postgres-tp8vn",
+            "global_qos",
+            mode_passed=True,
+        )
+        is False
+    )
+    assert (
+        platform.expected_testing_log_line(
+            "postgres-tp8vn",
+            'ERROR: duplicate key value violates unique constraint "accounts_user_email_key"',
+            mode_passed=True,
+        )
+        is True
+    )
+    assert (
+        platform.expected_testing_log_line(
+            "postgres-tp8vn",
+            "ERROR: unrelated database failure",
+            mode_passed=True,
+        )
+        is False
+    )
+    assert (
+        platform.expected_testing_log_line(
+            "seaweedfs-ts3jd",
+            "global_qos",
+            mode_passed=True,
+        )
+        is False
+    )
+    assert (
+        platform.expected_testing_log_line(
+            "rabbitmq-tr6mc",
+            "global_qos",
+            mode_passed=False,
+        )
+        is False
+    )
+    assert (
+        platform.expected_testing_log_line(
+            "rabbitmq-tr6mc",
+            "different warning",
+            mode_passed=True,
+        )
+        is False
+    )
+    prefix = "2026-09-21 22:00:00.000000+00:00 [warning] <0.1.0> "
+    assert platform.rabbitmq_connection_close_pair(
+        f"{prefix}closing AMQP connection <0.1.0> (client -> server):",
+        f"{prefix}client unexpectedly closed TCP connection",
+    )
+    assert platform.rabbitmq_connection_close_pair(
+        f"\x1b[38;5;214m{prefix}closing AMQP connection <0.1.0> (client -> server):\x1b[0m",
+        f"\x1b[38;5;214m{prefix}client unexpectedly closed TCP connection\x1b[0m",
+    )
+    assert (
+        platform.rabbitmq_connection_close_pair(
+            f"{prefix}closing AMQP connection <0.1.0> (client -> server):",
+            "2026-09-21 22:00:01.000000+00:00 [warning] <0.2.0> "
+            "client unexpectedly closed TCP connection",
+        )
+        is False
+    )
+    assert (
+        platform.rabbitmq_connection_close_pair(
+            f"{prefix}closing AMQP connection <0.1.0> (client -> server):",
+            f"{prefix}client unexpectedly closed TCP connection with protocol error",
+        )
+        is False
+    )
+    assert (
+        platform.rabbitmq_connection_close_pair(
+            f"{prefix}closing AMQP connection <0.1.0> (client -> server): unrelated",
+            f"{prefix}client unexpectedly closed TCP connection",
+        )
+        is False
+    )
+    assert platform.rabbitmq_connection_close_pair("ordinary", "ordinary") is False
+
+    assert (
+        platform.audit_testing_logs(
+            FakeRunner(results=[LOG_FAILURE]),
+            "2026-09-21T00:00:00Z",
+            "2026-09-21T00:00:02Z",
+            mode_passed=True,
+        )
+        == LOG_FAILURE
+    )
+    assert (
+        platform.audit_testing_logs(
+            FakeRunner(
+                results=[0, IMAGE_FAILURE],
+                outputs=["rabbitmq-tr6mc", ""],
+            ),
+            "2026-09-21T00:00:00Z",
+            "2026-09-21T00:00:02Z",
+            mode_passed=True,
+        )
+        == IMAGE_FAILURE
+    )
+    expected = FakeRunner(
+        outputs=[
+            "rabbitmq-tr6mc\npostgres-tp8vn",
+            (
+                "[error] Deprecated features: `global_qos`\n"
+                "2026-09-21 22:00:00.000000+00:00 [warning] <0.1.0> "
+                "closing AMQP connection <0.1.0> (client -> server):\n"
+                "2026-09-21 22:00:00.000000+00:00 [warning] <0.1.0> "
+                "client unexpectedly closed TCP connection"
+            ),
+            "logger=uvicorn.error level=INFO",
+        ]
+    )
+    assert (
+        platform.audit_testing_logs(
+            expected,
+            "2026-09-21T00:00:00Z",
+            "2026-09-21T00:00:02Z",
+            mode_passed=True,
+        )
+        == 0
+    )
+    assert "-a" in expected.calls[0][0]
+    assert "--since" in expected.calls[1][0]
+    assert "--until" in expected.calls[1][0]
+    unexpected = FakeRunner(
+        outputs=[
+            "rabbitmq-tr6mc",
+            "[warning] client unexpectedly closed TCP connection",
+        ]
+    )
+    assert (
+        platform.audit_testing_logs(
+            unexpected,
+            "2026-09-21T00:00:00Z",
+            "2026-09-21T00:00:02Z",
+            mode_passed=False,
+        )
+        == platform.EXIT_FAILED
+    )
+
+
+def test_host_runner_captures_standard_error_with_standard_output(tmp_path: Path) -> None:
+    """Capture both Docker-style output streams through the process seam.
+
+    Uses the active interpreter as a portable child command, proving bounded log audits can inspect
+    records emitted on stderr without changing ordinary inherited-output execution.
+
+    Arguments:
+        tmp_path: Temporary process working directory.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If either captured stream is lost.
+    """
+    runner = platform.HostRunner(tmp_path)
+
+    result = runner.run(
+        (
+            sys.executable,
+            "-c",
+            "import sys; print('standard'); print('error', file=sys.stderr)",
+        ),
+        capture=True,
+    )
+
+    assert result.code == 0
+    assert "standard" in result.output
+    assert "error" in result.output
+
+
+def test_environment_health_reports_an_inspect_process_failure() -> None:
+    """Fail health when Docker inspection exits non-zero despite valid output.
+
+    Covers the process-status boundary separately from decoded container state so Docker transport
+    failure cannot be hidden by a complete-looking response body.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the inspect process failure is ignored.
+    """
+    runner = FakeRunner(
+        results=[LOG_FAILURE],
+        outputs=[json.dumps(environment_records(platform.TESTING))],
+    )
+
+    assert platform.inspect_environment_health(runner, platform.TESTING) == platform.EXIT_FAILED
+    assert (
+        platform.inspect_environment_health(FakeRunner(), platform.TESTING) == platform.EXIT_FAILED
+    )
 
 
 def test_testing_integration_audit_proves_mail_persistence_and_real_degradation(
@@ -717,6 +1498,38 @@ def test_testing_integration_audit_reports_startup_and_mail_failures(tmp_path: P
                 FakeRunner(results=[LOG_FAILURE]),
             )
             == LOG_FAILURE
+        )
+    successful = platform.TestingModeResult(
+        collection=platform.TestingCollectionResult(
+            mode="container",
+            complete=TEST_COLLECTION_COUNT,
+            core=TEST_CORE_COUNT,
+            timing=TEST_TIMING_COUNT,
+            code=0,
+        ),
+        test_code=0,
+        non_log_post_code=0,
+        log_code=0,
+        duration=1.0,
+        started_at="2026-09-21T00:00:00Z",
+        ended_at="2026-09-21T00:00:01Z",
+    )
+    with (
+        patch.object(platform, "up", return_value=0),
+        patch.object(platform, "health", return_value=0),
+        patch.object(platform, "run_testing_mode", return_value=successful),
+    ):
+        assert (
+            platform.testing_test(
+                tmp_path,
+                FakeRunner(),
+                "container",
+                ensure_up=True,
+                http_probe=lambda _url, _host: True,
+                sleep=lambda _seconds: None,
+                now=iter((0.0, 1.0)).__next__,
+            )
+            == platform.EXIT_OK
         )
         readiness_failure = FakeRunner(results=[0, LOG_FAILURE])
         assert run_testing_integration_audit(tmp_path, readiness_failure) == LOG_FAILURE
@@ -1979,53 +2792,44 @@ def test_internal_start_rebuild_and_reset_failures_stop_immediately(tmp_path: Pa
         )
 
 
-@pytest.mark.parametrize(
-    ("mode", "results", "expected"),
-    [
-        ("container", [0, 0, 0, 0, 0], 0),
-        ("host", [0, 0, 0, 0, 7], 7),
-        ("both", [0, 0, 0, 0, 8], 8),
-        ("both", [4], 4),
-        ("both", [0, 0, 0, 5], 5),
-    ],
-)
-def test_testing_modes_propagate_start_health_and_suite_results(
-    tmp_path: Path,
-    mode: str,
-    results: list[int],
-    expected: int,
-) -> None:
-    """Exercise container, host, combined, and prerequisite failures.
+def test_testing_modes_propagate_start_and_health_failures(tmp_path: Path) -> None:
+    """Stop dual-mode execution when environment preparation is not healthy.
 
-    Drives each public testing mode through the same dependency setup and verifies the first
-    non-zero result is preserved.
+    Exercises both prerequisite boundaries through the public command so no collection or suite
+    begins against an unavailable testing stack.
 
     Arguments:
         tmp_path: Temporary repository root.
-        mode: Testing mode selected through the public command.
-        results: Fabricated operation outcomes.
-        expected: Exit code expected from the command.
 
     Returns:
         None.
 
     Raises:
-        AssertionError: If a mode masks a failure.
+        AssertionError: If a prerequisite failure is hidden or testing begins.
     """
     environment_files(tmp_path)
-    runner = FakeRunner(results=results)
 
-    with (
-        patch.object(platform, "ensure_environment_images", return_value=0),
-        patch.object(platform, "inspect_environment_health", return_value=0),
-    ):
-        code = platform.main(
-            [f"testing-test-{mode}"],
-            root=tmp_path,
-            runner=runner,
+    with patch.object(platform, "up", return_value=IMAGE_FAILURE):
+        assert (
+            platform.main(
+                ["testing-test-both"],
+                root=tmp_path,
+                runner=FakeRunner(),
+            )
+            == IMAGE_FAILURE
         )
-
-    assert code == expected
+    with (
+        patch.object(platform, "up", return_value=0),
+        patch.object(platform, "health", return_value=LOG_FAILURE),
+    ):
+        assert (
+            platform.main(
+                ["testing-test-both"],
+                root=tmp_path,
+                runner=FakeRunner(),
+            )
+            == LOG_FAILURE
+        )
 
 
 def test_testing_verify_propagates_rebuild_failure(tmp_path: Path) -> None:

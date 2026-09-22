@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import pytest
+from kombu.exceptions import OperationalError
 
 from config.celery import app
 from config.tasks import slow_worker_probe, worker_probe
@@ -47,6 +48,9 @@ def _dispose_result(result: AsyncResult | None) -> None:
 
     Returns:
         None.
+
+    Raises:
+        AssertionError: If the graceful shutdown request cannot reach the worker.
     """
     if result is None:
         return
@@ -80,7 +84,12 @@ def _wait_for_worker(node_name: str) -> None:
     pytest.fail(f"worker {node_name} did not answer before the startup timeout")
 
 
-def _stop_worker(process: subprocess.Popen[bytes], *, abrupt: bool) -> None:
+def _stop_worker(
+    process: subprocess.Popen[bytes],
+    node_name: str,
+    *,
+    abrupt: bool,
+) -> None:
     """Stop one worker process within a bounded cleanup window.
 
     Uses an abrupt stop only for worker-loss verification and otherwise asks Celery to finish and
@@ -88,24 +97,41 @@ def _stop_worker(process: subprocess.Popen[bytes], *, abrupt: bool) -> None:
 
     Arguments:
         process: Worker process to stop.
+        node_name: Exact Celery node name assigned to the process.
         abrupt: Whether to simulate immediate worker loss.
 
     Returns:
         None.
+
+    Raises:
+        AssertionError: If the graceful shutdown request cannot reach the worker.
     """
     if process.poll() is not None:
         return
 
+    shutdown_error: OSError | OperationalError | None = None
     if abrupt:
         process.kill()
     else:
-        process.terminate()
+        try:
+            app.control.shutdown(destination=[node_name])
+        except (OSError, OperationalError) as error:
+            shutdown_error = error
+            process.terminate()
 
     try:
         process.wait(timeout=WORKER_STOP_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait(timeout=WORKER_STOP_TIMEOUT_SECONDS)
+        process.terminate()
+        try:
+            process.wait(timeout=WORKER_STOP_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=WORKER_STOP_TIMEOUT_SECONDS)
+
+    if not abrupt and shutdown_error is not None:
+        msg = "worker graceful shutdown request failed"
+        raise AssertionError(msg) from shutdown_error
 
 
 @contextmanager
@@ -165,7 +191,7 @@ def _worker(
                 _wait_for_worker(node_name)
             yield process
         finally:
-            _stop_worker(process, abrupt=False)
+            _stop_worker(process, node_name, abrupt=False)
 
 
 def _delete_queue(queue_name: str) -> None:
@@ -186,6 +212,7 @@ def _delete_queue(queue_name: str) -> None:
 
 @pytest.mark.integration
 @pytest.mark.services("rabbitmq", "valkey-cache")
+@pytest.mark.serial
 @pytest.mark.timeout(60)
 def test_a_real_worker_process_executes_a_brokered_probe(
     monkeypatch: pytest.MonkeyPatch,
@@ -195,7 +222,8 @@ def test_a_real_worker_process_executes_a_brokered_probe(
     """Execute one task in the real worker command and retrieve its result.
 
     Publishes to a per-test queue consumed only by the separate worker process, proving the broker,
-    worker application, task import, execution, and Valkey result path together.
+    worker application, task import, execution, and Valkey result path together. This test is
+    serial because concurrent real-worker control startup saturates the shared testing broker.
 
     Arguments:
         monkeypatch: Fixture disabling the testing environment's eager default.
@@ -230,6 +258,7 @@ def test_a_real_worker_process_executes_a_brokered_probe(
 
 @pytest.mark.integration
 @pytest.mark.services("rabbitmq", "valkey-cache")
+@pytest.mark.serial
 @pytest.mark.timeout(75)
 def test_worker_loss_redelivers_an_in_flight_task(
     monkeypatch: pytest.MonkeyPatch,
@@ -239,7 +268,8 @@ def test_worker_loss_redelivers_an_in_flight_task(
     """Redeliver one acknowledged-late task after abruptly losing its worker.
 
     Waits for the result backend's started state, kills the real worker process, starts a
-    replacement on the same queue, and requires the original task identifier to complete.
+    replacement on the same queue, and requires the original task identifier to complete. This test
+    is serial because concurrent real-worker control startup saturates the shared testing broker.
 
     Arguments:
         monkeypatch: Fixture disabling the testing environment's eager default.
@@ -271,7 +301,7 @@ def test_worker_loss_redelivers_an_in_flight_task(
                 time.sleep(STATE_POLL_SECONDS)
 
             assert result.state == "STARTED"
-            _stop_worker(first, abrupt=True)
+            _stop_worker(first, node_name, abrupt=True)
 
         with _worker(
             queue_name,
@@ -293,6 +323,7 @@ def test_worker_loss_redelivers_an_in_flight_task(
 
 @pytest.mark.integration
 @pytest.mark.services("rabbitmq", "valkey-cache")
+@pytest.mark.serial
 @pytest.mark.timeout(60)
 def test_one_slow_task_does_not_starve_fast_work(
     monkeypatch: pytest.MonkeyPatch,
@@ -302,7 +333,8 @@ def test_one_slow_task_does_not_starve_fast_work(
     """Complete fast work while one isolated slow task occupies another worker slot.
 
     Runs the real worker command with the production minimum concurrency and both explicit queue
-    classes, then requires the fast result before the slow task can finish.
+    classes, then requires the fast result before the slow task can finish. This test is serial
+    because concurrent real-worker control startup saturates the shared testing broker.
 
     Arguments:
         monkeypatch: Fixture disabling the testing environment's eager default.
