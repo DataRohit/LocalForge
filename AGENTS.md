@@ -81,12 +81,14 @@ Exactly two, and there is no third.
 1. All runtime is Docker; Compose drives both environments.
 2. The stack runs with no internet access. Only image pulls, image builds, and dependency resolution touch the
    network, once.
-3. Every service is integrated with Django and verified end to end before the next one starts.
-4. Kubernetes is reasoning-only. Create no cluster, write no manifests, apply nothing.
-5. Pinned versions only. `latest` is forbidden, including Dockerfile base images.
-6. Use `uv run` for every Python command. Bare `python` here is 3.12.10, not the required 3.14.6.
-7. Keep the quality gate where it is: 100% branch coverage, Ruff `select = ["ALL"]`, mypy `strict`. Fix the code.
-8. **Runtime truth is a separate gate.** Tests prove controlled cases; they do not prove the running stack is
+3. Application and agent traffic stays local. Use no hosted gateways, telemetry, dashboards, or external SaaS
+   integrations; use repository-local tools and services.
+4. Every service is integrated with Django and verified end to end before the next one starts.
+5. Kubernetes is reasoning-only. Create no cluster, write no manifests, apply nothing.
+6. Pinned versions only. `latest` is forbidden, including Dockerfile base images.
+7. Use `uv run` for every Python command. Bare `python` here is 3.12.10, not the required 3.14.6.
+8. Keep the quality gate where it is: 100% branch coverage, Ruff `select = ["ALL"]`, mypy `strict`. Fix the code.
+9. **Runtime truth is a separate gate.** Tests prove controlled cases; they do not prove the running stack is
    healthy. After any runtime, integration, infrastructure, observability, or test-harness change:
     - Start or rebuild every affected environment through its supported Poe command.
     - Require environment health and the project-scoped Docker audit to pass.
