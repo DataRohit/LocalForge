@@ -529,7 +529,14 @@ resolve an external name. Invoke `uv run python -m scripts.audit_naming` with
 `--environment {development,testing,all}`. Exit `0` clean; `1` violations, printed as
 `FAIL convention <check> <object> <detail>`.
 
-### 4.9 `scripts/audit_security.py`
+### 4.9 `scripts/prepare_broker.py`
+
+Runs after RabbitMQ readiness and before Django, any Celery companion, or the persistent testing runner becomes
+healthy. Declares the 28 numbered native delayed-delivery exchanges and the terminal delivery exchange as durable
+topic exchanges. This is idempotent and non-destructive; it creates no queues or bindings and prevents Kombu's
+queue-before-next-exchange order from producing 28 missing dead-letter-exchange warnings on a fresh broker.
+
+### 4.10 `scripts/audit_security.py`
 
 Runs the Phase 7 security gates without printing secret values. Scopes are `deployment`, `history`,
 `dependencies`, `images`, `runtime`, and `all`. The deployment scope requires exactly the four warnings created by
@@ -551,11 +558,11 @@ rejection, explicit TCP refusal on private ports, exact broker accounts, and abs
 credential from image history metadata and all retained required-container logs. Exit `0` all selected checks pass;
 `1` at least one named scope fails.
 
-### 4.10 `scripts/run_tests.py`
+### 4.11 `scripts/run_tests.py`
 
 `--mode {container,host,both}`. Exit `0` both pass; `1` container failed; `2` host failed; `3` both failed.
 
-### 4.11 `scripts/check_docstrings.py`
+### 4.12 `scripts/check_docstrings.py`
 
 Enforces the documentation standard in [documentation-standard.md](./documentation-standard.md), which is the part
 of [../adr/0020-no-comments-structured-docstrings.md](../adr/0020-no-comments-structured-docstrings.md) that the
@@ -569,7 +576,7 @@ file written by `makemigrations` cannot be held to a hand-written standard.
 Exit `0` clean; `1` violations, printed one per line as `FAIL <path>:<line> <rule> <detail>` followed by a count.
 Runs in `uv run poe check` and as a pre-commit hook.
 
-### 4.12 `scripts/manage_platform.py`
+### 4.13 `scripts/manage_platform.py`
 
 Cross-platform operator adapter exposed by the `uv run poe ...` tasks. It centralizes Compose file selection,
 environment preparation, safe rebuilds, explicitly destructive resets, readiness checks, logs, and host/container
@@ -596,7 +603,7 @@ work begins.
 Exit `0` means every requested step passed. A child command's non-zero status is returned unchanged; usage and
 missing-environment-file refusals return `2`.
 
-### 4.13 `scripts/celery_worker_health.py`
+### 4.14 `scripts/celery_worker_health.py`
 
 Compose-only health command for `celery-worker-cw8rt`; it is not a host operator workflow. Inputs are
 `--destination celery@celery-worker-cw8rt` and `--timeout`, supplied from

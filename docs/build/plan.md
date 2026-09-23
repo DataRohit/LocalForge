@@ -53,12 +53,14 @@ Listed so scope creep is recognisable. None exists.
 | `docker/grafana/provisioning/` | Datasource and dashboard provisioning |
 | `docker/loki/loki.yaml` | Loki single-binary configuration |
 | `docker/alloy/config.alloy` | Log discovery and shipping |
+| `docker/cadvisor/machine-id` | Stable non-secret local machine identity mounted read-only so cAdvisor does not emit recurring missing-UUID warnings |
 | `docker/pgadmin/servers.json` | Pre-registered PostgreSQL servers |
 | `docker/seaweedfs/s3.json` | S3 identities and keys |
 | `docker/postgres-exporter/auth_modules.yaml` | Probe credentials for the standby, rendered at start from the environment |
 | `scripts/*.py`, `scripts/*.sh` | The scripts in [../platform/conventions.md](../platform/conventions.md) Section 4 |
 | `scripts/manage_platform.py` | Cross-platform operator command adapter exposed through Poe; centralizes safe and destructive Compose workflows |
 | `docs/security/security-audit.md`, `docs/security/image-vulnerability-policy.json` | Dated Phase 7 findings, accepted risks, review dates, and the exact machine-enforced image scan snapshot |
+| `docs/handover/phase-7.md` | Final clean-checkout, quality, contract, runtime, risk, review-date, and deferred-scope evidence for Phase 7 |
 | `docs/platform/documentation-standard.md` | The worked reference for the docstring standard the checker enforces |
 | `.env.example` | Committed variable manifest, placeholders only |
 | `.env.development.sops`, `.env.testing.sops` | Committed encrypted env files |

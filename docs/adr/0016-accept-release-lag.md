@@ -86,7 +86,7 @@ uses them, because an execution-day compatibility check is worth more than a flo
 | --- | --- | --- |
 | `django-storages` | 1.14.6, 2025-04-02 | Ticket 23 re-checked, installed, and pinned 1.14.6 with its S3 extra after the complete SeaweedFS gate passed |
 | `djangorestframework-simplejwt` | 5.5.1 | Ticket 30 re-checked, installed, and locked exactly 5.5.1 after the Python 3.14.6, Django 6.0.8, and DRF 3.18.0 import probe passed |
-| `flower` | 2.1.0 | Still deliberately not installed; Ticket 44 owns its execution-time check and pin |
+| `flower` | 2.1.0 | Ticket 44 installed and locked the released artifact after authenticated dashboard, worker visibility, active-task, queue-depth, result-redaction, and worker-independence gates passed |
 
 This list exists so the cross-reference in [0017](./0017-first-party-account-endpoints.md) resolves, and so a later
 ticket finding one of them absent reads a deliberate deferral rather than an omission.
@@ -94,6 +94,21 @@ ticket finding one of them absent reads a deliberate deferral rather than an omi
 One dependency outside this ADR resolved lower than its decision record stated: `djangorestframework` 3.18.0 rather
 than 3.18.1, because the index mirrors nothing newer. That is an index lag rather than a release lag — the artifact
 exists upstream — and it is recorded in [0002](./0002-drf-spectacular-openapi.md) rather than here.
+
+## Final gate resolution, 2026-09-22
+
+All release-lag decisions are resolved against the released artifacts; no Git fallback or first-party replacement
+was taken.
+
+| Dependency | End-to-end evidence | Resolution |
+| --- | --- | --- |
+| `celery` 5.6.3 | Confirmed RabbitMQ publication, real worker execution, retries, dead-lettering, worker-loss redelivery, scheduler dispatch, email tasks, and WebSocket fan-out on Python 3.14.6 | keep released artifact |
+| `channels-redis` 4.3.0 | Confirmed authenticated socket admission, cross-process group delivery, isolation, cleanup, throttling, and service-failure containment | keep released artifact |
+| `django-storages` 1.14.6 | Confirmed private SeaweedFS S3 write, byte-identical read, overwrite, signed access, deletion, persistence, and recovery | keep released artifact |
+| `djangorestframework-simplejwt` 5.5.1 | Confirmed create, refresh, verify, expiry, rotation, revocation, password invalidation, cleanup, and WebSocket authentication | keep released artifact |
+
+The Phase 7 clean-checkout, host, container, quality, degraded-service, security, and runtime gates all passed with
+these pins. The escape hatch remains documented for a future regression, but none is active.
 
 ## Considered options
 

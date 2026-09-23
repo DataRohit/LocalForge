@@ -146,6 +146,7 @@ def test_testing_runner_is_a_persistent_idle_compose_service() -> None:
     assert runner["container_name"] == "django-test-dt5qx"
     assert runner["entrypoint"] == ["python"]
     assert runner["command"][0] == "-c"
+    assert "prepare_broker" in runner["command"][1]
     assert "time.sleep" in runner["command"][1]
     assert "healthcheck" in runner
     assert "test" not in runner["command"]
@@ -1401,6 +1402,7 @@ def test_local_images_pin_base_digests_and_installed_package_versions() -> None:
 
     assert "python:3.14.6-slim@sha256:" in django
     assert "ghcr.io/astral-sh/uv:0.12.1@sha256:" in django
+    assert "ARG SOURCE_DATE_EPOCH=0" in django
     assert "postgres:18.6@sha256:" in pgbackrest
     assert "apt-get upgrade" not in django
     assert "apt-get upgrade" not in pgbackrest
@@ -1408,9 +1410,35 @@ def test_local_images_pin_base_digests_and_installed_package_versions() -> None:
     assert "base-files=13.8+deb13u7" in django
     assert "openssl=3.5.7-1~deb13u2" in django
     assert "util-linux=2.41.5-0+deb13u1" in django
+    assert "docs/handover/phase-7.md" in dockerignore
     assert "docs/security/image-vulnerability-policy.json" in dockerignore
     assert "**/__pycache__/" in dockerignore
     assert "**/*.py[cod]" in dockerignore
+    assert "**/*.egg-info/" in dockerignore
+    assert "**/.pytest_cache/" in dockerignore
+    assert "**/.mypy_cache/" in dockerignore
+    assert "**/.ruff_cache/" in dockerignore
+    assert "**/.hypothesis/" in dockerignore
+    assert "FROM base AS runtime-source-normalizer" in django
+    assert "FROM runtime-source-normalizer AS test-source-normalizer" in django
+    assert "RUN find /normalized -exec touch --no-dereference --date=@0 {} +" in django
+    assert "find /app -exec touch --no-dereference --date=@0 {} +" in django
+    assert "/app/coverage.xml" in django
+    assert "COPY --from=runtime-source-normalizer --chown=root:root /normalized/src ./src" in django
+    assert (
+        "COPY --from=runtime-source-normalizer --chown=root:root /normalized/scripts ./scripts"
+    ) in django
+    assert (
+        "COPY --from=runtime-source-normalizer --chown=root:root "
+        "/normalized/docker/django/entrypoint.sh /usr/local/bin/entrypoint.sh"
+    ) in django
+    assert (
+        "COPY --from=test-source-normalizer --chown=root:root /normalized/tests ./tests"
+    ) in django
+    assert "COPY --from=test-source-normalizer --chown=root:root /normalized/docs ./docs" in django
+    assert (
+        "COPY --from=test-source-normalizer --chown=root:root /normalized/docker ./docker"
+    ) in django
     local_builds = [
         definition["build"]
         for project in MERGED_PROJECTS
@@ -2683,8 +2711,10 @@ def reference(name: str) -> str:
 
 
 POSTGRES_PORT = 5432
+MACHINE_ID_LENGTH = 32
 PROMETHEUS_CONFIG = REPOSITORY_ROOT / "docker" / "prometheus" / "prometheus.yml"
 ALLOY_CONFIG = REPOSITORY_ROOT / "docker" / "alloy" / "config.alloy"
+CADVISOR_MACHINE_ID = REPOSITORY_ROOT / "docker" / "cadvisor" / "machine-id"
 PLATFORM_DASHBOARD = (
     REPOSITORY_ROOT / "docker" / "grafana" / "provisioning" / "dashboards" / "platform.json"
 )
@@ -2713,6 +2743,33 @@ def test_each_observability_service_matches_its_registered_row(service: str) -> 
     assert definition["image"] == image
     assert definition["container_name"] == service
     assert set(definition.get("ports", [])) == ports
+
+
+@pytest.mark.unit
+def test_cadvisor_receives_the_registered_non_secret_machine_identity() -> None:
+    """Keep cAdvisor's periodic host metadata collection warning-free.
+
+    Requires one deterministic non-secret machine-id mounted read-only at the path cAdvisor reads.
+    Validates the Linux machine-id shape without accepting machine-specific host state.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the identity or read-only bind contract drifts.
+    """
+    definition = merged(DEVELOPMENT_FILE)["services"]["cadvisor-cv8mh"]
+    machine_id = CADVISOR_MACHINE_ID.read_text(encoding="utf-8").strip()
+
+    assert len(machine_id) == MACHINE_ID_LENGTH
+    assert set(machine_id) <= set("0123456789abcdef")
+    assert "./docker/cadvisor/machine-id:/etc/machine-id:ro" in definition["volumes"]
+    assert "./docker/cadvisor/machine-id:/rootfs/etc/machine-id:ro" in definition["volumes"]
+    assert "/dev/kmsg:/dev/kmsg:ro" not in definition["volumes"]
+    assert definition["devices"] == ["/dev/kmsg:/dev/kmsg:r"]
 
 
 @pytest.mark.unit

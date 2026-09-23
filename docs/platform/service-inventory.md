@@ -180,7 +180,7 @@ Every row verified against upstream source or docs on 2026-09-13.
 | `django-uv5n2` | `GET /health/`, aggregating primary, replica, cache, channel layer, broker, object storage, and mail | Returns `200` only when every dependency is `working`; otherwise `503`. Public JSON exposes stable states only, while authenticated staff also receive bounded durations and generic failure categories. |
 | `prometheus-pm5db` | `GET /-/ready` | `/-/healthy` exists but answers liveness, not readiness |
 | `grafana-gf7qv` | `GET /api/health` | |
-| `cadvisor-cv8mh` | `GET /healthz` | |
+| `cadvisor-cv8mh` | `GET /healthz` | Registered machine-id mounts keep host metadata warning-free; OOM events use an exact read-only `/dev/kmsg` device grant instead of privileged mode |
 
 **RabbitMQ health checks are expensive.** Each `rabbitmq-diagnostics` invocation joins and leaves the Erlang
 distribution cluster. Use `interval: 30s` or longer with a generous `start_period`. Upstream notes that its own

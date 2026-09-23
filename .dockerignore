@@ -14,10 +14,15 @@ __pycache__
 **/__pycache__/
 **/*.py[cod]
 *.egg-info
+**/*.egg-info/
 
 .pytest_cache
 .mypy_cache
 .ruff_cache
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.hypothesis/
 .tox
 .nox
 
@@ -50,4 +55,5 @@ temp
 *.db
 
 docs/_build
+docs/handover/phase-7.md
 docs/security/image-vulnerability-policy.json

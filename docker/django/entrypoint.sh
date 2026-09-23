@@ -39,6 +39,9 @@ log "waiting for dependencies: ${WAIT_SERVICES}"
 read -r -a wait_targets <<<"${WAIT_SERVICES}"
 supervise python /app/scripts/wait_for_services.py "${wait_targets[@]}" --timeout "${WAIT_TIMEOUT}"
 
+log "preparing broker delayed-delivery exchanges"
+supervise python /app/scripts/prepare_broker.py
+
 if [ "$#" -gt 0 ]; then
   log "handing over to: $*"
   exec "$@"

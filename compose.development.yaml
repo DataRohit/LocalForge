@@ -333,10 +333,15 @@ services:
       - obsv-net-nb4xt
 
     volumes:
+      - ./docker/cadvisor/machine-id:/etc/machine-id:ro
+      - ./docker/cadvisor/machine-id:/rootfs/etc/machine-id:ro
       - /:/rootfs:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
+
+    devices:
+      - /dev/kmsg:/dev/kmsg:r
 
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/healthz"]

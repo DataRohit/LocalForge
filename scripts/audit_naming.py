@@ -39,8 +39,10 @@ EXPECTED_BIND_MOUNTS: dict[str, dict[str, frozenset[str]]] = {
     "pgadmin-pa7fe": {"/pgadmin4/servers.json": frozenset({"docker/pgadmin/servers.json"})},
     "seaweedfs-sw9cr": {"/etc/seaweedfs/s3.json.template": frozenset({"docker/seaweedfs/s3.json"})},
     "cadvisor-cv8mh": {
+        "/etc/machine-id": frozenset({"docker/cadvisor/machine-id"}),
         "/dev/disk": frozenset({"/dev/disk"}),
         "/rootfs": frozenset({"/"}),
+        "/rootfs/etc/machine-id": frozenset({"docker/cadvisor/machine-id"}),
         "/sys": frozenset({"/sys"}),
         "/var/lib/docker": frozenset({"/var/lib/docker"}),
     },
@@ -63,6 +65,9 @@ EXPECTED_BIND_MOUNTS: dict[str, dict[str, frozenset[str]]] = {
         "/app/.env.development": frozenset({".env.development"}),
         "/app/.env.testing": frozenset({".env.testing"}),
     },
+}
+EXPECTED_DEVICES = {
+    "cadvisor-cv8mh": frozenset({("/dev/kmsg", "/dev/kmsg", "r")}),
 }
 
 
@@ -635,6 +640,40 @@ def mount_failures(
     return failures
 
 
+def device_failures(records: Sequence[dict[str, object]]) -> list[str]:
+    """Validate exact host-device grants for registered containers.
+
+    Rejects missing, extra, or permission-widened devices so cAdvisor receives only the kernel
+    message device required for OOM-event collection.
+
+    Arguments:
+        records: Project-scoped container inspect records.
+
+    Returns:
+        Stable device-grant failures.
+    """
+    failures: list[str] = []
+    for record in records:
+        name = platform.record_name(record)
+        raw_host_config = record.get("HostConfig")
+        host_config = raw_host_config if isinstance(raw_host_config, dict) else {}
+        raw_devices = host_config.get("Devices")
+        devices = raw_devices if isinstance(raw_devices, list) else []
+        observed = {
+            (
+                str(device.get("PathOnHost", "")),
+                str(device.get("PathInContainer", "")),
+                str(device.get("CgroupPermissions", "")),
+            )
+            for device in devices
+            if isinstance(device, dict)
+        }
+        expected = EXPECTED_DEVICES.get(name, frozenset())
+        if observed != set(expected):
+            failures.append(f"devices {name} expected={sorted(expected)} actual={sorted(observed)}")
+    return failures
+
+
 def network_failures(
     records: Sequence[dict[str, object]],
     spec: ConventionSpec,
@@ -803,6 +842,7 @@ def audit_environment(runner: AuditRunner, spec: ConventionSpec) -> int:
         *container_name_failures(containers, spec),
         *port_failures(containers, spec),
         *mount_failures(containers, spec),
+        *device_failures(containers),
         *network_failures(networks, spec),
         *volume_failures(volumes, spec),
         *offline_failures(runner, spec),

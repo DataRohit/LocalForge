@@ -29,6 +29,12 @@ latest patch. No newer community-supported series exists, so `4.3.5-management` 
 prescribed. **Review on 2026-11-30**, at which point the series leaves community support and a newer one must be
 adopted.
 
+A newly created RabbitMQ data volume emits two bounded first-boot warnings before application clients connect:
+classic peer discovery starts from an empty local-node list, and the empty persistent message store rebuilds its
+indices from scratch. Both occur once while the broker initializes, before Compose marks it healthy. They are
+expected only in the fresh-start observation window; recurrence after readiness or during ordinary restart is a
+failure.
+
 ## Result backend
 
 Task results go to the Valkey cache instance. `django-celery-results` 2.6.0 is **rejected**: zero releases in twelve
@@ -49,6 +55,13 @@ only when a terminal record is published. Broker transport options require `conf
 not report success until RabbitMQ confirms durable acceptance. A stopped-broker publication fails, and publication
 plus retrieval succeeds after recovery. After a broker outage the worker reconnects without `global_qos`,
 delayed-delivery, warning, error, or critical records, and its bounded round-trip health probe passes.
+
+Kombu creates each native delayed-delivery queue before declaring the next exchange named by that queue's
+dead-letter configuration. A fresh RabbitMQ therefore records 28 missing-exchange warnings even though Kombu
+declares the exchanges immediately afterwards and the topology succeeds. `scripts/prepare_broker.py` idempotently
+declares all 29 durable topic exchanges after dependency readiness but before Django, any Celery companion, or the
+persistent test runner becomes healthy. The fresh-clone dual-mode gate therefore starts from an empty broker with
+zero delayed-delivery warning records instead of accepting successful setup logged as failure.
 
 The quorum/topic topology uses versioned names: `localforge.v2.default`, `localforge.v2.slow`, and
 `localforge.v2.dead-letter`. These registry identities are application and Compose constants rather than generated

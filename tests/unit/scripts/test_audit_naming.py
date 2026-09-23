@@ -324,6 +324,53 @@ def test_mount_rules_reject_anonymous_writable_and_unregistered_mounts() -> None
     )
 
 
+def test_device_rules_require_only_cadvisor_kernel_messages() -> None:
+    """Restrict cAdvisor to its registered kernel message device.
+
+    Accepts the exact Docker device grant and rejects missing or widened mappings.
+    Confirms unrelated containers require no host device.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If device drift is accepted.
+    """
+    valid = container_record("cadvisor-cv8mh")
+    valid["HostConfig"] = {
+        "Devices": [
+            {
+                "PathOnHost": "/dev/kmsg",
+                "PathInContainer": "/dev/kmsg",
+                "CgroupPermissions": "r",
+            }
+        ]
+    }
+    widened = container_record("cadvisor-cv8mh")
+    widened["HostConfig"] = {
+        "Devices": [
+            {
+                "PathOnHost": "/dev/kmsg",
+                "PathInContainer": "/dev/kmsg",
+                "CgroupPermissions": "r",
+            },
+            {
+                "PathOnHost": "/dev/sda",
+                "PathInContainer": "/dev/sda",
+                "CgroupPermissions": "rwm",
+            },
+        ]
+    }
+
+    assert audit.device_failures([valid]) == []
+    assert audit.device_failures([container_record("django-uv5n2")]) == []
+    assert audit.device_failures([container_record("cadvisor-cv8mh")])
+    assert audit.device_failures([widened])
+
+
 def test_container_network_and_volume_rules_detect_registry_drift() -> None:
     """Detect missing, unexpected, malformed, default, and wrong-internal resources.
 
@@ -455,6 +502,7 @@ def test_audit_environment_sequences_every_gate_and_propagates_failures() -> Non
         patch.object(audit, "container_name_failures", return_value=[]),
         patch.object(audit, "port_failures", return_value=[]),
         patch.object(audit, "mount_failures", return_value=[]),
+        patch.object(audit, "device_failures", return_value=[]),
         patch.object(audit, "network_failures", return_value=[]),
         patch.object(audit, "volume_failures", return_value=[]),
         patch.object(audit, "offline_failures", return_value=[]),
@@ -487,6 +535,7 @@ def test_audit_environment_sequences_every_gate_and_propagates_failures() -> Non
         ),
         patch.object(audit, "port_failures", return_value=[]),
         patch.object(audit, "mount_failures", return_value=[]),
+        patch.object(audit, "device_failures", return_value=[]),
         patch.object(audit, "network_failures", return_value=[]),
         patch.object(audit, "volume_failures", return_value=[]),
         patch.object(audit, "offline_failures", return_value=[]),

@@ -1,3 +1,5 @@
+ARG SOURCE_DATE_EPOCH=0
+
 FROM python:3.14.6-slim@sha256:7bec7ddcddeff7975d6ba9b4be7dd6f6b2f55e7491539145e2978f7f97ce9144 AS base
 
 RUN apt-get update \
@@ -28,6 +30,28 @@ RUN apt-get update \
         util-linux=2.41.5-0+deb13u1 \
     && rm -rf /var/lib/apt/lists/*
 
+FROM base AS runtime-source-normalizer
+
+WORKDIR /normalized
+
+COPY --chmod=0555 src ./src
+COPY --chmod=0555 scripts ./scripts
+COPY --chmod=0555 docker/django/entrypoint.sh ./docker/django/entrypoint.sh
+COPY --chmod=0444 pyproject.toml uv.lock ./
+
+RUN find /normalized -exec touch --no-dereference --date=@0 {} +
+
+FROM runtime-source-normalizer AS test-source-normalizer
+
+COPY --chmod=0555 tests ./tests
+COPY --chmod=0555 docs ./docs
+COPY --chmod=0555 docker ./docker
+COPY --chmod=0444 .dockerignore .sops.yaml .gitleaks.toml ./
+COPY --chmod=0444 compose.yaml compose.development.yaml compose.testing.yaml ./
+COPY --chmod=0444 .env.example .env.development.sops .env.testing.sops ./
+
+RUN find /normalized -exec touch --no-dereference --date=@0 {} +
+
 FROM base AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.12.1@sha256:cf4eedcaa81655197f625739489effcbe71b61ceb1506f332c3facae5deceded /uv /usr/local/bin/uv
@@ -38,7 +62,7 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
 
 WORKDIR /app
 
-COPY pyproject.toml uv.lock ./
+COPY --from=runtime-source-normalizer /normalized/pyproject.toml /normalized/uv.lock ./
 
 RUN uv sync --frozen --no-dev --no-install-project
 
@@ -60,13 +84,14 @@ COPY --from=builder /opt/venv /opt/venv
 
 WORKDIR /app
 
-COPY --chown=root:root src ./src
-COPY --chown=root:root scripts ./scripts
-COPY --chown=root:root docker/django/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY --from=runtime-source-normalizer --chown=root:root /normalized/src ./src
+COPY --from=runtime-source-normalizer --chown=root:root /normalized/scripts ./scripts
+COPY --from=runtime-source-normalizer --chown=root:root /normalized/docker/django/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 RUN chmod 0755 /usr/local/bin/entrypoint.sh \
     && chmod -R a-w /app \
-    && install -d -o localforge -g localforge -m 0755 /app/staticfiles
+    && install -d -o localforge -g localforge -m 0755 /app/staticfiles \
+    && find /app -exec touch --no-dereference --date=@0 {} +
 
 USER localforge
 
@@ -80,15 +105,21 @@ USER root
 
 COPY --from=test-builder /opt/venv /opt/venv
 
-COPY --chown=root:root tests ./tests
-COPY --chown=root:root docs ./docs
-COPY --chown=root:root docker ./docker
-COPY --chown=root:root pyproject.toml uv.lock .dockerignore .sops.yaml .gitleaks.toml ./
-COPY --chown=root:root compose.yaml compose.development.yaml compose.testing.yaml ./
-COPY --chown=root:root .env.example .env.development.sops .env.testing.sops ./
+COPY --from=test-source-normalizer --chown=root:root /normalized/tests ./tests
+COPY --from=test-source-normalizer --chown=root:root /normalized/docs ./docs
+COPY --from=test-source-normalizer --chown=root:root /normalized/docker ./docker
+COPY --from=test-source-normalizer --chown=root:root /normalized/pyproject.toml /normalized/uv.lock /normalized/.dockerignore /normalized/.sops.yaml /normalized/.gitleaks.toml ./
+COPY --from=test-source-normalizer --chown=root:root /normalized/compose.yaml /normalized/compose.development.yaml /normalized/compose.testing.yaml ./
+COPY --from=test-source-normalizer --chown=root:root /normalized/.env.example /normalized/.env.development.sops /normalized/.env.testing.sops ./
 
 RUN install -d -o localforge -g localforge -m 0755 /app/test-results /app/htmlcov /app/.pytest_cache \
-    && install -o localforge -g localforge -m 0644 /dev/null /app/coverage.xml
+    && install -o localforge -g localforge -m 0644 /dev/null /app/coverage.xml \
+    && touch --no-dereference --date=@0 \
+        /app \
+        /app/test-results \
+        /app/htmlcov \
+        /app/.pytest_cache \
+        /app/coverage.xml
 
 USER localforge
 

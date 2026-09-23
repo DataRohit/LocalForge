@@ -213,7 +213,11 @@ services:
     entrypoint: [python]
     command:
       - -c
-      - import time; time.sleep(31536000)
+      - >-
+        from scripts.prepare_broker import main;
+        main();
+        import time;
+        time.sleep(31536000)
 
     env_file:
       - .env.testing

@@ -17,7 +17,7 @@ ENTRYPOINT = REPOSITORY_ROOT / "docker" / "django" / "entrypoint.sh"
 BASH = shutil.which("bash")
 
 TIMEOUT_SECONDS = 30
-MINIMUM_SUPERVISED_PHASES = 4
+MINIMUM_SUPERVISED_PHASES = 5
 SERVER_PROCESS_COUNT = 2
 
 
@@ -158,8 +158,8 @@ def calls(directory: Path) -> list[str]:
 def test_the_port_is_bound_last(tools: Path) -> None:
     """Open the port only once the instance can serve.
 
-    Confirms dependency waiting, bucket seeding, migration, and static collection all run before
-    the server starts, which makes fresh volumes ready before the health endpoint is exposed.
+    Confirms dependency waiting, broker preparation, bucket seeding, migration, and static
+    collection all run before the server starts.
 
     Arguments:
         tools: Directory of fabricated commands.
@@ -175,10 +175,11 @@ def test_the_port_is_bound_last(tools: Path) -> None:
     recorded = calls(tools)
 
     assert "wait_for_services.py" in recorded[0]
-    assert "seed_storage.py --process-environment" in recorded[1]
-    assert "migrate" in recorded[2]
-    assert "collectstatic" in recorded[3]
-    assert recorded[4].startswith("uvicorn")
+    assert "prepare_broker.py" in recorded[1]
+    assert "seed_storage.py --process-environment" in recorded[2]
+    assert "migrate" in recorded[3]
+    assert "collectstatic" in recorded[4]
+    assert recorded[5].startswith("uvicorn")
 
 
 @pytest.mark.unit
@@ -283,7 +284,8 @@ def test_a_companion_command_waits_but_does_not_migrate(tools: Path) -> None:
     recorded = calls(tools)
 
     assert "wait_for_services.py" in recorded[0]
-    assert recorded[1] == "celery worker"
+    assert "prepare_broker.py" in recorded[1]
+    assert recorded[2] == "celery worker"
     assert not any("migrate" in call for call in recorded)
 
 
