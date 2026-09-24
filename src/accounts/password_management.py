@@ -33,6 +33,7 @@ from rest_framework.throttling import BaseThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 
+import accounts.credentials as credential_policy
 from accounts.api_throttling import (
     AnonymousApiThrottle,
     AuthenticationRecoveryThrottle,
@@ -54,11 +55,8 @@ from accounts.request_throttling import parse_throttle_rate, trusted_client_addr
 from accounts.tasks import send_password_changed_email, send_password_reset_email
 from accounts.token_authentication import (
     ErrorEnvelopeSerializer,
-    PasswordHashDisposition,
-    classify_password_hash,
     error_example,
     error_response,
-    verify_encoded_password,
 )
 from accounts.user_profiles import StrictFieldsSerializer, normalise_valid_email
 from config.api_errors import (
@@ -869,9 +867,14 @@ def _apply_locked_password_reset(
         if not password_reset_token_matches(account, token):
             raise PasswordResetTokenForeign
 
-        disposition = classify_password_hash(account.password)
-        accepted_profile = disposition is not PasswordHashDisposition.RESET_REQUIRED
-        if accepted_profile and verify_encoded_password(new_password, account.password):
+        disposition = credential_policy.classify_password_hash(account.password)
+        accepted_profile = (
+            disposition is not credential_policy.PasswordHashDisposition.RESET_REQUIRED
+        )
+        if accepted_profile and credential_policy.verify_encoded_password(
+            new_password,
+            account.password,
+        ):
             raise ValidationError(
                 {"new_password": ["The new password must differ from the current password."]}
             )
@@ -1174,13 +1177,16 @@ def change_password(account_id: object, validated_data: dict[str, Any]) -> None:
             except User.DoesNotExist as error:
                 raise AuthenticationFailed from error
 
-            disposition = classify_password_hash(account.password)
-            if disposition is PasswordHashDisposition.RESET_REQUIRED or not verify_encoded_password(
-                current_password,
-                account.password,
+            disposition = credential_policy.classify_password_hash(account.password)
+            if (
+                disposition is credential_policy.PasswordHashDisposition.RESET_REQUIRED
+                or not credential_policy.verify_encoded_password(
+                    current_password,
+                    account.password,
+                )
             ):
                 raise ValidationError({"current_password": ["The current password is incorrect."]})
-            if verify_encoded_password(new_password, account.password):
+            if credential_policy.verify_encoded_password(new_password, account.password):
                 raise ValidationError(
                     {"new_password": ["The new password must differ from the current password."]}
                 )

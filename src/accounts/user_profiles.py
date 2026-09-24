@@ -30,6 +30,7 @@ from rest_framework.serializers import CharField, EmailField, Serializer, UUIDFi
 from rest_framework.throttling import BaseThrottle
 from rest_framework.views import APIView
 
+import accounts.credentials as credential_policy
 from accounts.account_activation import (
     RESEND_ACCEPTED_MESSAGE,
     ActivationConfirmationSerializer,
@@ -60,7 +61,6 @@ from accounts.token_authentication import (
     ErrorEnvelopeSerializer,
     error_example,
     error_response,
-    verify_encoded_password,
 )
 from config.api_errors import (
     ACTIVATION_TOKEN_EXPIRED,
@@ -1141,7 +1141,10 @@ class UserProfileView(APIView):
                 locked_account = (
                     User.objects.using("default").select_for_update().get(pk=account_id)
                 )
-                if not verify_encoded_password(current_password, locked_account.password):
+                if not credential_policy.verify_encoded_password(
+                    current_password,
+                    locked_account.password,
+                ):
                     raise ValidationError(
                         {"current_password": ["The current password is incorrect."]}
                     )

@@ -46,8 +46,8 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
+import accounts.credentials as credentials_module
 import accounts.jwt_authentication as jwt_authentication_module
-import accounts.token_authentication as token_authentication_module
 from accounts.authentication import JWTAuthentication
 from accounts.login_throttle import PostgresLoginThrottleStore
 from accounts.models import User
@@ -1057,7 +1057,7 @@ def test_jwt_create_wrong_and_unknown_credentials_perform_equivalent_hash_work(
     account.password = make_password(PASSWORD, hasher=hasher_algorithm)
     account.save(using="default", update_fields=["password"])
     encoded_hashes: list[str] = []
-    original_verify = token_authentication_module.verify_encoded_password
+    original_verify = credentials_module.verify_encoded_password
 
     def observe_password(
         raw_password: str,
@@ -1082,7 +1082,7 @@ def test_jwt_create_wrong_and_unknown_credentials_perform_equivalent_hash_work(
 
         return original_verify(raw_password, encoded, preferred=preferred)
 
-    monkeypatch.setattr(token_authentication_module, "verify_encoded_password", observe_password)
+    monkeypatch.setattr(credentials_module, "verify_encoded_password", observe_password)
 
     with override_settings(**_unlimited_login_settings()):
         wrong = _post_credentials(
@@ -1990,7 +1990,7 @@ def test_jwt_create_maps_primary_account_outage_to_service_unavailable(
         raise DatabaseError
 
     monkeypatch.setattr(
-        jwt_authentication_module,
+        credentials_module,
         "verify_login_credentials",
         fail_account_lookup,
     )
@@ -2795,7 +2795,7 @@ def test_jwt_create_observed_statuses_exactly_match_its_documented_contract(
 
     with monkeypatch.context() as failure_patch:
         failure_patch.setattr(
-            jwt_authentication_module,
+            credentials_module,
             "verify_login_credentials",
             lambda _username, _password: (_ for _ in ()).throw(RuntimeError("induced")),
         )

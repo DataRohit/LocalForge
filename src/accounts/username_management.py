@@ -30,6 +30,7 @@ from rest_framework.serializers import CharField, EmailField, UUIDField
 from rest_framework.throttling import BaseThrottle
 from rest_framework.views import APIView
 
+import accounts.credentials as credential_policy
 from accounts.api_throttling import (
     AnonymousApiThrottle,
     AuthenticationRecoveryThrottle,
@@ -44,11 +45,8 @@ from accounts.request_throttling import parse_throttle_rate, trusted_client_addr
 from accounts.tasks import send_username_changed_email, send_username_reset_email
 from accounts.token_authentication import (
     ErrorEnvelopeSerializer,
-    PasswordHashDisposition,
-    classify_password_hash,
     error_example,
     error_response,
-    verify_encoded_password,
 )
 from accounts.user_profiles import StrictFieldsSerializer, normalise_valid_email
 from accounts.username_tokens import (
@@ -1141,10 +1139,13 @@ def change_username(account_id: object, validated_data: dict[str, Any]) -> None:
             except User.DoesNotExist as error:
                 raise AuthenticationFailed from error
 
-            disposition = classify_password_hash(account.password)
-            if disposition is PasswordHashDisposition.RESET_REQUIRED or not verify_encoded_password(
-                current_password,
-                account.password,
+            disposition = credential_policy.classify_password_hash(account.password)
+            if (
+                disposition is credential_policy.PasswordHashDisposition.RESET_REQUIRED
+                or not credential_policy.verify_encoded_password(
+                    current_password,
+                    account.password,
+                )
             ):
                 raise ValidationError({"current_password": ["The current password is incorrect."]})
             _save_username(account, new_username)

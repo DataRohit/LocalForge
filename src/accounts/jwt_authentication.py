@@ -22,6 +22,7 @@ from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, Ou
 from rest_framework_simplejwt.tokens import RefreshToken, Token, UntypedToken
 from rest_framework_simplejwt.utils import datetime_from_epoch, get_md5_hash_password
 
+import accounts.credentials as credential_policy
 from accounts.api_throttling import (
     AnonymousApiThrottle,
     AuthenticationRecoveryThrottle,
@@ -34,8 +35,6 @@ from accounts.token_authentication import (
     TokenLoginThrottle,
     error_example,
     error_response,
-    lock_authenticated_account,
-    verify_login_credentials,
 )
 from config.api_errors import (
     AUTHENTICATION_FAILED,
@@ -418,12 +417,12 @@ class JWTCreateView(APIView):
         serializer = TokenLoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
-            snapshot = verify_login_credentials(
+            snapshot = credential_policy.verify_login_credentials(
                 cast("str", serializer.validated_data["username"]),
                 cast("str", serializer.validated_data["password"]),
             )
             with transaction.atomic(using="default"):
-                account = lock_authenticated_account(snapshot)
+                account = credential_policy.lock_authenticated_account(snapshot)
                 refresh = PrimaryRefreshToken.for_user(account)
         except DatabaseError as error:
             raise ServiceUnavailable from error

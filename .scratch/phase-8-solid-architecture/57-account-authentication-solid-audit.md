@@ -16,21 +16,23 @@ token, JWT, normalisation, credential-state, and admission-throttling modules.
 - [First-party account endpoint decision](../../docs/adr/0017-first-party-account-endpoints.md)
 - [Documentation standard](../../docs/platform/documentation-standard.md)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Identity, authentication, token lifecycle, normalisation, throttling, persistence, and transport concerns have
+- [x] Identity, authentication, token lifecycle, normalisation, throttling, persistence, and transport concerns have
       explicit owners and do not change together without one shared policy reason.
-- [ ] Authentication backends, token validators, managers, and framework hooks satisfy their substitutable
+- [x] Authentication backends, token validators, managers, and framework hooks satisfy their substitutable
       contracts, including failure modes and cleanup.
-- [ ] High-level admission and credential policy does not create concrete clock, randomness, cache, request,
+- [x] High-level admission and credential policy does not create concrete clock, randomness, cache, request,
       database, or token dependencies when an observed test or runtime seam exists.
-- [ ] Callers depend only on the credential or identity interface they use; broad user, request, or settings
+- [x] Callers depend only on the credential or identity interface they use; broad user, request, or settings
       objects are not passed through unrelated layers.
-- [ ] Enumeration resistance, timing protections, password policy, token expiry, rotation, revocation, status
+- [x] Enumeration resistance, timing protections, password policy, token expiry, rotation, revocation, status
       codes, error envelopes, and schema examples remain exact.
-- [ ] Confirmed findings receive interface-level regression tests across direct, REST, worker, and WebSocket
+- [x] Confirmed findings receive interface-level regression tests across direct, REST, worker, and WebSocket
       consumers where applicable.
-- [ ] The account authentication test set passes in parallel with 100% branch coverage, zero warnings, and zero
+- [x] The account authentication test set passes in parallel with 100% branch coverage, zero warnings, and zero
       skips.
-- [ ] The findings ledger records every reviewed module, finding, fix, and verification result.
+- [x] The findings ledger records every reviewed module, finding, fix, and verification result.
+
+**Independent audit:** GPT-5.6 Terra and GPT-5.6 Sol reported no legitimate finding.
 *** End of File

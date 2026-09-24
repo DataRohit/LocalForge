@@ -51,10 +51,11 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.authtoken.models import Token
 
+import accounts.credentials as credentials_module
 import accounts.token_authentication as token_authentication_module
+from accounts.credentials import PasswordHashDisposition, classify_password_hash
 from accounts.login_throttle import PostgresLoginThrottleStore, RollingWindowRule
 from accounts.models import LOGIN_THROTTLE_TABLE, LoginThrottleEvent
-from accounts.token_authentication import PasswordHashDisposition, classify_password_hash
 from config.api_errors import ErrorCode, ServiceUnavailable
 from config.logs import REQUEST_ID_HEADER, StructuredFormatter
 from tests.integration.config.throttle_worker import count_postgres_throttle_admissions
@@ -1756,7 +1757,7 @@ def test_reset_required_profiles_use_the_unknown_account_schedule_without_mutati
     account.password = original_hash
     account.save(using="default", update_fields=["password"])
     checked_hashes: list[str] = []
-    original_verify_password = token_authentication_module.verify_encoded_password
+    original_verify_password = credentials_module.verify_encoded_password
 
     def observe_password(
         raw_password: str,
@@ -1781,7 +1782,7 @@ def test_reset_required_profiles_use_the_unknown_account_schedule_without_mutati
 
         return original_verify_password(raw_password, encoded, preferred=preferred)
 
-    monkeypatch.setattr(token_authentication_module, "verify_encoded_password", observe_password)
+    monkeypatch.setattr(credentials_module, "verify_encoded_password", observe_password)
     request_identifier = uuid.uuid4()
     monkeypatch.setattr("config.logs.uuid.uuid4", lambda: request_identifier)
 
@@ -1879,7 +1880,7 @@ def test_wrong_and_unknown_credentials_perform_equivalent_hash_work(
     account.password = make_password(PASSWORD, hasher=hasher_algorithm)
     account.save(using="default", update_fields=["password"])
     encoded_hashes: list[str] = []
-    original_verify_password = token_authentication_module.verify_encoded_password
+    original_verify_password = credentials_module.verify_encoded_password
 
     def observe_password(
         raw_password: str,
@@ -1904,7 +1905,7 @@ def test_wrong_and_unknown_credentials_perform_equivalent_hash_work(
 
         return original_verify_password(raw_password, encoded, preferred=preferred)
 
-    monkeypatch.setattr(token_authentication_module, "verify_encoded_password", observe_password)
+    monkeypatch.setattr(credentials_module, "verify_encoded_password", observe_password)
 
     with override_settings(**_unlimited_login_settings()):
         _post_credentials(
@@ -1977,7 +1978,7 @@ def test_recognized_lower_password_hashes_receive_runtime_hardening(
     original_hash = account.password
     checked_hashes: list[str] = []
     hardened_hashes: list[str] = []
-    original_verify_password = token_authentication_module.verify_encoded_password
+    original_verify_password = credentials_module.verify_encoded_password
     hasher_type = type(identify_hasher(original_hash))
     original_harden_runtime = hasher_type.harden_runtime
 
@@ -2025,7 +2026,7 @@ def test_recognized_lower_password_hashes_receive_runtime_hardening(
         hardened_hashes.append(encoded)
         original_harden_runtime(hasher, password, encoded)
 
-    monkeypatch.setattr(token_authentication_module, "verify_encoded_password", observe_password)
+    monkeypatch.setattr(credentials_module, "verify_encoded_password", observe_password)
     monkeypatch.setattr(hasher_type, "harden_runtime", observe_harden_runtime)
 
     with override_settings(**_unlimited_login_settings()):
@@ -2088,7 +2089,7 @@ def test_inactive_recognized_lower_passwords_harden_without_mutating_the_account
     account.save(using="default", update_fields=["password"])
     checked_hashes: list[str] = []
     hardened_hashes: list[str] = []
-    original_verify_password = token_authentication_module.verify_encoded_password
+    original_verify_password = credentials_module.verify_encoded_password
     hasher_type = type(identify_hasher(original_hash))
     original_harden_runtime = hasher_type.harden_runtime
 
@@ -2115,7 +2116,7 @@ def test_inactive_recognized_lower_passwords_harden_without_mutating_the_account
 
         return original_verify_password(raw_password, encoded, preferred=preferred)
 
-    monkeypatch.setattr(token_authentication_module, "verify_encoded_password", observe_password)
+    monkeypatch.setattr(credentials_module, "verify_encoded_password", observe_password)
 
     def observe_harden_runtime(
         hasher: BasePasswordHasher,
@@ -2195,7 +2196,7 @@ def test_inactive_current_cost_short_salt_passwords_do_not_add_hash_work(
     account.password = original_hash
     account.save(using="default", update_fields=["password"])
     checked_hashes: list[str] = []
-    original_verify_password = token_authentication_module.verify_encoded_password
+    original_verify_password = credentials_module.verify_encoded_password
 
     def observe_password(
         raw_password: str,
@@ -2220,7 +2221,7 @@ def test_inactive_current_cost_short_salt_passwords_do_not_add_hash_work(
 
         return original_verify_password(raw_password, encoded, preferred=preferred)
 
-    monkeypatch.setattr(token_authentication_module, "verify_encoded_password", observe_password)
+    monkeypatch.setattr(credentials_module, "verify_encoded_password", observe_password)
 
     with override_settings(**_unlimited_login_settings()):
         response = _post_credentials(

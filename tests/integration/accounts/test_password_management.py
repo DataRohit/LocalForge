@@ -37,10 +37,9 @@ from freezegun import freeze_time
 from rest_framework.authtoken.models import Token
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 
-import accounts.jwt_authentication as jwt_authentication_module
+import accounts.credentials as credentials_module
 import accounts.password_management as password_management_module
 import accounts.tasks as account_tasks_module
-import accounts.token_authentication as token_authentication_module
 import config.celery as celery_module
 from accounts.jwt_authentication import PrimaryRefreshToken
 from accounts.login_throttle import PostgresLoginThrottleStore
@@ -380,9 +379,7 @@ def test_old_password_login_cannot_issue_after_password_replacement(
 
     verification_complete = Event()
     release_verification = Event()
-    credential_module = (
-        token_authentication_module if login_flow == "token" else jwt_authentication_module
-    )
+    credential_module = credentials_module
     original_verify = credential_module.verify_login_credentials
 
     def pause_verified_credentials(username: str, password: str) -> object:
@@ -469,9 +466,7 @@ def test_verified_account_disappearance_rejects_issuance(
         is_active=True,
     )
     account_id = account.pk
-    credential_module = (
-        token_authentication_module if login_flow == "token" else jwt_authentication_module
-    )
+    credential_module = credentials_module
     original_verify = credential_module.verify_login_credentials
 
     def delete_after_verification(username: str, password: str) -> object:

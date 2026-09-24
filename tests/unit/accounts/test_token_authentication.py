@@ -24,13 +24,14 @@ from accounts.authentication import (
     JWTAuthenticationScheme,
     PrimaryTokenAuthenticationScheme,
 )
+from accounts.credentials import resolve_login_account
 from accounts.login_throttle import ThrottleDecision
 from accounts.models import User
 from accounts.request_throttling import (
     trusted_client_address,
     trusted_client_address_from_scope,
 )
-from accounts.token_authentication import TokenLoginThrottle, resolve_login_account
+from accounts.token_authentication import TokenLoginThrottle
 from config.celery import redact_published_arguments
 from config.logs import StructuredFormatter
 from tests.factories import build_user
@@ -345,7 +346,7 @@ def test_token_login_throttle_returns_the_authoritative_decision(
 
     with (
         patch.object(User, "objects", accounts),
-        patch("accounts.token_authentication.connections", {"default": connection}),
+        patch("accounts.credentials.connections", {"default": connection}),
         patch(
             "accounts.token_authentication.PostgresLoginThrottleStore.admit",
             return_value=decision,
