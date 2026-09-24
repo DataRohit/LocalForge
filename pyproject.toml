@@ -448,6 +448,10 @@ cmd = "uvx ty@0.0.78 check --force-exclude"
 help = "Run all type checkers"
 sequence = ["types-mypy", "types-ty"]
 
+[tool.poe.tasks.architecture-audit]
+help = "Enforce stable runtime import direction and acyclic project dependencies"
+cmd = "pytest tests/unit/test_architecture.py --no-cov -q"
+
 [tool.poe.tasks.test]
 help = "Start testing dependencies and run the complete host suite"
 cmd = "python -m scripts.manage_platform testing-test-host"
@@ -517,4 +521,4 @@ cmd = """pytest -n 4 --dist load
 
 [tool.poe.tasks.check]
 help = "Run the complete local quality gate"
-sequence = ["django-check", "openapi-check", "format-check", "lint", "docs-standard", "typecheck", "test"]
+sequence = ["django-check", "openapi-check", "format-check", "lint", "docs-standard", "typecheck", "architecture-audit", "test"]

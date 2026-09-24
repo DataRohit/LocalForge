@@ -1065,6 +1065,30 @@ def test_complete_test_tasks_compose_core_and_security_timing_stages() -> None:
 
 
 @pytest.mark.unit
+def test_architecture_audit_is_a_quality_gate() -> None:
+    """Keep objective import rules in the complete local gate.
+
+    Requires one focused task for architecture diagnostics and includes it before the complete test
+    workflow, so a dependency-direction regression fails without waiting for service-backed tests.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If architecture enforcement is absent or outside the quality gate.
+    """
+    tasks = _configured_tasks()
+
+    assert tasks["architecture-audit"]["cmd"] == (
+        "pytest tests/unit/test_architecture.py --no-cov -q"
+    )
+    assert "architecture-audit" in tasks["check"]["sequence"]
+
+
+@pytest.mark.unit
 def test_django_gate_runs_a_database_aware_system_check() -> None:
     """Catch database-specific model failures before the runtime entrypoint.
 
