@@ -37,18 +37,18 @@ from accounts.api_throttling import (
 )
 from accounts.login_throttle import PostgresLoginThrottleStore, RollingWindowRule
 from accounts.models import User, UsernameResetToken
-from accounts.registration_timing import (
-    monotonic_now,
-    wait_for_minimum_registration_duration,
-)
 from accounts.request_throttling import parse_throttle_rate, trusted_client_address
+from accounts.request_validation import StrictRequestSerializer, normalise_valid_email
+from accounts.response_timing import (
+    monotonic_now,
+    wait_for_minimum_response_duration,
+)
 from accounts.tasks import send_username_changed_email, send_username_reset_email
 from accounts.token_authentication import (
     ErrorEnvelopeSerializer,
     error_example,
     error_response,
 )
-from accounts.user_profiles import StrictFieldsSerializer, normalise_valid_email
 from accounts.username_tokens import (
     create_username_reset_token,
     username_reset_token_digest,
@@ -94,10 +94,10 @@ MAXIMUM_OPERATION_ERROR_TYPE_CHARACTERS = 128
 username_validator = UnicodeUsernameValidator()
 
 
-class UsernameResetRequestSerializer(StrictFieldsSerializer):
+class UsernameResetRequestSerializer(StrictRequestSerializer):
     """Validate one public username-reset request.
 
-    Inherits from ``StrictFieldsSerializer`` and accepts only an email address normalized to the
+    Inherits from ``StrictRequestSerializer`` and accepts only an email address normalized to the
     same form account persistence and authoritative identity lookup use.
 
     Attributes:
@@ -127,10 +127,10 @@ class UsernameResetRequestSerializer(StrictFieldsSerializer):
         return normalise_valid_email(value)
 
 
-class UsernameResetResponseSerializer(StrictFieldsSerializer):
+class UsernameResetResponseSerializer(StrictRequestSerializer):
     """Describe the enumeration-resistant username-reset response.
 
-    Inherits from ``StrictFieldsSerializer`` and exposes only the state-independent accepted
+    Inherits from ``StrictRequestSerializer`` and exposes only the state-independent accepted
     statement shared by known and unknown addresses.
 
     Attributes:
@@ -599,7 +599,7 @@ class UsernameResetRequestView(APIView):
         """
         validated = validated_username_reset_data(request)
         request_username_reset(cast("str", validated["email"]))
-        wait_for_minimum_registration_duration(
+        wait_for_minimum_response_duration(
             self._started_at,
             settings.USERNAME_RESET_MINIMUM_RESPONSE_DURATION_SECONDS,
         )
@@ -609,10 +609,10 @@ class UsernameResetRequestView(APIView):
         )
 
 
-class UsernameResetConfirmSerializer(StrictFieldsSerializer):
+class UsernameResetConfirmSerializer(StrictRequestSerializer):
     """Validate one username-reset confirmation body.
 
-    Inherits from ``StrictFieldsSerializer`` and accepts only the immutable account key, reset
+    Inherits from ``StrictRequestSerializer`` and accepts only the immutable account key, reset
     bearer, and replacement username.
 
     Attributes:
@@ -1090,10 +1090,10 @@ class UsernameResetConfirmView(APIView):
         return Response(status=HTTPStatus.NO_CONTENT)
 
 
-class UsernameChangeSerializer(StrictFieldsSerializer):
+class UsernameChangeSerializer(StrictRequestSerializer):
     """Validate one authenticated username replacement body.
 
-    Inherits from ``StrictFieldsSerializer`` and accepts only the current password and replacement
+    Inherits from ``StrictRequestSerializer`` and accepts only the current password and replacement
     username while keeping the password write-only.
 
     Attributes:

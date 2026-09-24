@@ -17,19 +17,21 @@ username, transactional email, timing, and account-maintenance workflows.
 - [Service inventory](../../docs/platform/service-inventory.md)
 - [Documentation standard](../../docs/platform/documentation-standard.md)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Each account workflow owns one coherent policy while shared token, delivery, timing, and transaction behaviour
+- [x] Each account workflow owns one coherent policy while shared token, delivery, timing, and transaction behaviour
       lives behind reusable interfaces only when multiple workflows truly share it.
-- [ ] Adding or changing one supported account workflow does not require repeated edits across unrelated workflows
+- [x] Adding or changing one supported account workflow does not require repeated edits across unrelated workflows
       or transport adapters.
-- [ ] Activation, password, username, and profile adapters preserve shared interface invariants and do not
+- [x] Activation, password, username, and profile adapters preserve shared interface invariants and do not
       strengthen preconditions or weaken postconditions.
-- [ ] Views, tasks, email delivery, token stores, and timing protections depend only on the interfaces they use.
-- [ ] REST status codes, error envelopes, response examples, enumeration resistance, statistical timing bounds,
+- [x] Views, tasks, email delivery, token stores, and timing protections depend only on the interfaces they use.
+- [x] REST status codes, error envelopes, response examples, enumeration resistance, statistical timing bounds,
       transaction boundaries, email content, and Celery behaviour remain exact.
-- [ ] Confirmed findings receive regression tests through public workflow interfaces and real SMTP or worker seams
+- [x] Confirmed findings receive regression tests through public workflow interfaces and real SMTP or worker seams
       where those seams are part of the behaviour.
-- [ ] Both complete test modes pass every account lifecycle case without warning, skip, leaked state, or
+- [x] Both complete test modes pass every account lifecycle case without warning, skip, leaked state, or
       serialization failure.
-- [ ] The findings ledger records every reviewed module, finding, fix, and verification result.
+- [x] The findings ledger records every reviewed module, finding, fix, and verification result.
+
+**Independent audit:** GPT-5.6 Terra and GPT-5.6 Sol reported no legitimate finding after one remediation round.

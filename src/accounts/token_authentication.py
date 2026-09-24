@@ -13,7 +13,7 @@ import secrets
 from collections.abc import Mapping
 from hashlib import sha256
 from http import HTTPStatus
-from typing import TYPE_CHECKING, Any, cast, override
+from typing import TYPE_CHECKING, cast, override
 
 from django.conf import settings
 from django.db import DatabaseError, transaction
@@ -34,6 +34,7 @@ from accounts.api_throttling import (
 from accounts.authentication import PrimaryTokenAuthentication
 from accounts.login_throttle import PostgresLoginThrottleStore, RollingWindowRule
 from accounts.request_throttling import parse_throttle_rate, trusted_client_address
+from accounts.request_validation import StrictRequestSerializer
 from config.api_errors import (
     AUTHENTICATION_FAILED,
     INTERNAL_SERVER_ERROR,
@@ -263,45 +264,6 @@ class TokenLoginThrottle(BaseThrottle):
             Retry delay in seconds, or None before a rejection.
         """
         return float(self.retry_after_seconds) if self.retry_after_seconds is not None else None
-
-
-class StrictRequestSerializer(Serializer):
-    """Reject every request key outside a serializer's declared contract.
-
-    Inherits from DRF's ``Serializer`` and converts unknown keys into field-specific validation
-    details before normal field validation, preventing silent identity-selector spoofing.
-
-    Attributes:
-        None beyond those inherited from ``Serializer``.
-
-    Members:
-        to_internal_value: Reject undeclared input keys.
-    """
-
-    @override
-    def to_internal_value(self, data: object) -> dict[str, Any]:
-        """Reject undeclared keys before validating declared fields.
-
-        Preserves DRF's normal non-object handling and returns one stable detail entry for every
-        unexpected mapping key.
-
-        Arguments:
-            data: Raw parsed request representation.
-
-        Returns:
-            Validated native field mapping.
-
-        Raises:
-            ValidationError: If the input carries an undeclared field.
-        """
-        if isinstance(data, Mapping):
-            unexpected = sorted(str(key) for key in data if key not in self.fields)
-            if unexpected:
-                raise ValidationError(
-                    {field: ["This field is not allowed."] for field in unexpected}
-                )
-
-        return cast("dict[str, Any]", super().to_internal_value(data))
 
 
 class TokenLoginSerializer(StrictRequestSerializer):

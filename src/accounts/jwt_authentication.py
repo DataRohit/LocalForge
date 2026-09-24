@@ -28,9 +28,9 @@ from accounts.api_throttling import (
     AuthenticationRecoveryThrottle,
 )
 from accounts.authentication import active_token_user
+from accounts.request_validation import StrictRequestSerializer
 from accounts.token_authentication import (
     ErrorEnvelopeSerializer,
-    StrictRequestSerializer,
     TokenLoginSerializer,
     TokenLoginThrottle,
     error_example,

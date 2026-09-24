@@ -2,6 +2,7 @@ extends: default
 
 ignore: |
   .agents/
+  docs/api/openapi-v1.yaml
 
 rules:
   document-start: disable

@@ -1,4 +1,4 @@
-"""Unit tests for the registration timing seam.
+"""Unit tests for the public response timing seam.
 
 Exercises clock capture and both wait branches with injected callables, providing deterministic
 coverage without making the unit suite sleep.
@@ -6,9 +6,9 @@ coverage without making the unit suite sleep.
 
 import pytest
 
-from accounts.registration_timing import (
+from accounts.response_timing import (
     monotonic_now,
-    wait_for_minimum_registration_duration,
+    wait_for_minimum_response_duration,
 )
 
 EXPECTED_TIMESTAMP = 14.25
@@ -34,7 +34,7 @@ def test_monotonic_now_uses_the_injected_clock() -> None:
 
 
 @pytest.mark.unit
-def test_registration_duration_waits_only_for_the_remaining_floor() -> None:
+def test_response_duration_waits_only_for_the_remaining_floor() -> None:
     """Sleep for exactly the unspent portion of the response floor.
 
     Supplies deterministic start and completion timestamps and captures the requested wait,
@@ -51,7 +51,7 @@ def test_registration_duration_waits_only_for_the_remaining_floor() -> None:
     """
     waits: list[float] = []
 
-    wait_for_minimum_registration_duration(
+    wait_for_minimum_response_duration(
         10.0,
         0.2,
         clock=lambda: 10.125,
@@ -63,7 +63,7 @@ def test_registration_duration_waits_only_for_the_remaining_floor() -> None:
 
 @pytest.mark.unit
 @pytest.mark.parametrize("completed_at", [10.225, 10.275])
-def test_registration_duration_never_waits_after_real_work_reaches_the_floor(
+def test_response_duration_never_waits_after_real_work_reaches_the_floor(
     completed_at: float,
 ) -> None:
     """Leave floor-length and slower real work untouched.
@@ -82,7 +82,7 @@ def test_registration_duration_never_waits_after_real_work_reaches_the_floor(
     """
     waits: list[float] = []
 
-    wait_for_minimum_registration_duration(
+    wait_for_minimum_response_duration(
         10.0,
         0.2,
         clock=lambda: completed_at,
@@ -102,7 +102,7 @@ def test_registration_duration_never_waits_after_real_work_reaches_the_floor(
         pytest.param(0.0, id="zero"),
     ],
 )
-def test_registration_duration_rejects_an_invalid_floor_deterministically(
+def test_response_duration_rejects_an_invalid_floor_deterministically(
     minimum_duration_seconds: float,
 ) -> None:
     """Reject an invalid response floor before reading time or sleeping.
@@ -122,7 +122,7 @@ def test_registration_duration_rejects_an_invalid_floor_deterministically(
     waits: list[float] = []
 
     with pytest.raises(ValueError, match="must be finite and positive"):
-        wait_for_minimum_registration_duration(
+        wait_for_minimum_response_duration(
             10.0,
             minimum_duration_seconds,
             clock=lambda: pytest.fail("invalid floor read the clock"),

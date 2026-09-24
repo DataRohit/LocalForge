@@ -8,7 +8,6 @@ them against digest-only database state without disclosing whether a submitted a
 
 import logging
 import secrets
-from collections.abc import Mapping
 from functools import partial
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, cast, override
@@ -16,15 +15,12 @@ from typing import TYPE_CHECKING, Any, cast, override
 from celery.exceptions import CeleryError
 from django.conf import settings
 from django.core import signing
-from django.core.exceptions import ValidationError as DjangoValidationError
-from django.core.validators import validate_email
 from django.db import DatabaseError, connections, transaction
 from django.db.models import Value
 from django.db.models.functions import Lower
 from django.utils import timezone
 from kombu.exceptions import KombuError
-from rest_framework.exceptions import ValidationError
-from rest_framework.serializers import CharField, EmailField, Serializer, UUIDField
+from rest_framework.serializers import CharField, EmailField, UUIDField
 from rest_framework.throttling import BaseThrottle
 
 from accounts.activation_tokens import (
@@ -37,6 +33,7 @@ from accounts.login_throttle import PostgresLoginThrottleStore, RollingWindowRul
 from accounts.models import ActivationToken, User
 from accounts.normalisation import normalise_email
 from accounts.request_throttling import parse_throttle_rate, trusted_client_address
+from accounts.request_validation import StrictRequestSerializer, normalise_valid_email
 from accounts.tasks import send_activation_email
 from config.api_errors import (
     ActivationTokenExpired,
@@ -62,48 +59,10 @@ RESEND_ACCEPTED_MESSAGE = (
 RESEND_VALIDATED_DATA_ATTRIBUTE = "_localforge_activation_resend_validated_data"
 
 
-class StrictActivationSerializer(Serializer):
-    """Reject fields outside an activation request contract.
-
-    Inherits from DRF's ``Serializer`` and turns every undeclared key into field detail instead of
-    silently ignoring it, keeping activation inputs explicit.
-
-    Attributes:
-        None beyond those inherited from ``Serializer``.
-
-    Members:
-        to_internal_value: Reject undeclared keys before normal field validation.
-    """
-
-    @override
-    def to_internal_value(self, data: object) -> dict[str, Any]:
-        """Reject undeclared keys before validating declared fields.
-
-        Preserves DRF's normal non-object handling and returns one validation entry for every extra
-        key in a submitted mapping.
-
-        Arguments:
-            data: Raw parsed request representation.
-
-        Returns:
-            Validated native field mapping.
-
-        Raises:
-            ValidationError: If the input carries an undeclared field.
-        """
-        if isinstance(data, Mapping):
-            unexpected = sorted(str(key) for key in data if key not in self.fields)
-            if unexpected:
-                raise ValidationError(
-                    {field: ["This field is not allowed."] for field in unexpected}
-                )
-        return cast("dict[str, Any]", super().to_internal_value(data))
-
-
-class ActivationConfirmationSerializer(StrictActivationSerializer):
+class ActivationConfirmationSerializer(StrictRequestSerializer):
     """Validate one activation confirmation request.
 
-    Inherits from ``StrictActivationSerializer`` and accepts only the public account key carried in
+    Inherits from ``StrictRequestSerializer`` and accepts only the public account key carried in
     the link and its signed one-time token.
 
     Attributes:
@@ -118,10 +77,10 @@ class ActivationConfirmationSerializer(StrictActivationSerializer):
     token = CharField(trim_whitespace=False)
 
 
-class ActivationResendSerializer(StrictActivationSerializer):
+class ActivationResendSerializer(StrictRequestSerializer):
     """Validate one activation resend request.
 
-    Inherits from ``StrictActivationSerializer`` and accepts only an email address, canonicalizing
+    Inherits from ``StrictRequestSerializer`` and accepts only an email address, canonicalizing
     it to the same form account persistence uses before any lookup or throttle identity is derived.
 
     Attributes:
@@ -148,12 +107,7 @@ class ActivationResendSerializer(StrictActivationSerializer):
         Raises:
             ValidationError: If normalization produces an invalid address.
         """
-        normalized = normalise_email(value)
-        try:
-            validate_email(normalized)
-        except DjangoValidationError as error:
-            raise ValidationError(error.messages) from error
-        return normalized
+        return normalise_valid_email(value)
 
 
 def _dispatch_activation_email(account_id: str, token: str) -> None:

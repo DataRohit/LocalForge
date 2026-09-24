@@ -3742,7 +3742,7 @@ components:
       description: |-
         Validate one activation confirmation request.
 
-        Inherits from ``StrictActivationSerializer`` and accepts only the public account key carried in
+        Inherits from ``StrictRequestSerializer`` and accepts only the public account key carried in
         the link and its signed one-time token.
 
         Attributes:
@@ -3766,7 +3766,7 @@ components:
       description: |-
         Validate one activation resend request.
 
-        Inherits from ``StrictActivationSerializer`` and accepts only an email address, canonicalizing
+        Inherits from ``StrictRequestSerializer`` and accepts only an email address, canonicalizing
         it to the same form account persistence uses before any lookup or throttle identity is derived.
 
         Attributes:
@@ -3938,7 +3938,7 @@ components:
       description: |-
         Validate one authenticated password replacement body.
 
-        Inherits from ``StrictFieldsSerializer`` and accepts only the current credential, its
+        Inherits from ``StrictRequestSerializer`` and accepts only the current credential, its
         replacement, and confirmation while keeping every password write-only.
 
         Attributes:
@@ -3968,7 +3968,7 @@ components:
       description: |-
         Validate one password-reset confirmation body.
 
-        Inherits from ``StrictFieldsSerializer`` and accepts only the immutable account key, reset
+        Inherits from ``StrictRequestSerializer`` and accepts only the immutable account key, reset
         bearer, replacement password, and matching confirmation.
 
         Attributes:
@@ -4003,7 +4003,7 @@ components:
       description: |-
         Validate one public password-reset request.
 
-        Inherits from ``StrictFieldsSerializer`` and accepts only an email address normalized to the
+        Inherits from ``StrictRequestSerializer`` and accepts only an email address normalized to the
         same form account persistence and authoritative identity lookup use.
 
         Attributes:
@@ -4024,7 +4024,7 @@ components:
       description: |-
         Describe the enumeration-resistant reset response.
 
-        Inherits from ``StrictFieldsSerializer`` and exposes only the state-independent accepted
+        Inherits from ``StrictRequestSerializer`` and exposes only the state-independent accepted
         statement shared by known and unknown addresses.
 
         Attributes:
@@ -4043,7 +4043,7 @@ components:
       description: |-
         Validate the sole mutable profile field.
 
-        Inherits from ``StrictFieldsSerializer`` and accepts only email, rejecting identifiers,
+        Inherits from ``StrictRequestSerializer`` and accepts only email, rejecting identifiers,
         credentials, activation state, and permissions instead of silently ignoring them.
 
         Attributes:
@@ -4062,7 +4062,7 @@ components:
       description: |-
         Validate one public account registration.
 
-        Inherits from ``StrictFieldsSerializer`` and checks the submitted password against every
+        Inherits from ``StrictRequestSerializer`` and checks the submitted password against every
         configured validator using the candidate identifiers, while keeping both password fields
         write-only.
 
@@ -4204,7 +4204,7 @@ components:
       description: |-
         Validate one authenticated username replacement body.
 
-        Inherits from ``StrictFieldsSerializer`` and accepts only the current password and replacement
+        Inherits from ``StrictRequestSerializer`` and accepts only the current password and replacement
         username while keeping the password write-only.
 
         Attributes:
@@ -4230,7 +4230,7 @@ components:
       description: |-
         Validate one username-reset confirmation body.
 
-        Inherits from ``StrictFieldsSerializer`` and accepts only the immutable account key, reset
+        Inherits from ``StrictRequestSerializer`` and accepts only the immutable account key, reset
         bearer, and replacement username.
 
         Attributes:
@@ -4261,7 +4261,7 @@ components:
       description: |-
         Validate one public username-reset request.
 
-        Inherits from ``StrictFieldsSerializer`` and accepts only an email address normalized to the
+        Inherits from ``StrictRequestSerializer`` and accepts only an email address normalized to the
         same form account persistence and authoritative identity lookup use.
 
         Attributes:
@@ -4282,7 +4282,7 @@ components:
       description: |-
         Describe the enumeration-resistant username-reset response.
 
-        Inherits from ``StrictFieldsSerializer`` and exposes only the state-independent accepted
+        Inherits from ``StrictRequestSerializer`` and exposes only the state-independent accepted
         statement shared by known and unknown addresses.
 
         Attributes:

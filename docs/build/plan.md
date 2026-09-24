@@ -88,6 +88,8 @@ architecture audit and handover evidence named below.
 | `src/config/cache.py` | Resilient general caching |
 | `src/accounts/login_throttle.py` | Authoritative primary-database login admission |
 | `src/accounts/credentials.py` | Account credential verification, profile classification, and locked revalidation policy |
+| `src/accounts/request_validation.py` | Shared strict account-request and normalized-email validation policy |
+| `src/accounts/response_timing.py` | Shared monotonic public-response timing floor for enumeration-resistant workflows |
 | `src/accounts/` | The user model, manager, admin, migrations, and first-party account authentication endpoints |
 | `src/notifications/` | Authenticated WebSocket protocol, notification consumer, and user-targeted publisher |
 | `tests/integration/<package>/test_*.py` | One test per service integration, mirroring the package it covers |

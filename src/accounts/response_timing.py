@@ -1,6 +1,6 @@
-"""Public registration response timing.
+"""Public response timing.
 
-Provides the monotonic minimum-duration seam used only after an accepted registration outcome, with
+Provides the monotonic minimum-duration seam used by enumeration-resistant account workflows, with
 clock and sleeper injection so every branch remains deterministic under unit coverage.
 """
 
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 def monotonic_now(*, clock: Callable[[], float] = time.monotonic) -> float:
-    """Read the monotonic clock for one registration request.
+    """Read the monotonic clock for one public request.
 
     Isolates clock acquisition from the view so tests can establish the exact request boundary
     without patching process-wide time functions.
@@ -29,14 +29,14 @@ def monotonic_now(*, clock: Callable[[], float] = time.monotonic) -> float:
     return clock()
 
 
-def wait_for_minimum_registration_duration(
+def wait_for_minimum_response_duration(
     started_at: float,
     minimum_duration_seconds: float,
     *,
     clock: Callable[[], float] = time.monotonic,
     sleeper: Callable[[float], None] = time.sleep,
 ) -> None:
-    """Wait only for the unspent portion of the public registration floor.
+    """Wait only for the unspent portion of a public response floor.
 
     Subtracts completed validation, hashing, persistence, and activation work from the configured
     duration, leaving slower real work untouched rather than adding a fixed delay to every request.
@@ -54,7 +54,7 @@ def wait_for_minimum_registration_duration(
         ValueError: If the minimum duration is non-finite or nonpositive.
     """
     if not math.isfinite(minimum_duration_seconds) or minimum_duration_seconds <= 0:
-        message = "minimum registration duration must be finite and positive"
+        message = "minimum response duration must be finite and positive"
         raise ValueError(message)
 
     remaining = minimum_duration_seconds - (clock() - started_at)

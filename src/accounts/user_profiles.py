@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING, Any, cast, override
 from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.core.validators import validate_email
 from django.db import DatabaseError, IntegrityError, transaction
 from drf_spectacular.utils import (
     OpenApiExample,
@@ -51,12 +50,12 @@ from accounts.api_throttling import (
 )
 from accounts.login_throttle import PostgresLoginThrottleStore, RollingWindowRule
 from accounts.models import User
-from accounts.normalisation import normalise_email
-from accounts.registration_timing import (
-    monotonic_now,
-    wait_for_minimum_registration_duration,
-)
 from accounts.request_throttling import parse_throttle_rate, trusted_client_address
+from accounts.request_validation import StrictRequestSerializer, normalise_valid_email
+from accounts.response_timing import (
+    monotonic_now,
+    wait_for_minimum_response_duration,
+)
 from accounts.token_authentication import (
     ErrorEnvelopeSerializer,
     error_example,
@@ -86,73 +85,10 @@ if TYPE_CHECKING:
     from rest_framework.request import Request
 
 
-def normalise_valid_email(value: str) -> str:
-    """Normalize and validate one public email value.
-
-    Applies the project's canonical storage form before Django's validator runs, preventing a
-    Unicode case transformation from turning accepted input into an invalid persisted address.
-
-    Arguments:
-        value: Address that passed DRF's initial email validation.
-
-    Returns:
-        Valid normalized address.
-
-    Raises:
-        ValidationError: If the normalized address is invalid.
-    """
-    normalized = normalise_email(value)
-    try:
-        validate_email(normalized)
-    except DjangoValidationError as error:
-        raise ValidationError(error.messages) from error
-
-    return normalized
-
-
-class StrictFieldsSerializer(Serializer):
-    """Reject every input key outside a serializer's declared contract.
-
-    Inherits from DRF's ``Serializer`` and adds explicit unknown-field validation, preventing
-    privileged or misspelled values from being silently ignored by the framework default.
-
-    Attributes:
-        None beyond those inherited from ``Serializer``.
-
-    Members:
-        to_internal_value: Reject undeclared input keys before normal field validation.
-    """
-
-    @override
-    def to_internal_value(self, data: object) -> dict[str, Any]:
-        """Reject undeclared keys before validating declared fields.
-
-        Preserves DRF's normal non-object error handling while returning one field-keyed detail for
-        every extra key in a mapping.
-
-        Arguments:
-            data: Raw parsed request representation.
-
-        Returns:
-            Validated native field mapping.
-
-        Raises:
-            ValidationError: If the input mapping carries any undeclared field.
-        """
-        if isinstance(data, Mapping):
-            unexpected = sorted(str(key) for key in data if key not in self.fields)
-            if unexpected:
-                raise ValidationError(
-                    {field: ["This field is not allowed."] for field in unexpected}
-                )
-
-        return cast("dict[str, Any]", super().to_internal_value(data))
-
-
-class RegistrationSerializer(StrictFieldsSerializer):
+class RegistrationSerializer(StrictRequestSerializer):
     """Validate one public account registration.
 
-    Inherits from ``StrictFieldsSerializer`` and checks the submitted password against every
+    Inherits from ``StrictRequestSerializer`` and checks the submitted password against every
     configured validator using the candidate identifiers, while keeping both password fields
     write-only.
 
@@ -276,10 +212,10 @@ class UserProfileSerializer(Serializer):
     email = EmailField(read_only=True)
 
 
-class UserProfileUpdateSerializer(StrictFieldsSerializer):
+class UserProfileUpdateSerializer(StrictRequestSerializer):
     """Validate the sole mutable profile field.
 
-    Inherits from ``StrictFieldsSerializer`` and accepts only email, rejecting identifiers,
+    Inherits from ``StrictRequestSerializer`` and accepts only email, rejecting identifiers,
     credentials, activation state, and permissions instead of silently ignoring them.
 
     Attributes:
@@ -306,10 +242,10 @@ class UserProfileUpdateSerializer(StrictFieldsSerializer):
         return normalise_valid_email(value)
 
 
-class UserProfileDeletionSerializer(StrictFieldsSerializer):
+class UserProfileDeletionSerializer(StrictRequestSerializer):
     """Validate the credential required to delete the caller's profile.
 
-    Inherits from ``StrictFieldsSerializer`` and accepts only the current password, preventing
+    Inherits from ``StrictRequestSerializer`` and accepts only the current password, preventing
     deletion requests from carrying an account selector or unrelated mutable state.
 
     Attributes:
@@ -666,7 +602,7 @@ class UserRegistrationView(APIView):
         serializer = RegistrationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         register_account(serializer.validated_data)
-        wait_for_minimum_registration_duration(
+        wait_for_minimum_response_duration(
             self._registration_started_at,
             settings.USER_REGISTRATION_MINIMUM_RESPONSE_DURATION_SECONDS,
         )
