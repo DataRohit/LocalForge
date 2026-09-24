@@ -40,7 +40,6 @@ from config.api import (
     BoundaryAdmissionExecutor,
     ErrorCode,
     OperationalSignal,
-    add_throttle_response_headers,
     api_bad_request,
     api_boundary_throttle_asgi,
     api_csrf_failure,
@@ -800,41 +799,6 @@ async def test_asgi_boundary_exempts_every_non_api_path(
         next(event for event in events if event["type"] == "http.response.start")["status"]
         == HTTPStatus.NO_CONTENT
     )
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize(
-    "document",
-    [
-        {"paths": []},
-        {"paths": {"/probe/": []}},
-        {"paths": {"/probe/": {"get": []}}},
-        {"paths": {"/probe/": {"get": {"responses": []}}}},
-    ],
-)
-def test_throttle_header_hook_ignores_incomplete_schema_shapes(
-    document: dict[str, Any],
-) -> None:
-    """Leave incomplete schema structures unchanged.
-
-    Supplies each defensive non-mapping shape accepted by the post-processing hook and verifies it
-    returns the same document rather than failing schema generation.
-
-    Arguments:
-        document: Incomplete generated schema shape under test.
-
-    Returns:
-        None.
-
-    Raises:
-        AssertionError: If a defensive branch mutates or rejects the document.
-    """
-    before = json.dumps(document, sort_keys=True)
-
-    observed = add_throttle_response_headers(document, object(), object(), object())
-
-    assert observed is document
-    assert json.dumps(observed, sort_keys=True) == before
 
 
 @pytest.mark.unit

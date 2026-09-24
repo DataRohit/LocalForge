@@ -6,6 +6,7 @@ status evidence, response examples, deterministic output, and the planned WebSoc
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from io import StringIO
@@ -14,10 +15,12 @@ from typing import Any, Final, cast
 
 import pytest
 import yaml
+from django.conf import settings
 from django.core.management import call_command
 from django.urls import URLPattern, URLResolver
 from jsonschema.validators import Draft202012Validator  # type: ignore[import-untyped]
 
+from config.openapi import add_throttle_response_headers
 from notifications.protocol import WebSocketOutcome
 
 REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[3]
@@ -30,6 +33,64 @@ DUAL_TOKEN_SECURITY: Final[list[dict[str, list[str]]]] = [
 ]
 TOKEN_ONLY_SECURITY: Final[list[dict[str, list[str]]]] = [{"tokenAuth": []}]
 HEALTH_SECURITY: Final[list[dict[str, list[str]]]] = [{"cookieAuth": []}, {}]
+
+
+@pytest.mark.unit
+def test_openapi_hooks_are_owned_by_the_schema_module() -> None:
+    """Keep schema generation independent from the runtime API module.
+
+    Requires both post-processing hooks to resolve through the OpenAPI module, so documentation
+    policy can change without editing the runtime middleware and exception interface.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If settings couple schema policy back to the runtime API module.
+    """
+    assert settings.SPECTACULAR_SETTINGS["POSTPROCESSING_HOOKS"] == [
+        "config.openapi.add_throttle_response_headers",
+        "config.openapi.finalize_openapi_contract",
+    ]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "document",
+    [
+        {"paths": []},
+        {"paths": {"/probe/": []}},
+        {"paths": {"/probe/": {"get": []}}},
+        {"paths": {"/probe/": {"get": {"responses": []}}}},
+    ],
+)
+def test_throttle_header_hook_ignores_incomplete_schema_shapes(
+    document: dict[str, Any],
+) -> None:
+    """Leave incomplete schema structures unchanged.
+
+    Supplies each defensive non-mapping shape accepted by the post-processing hook and verifies it
+    returns the same document rather than failing schema generation.
+
+    Arguments:
+        document: Incomplete generated schema shape under test.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a defensive branch mutates or rejects the document.
+    """
+    before = json.dumps(document, sort_keys=True)
+
+    observed = add_throttle_response_headers(document, object(), object(), object())
+
+    assert observed is document
+    assert json.dumps(observed, sort_keys=True) == before
+
 
 OPERATION_CONTRACT: Final = {
     ("post", "/api/v1/jwt/create/"): (

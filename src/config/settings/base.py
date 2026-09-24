@@ -373,8 +373,8 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     "OAS_VERSION": "3.1.0",
     "POSTPROCESSING_HOOKS": [
-        "config.api.add_throttle_response_headers",
-        "config.api.finalize_openapi_contract",
+        "config.openapi.add_throttle_response_headers",
+        "config.openapi.finalize_openapi_contract",
     ],
     "SWAGGER_UI_DIST": "SIDECAR",
     "SWAGGER_UI_FAVICON_HREF": "SIDECAR",

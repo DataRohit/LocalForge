@@ -17,21 +17,23 @@ logging, cache, channels, task queue, email, database routing, metrics, security
 - [Service inventory](../../docs/platform/service-inventory.md)
 - [Documentation standard](../../docs/platform/documentation-standard.md)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Composition roots are identified explicitly and may select concrete Django, Celery, Redis, database, email,
+- [x] Composition roots are identified explicitly and may select concrete Django, Celery, Redis, database, email,
       logging, and ASGI adapters without leaking those choices into unrelated policy.
-- [ ] Runtime policy depends on stable interfaces where host and container modes, tests, or multiple adapters
+- [x] Runtime policy depends on stable interfaces where host and container modes, tests, or multiple adapters
       already vary.
-- [ ] Framework subclasses, backends, routers, middleware, and callables preserve framework preconditions,
+- [x] Framework subclasses, backends, routers, middleware, and callables preserve framework preconditions,
       postconditions, errors, cleanup ownership, and supported input domains.
-- [ ] Settings and runtime modules expose only configuration and behaviour their callers need; broad context
+- [x] Settings and runtime modules expose only configuration and behaviour their callers need; broad context
       objects and unrelated side effects are removed when evidence confirms an interface segregation problem.
-- [ ] Health, request correlation, cache degradation, result-backend cleanup, email delivery, database routing,
+- [x] Health, request correlation, cache degradation, result-backend cleanup, email delivery, database routing,
       metrics, security headers, and ASGI transport behaviour remain unchanged.
-- [ ] Confirmed findings receive interface-level regression tests and deployed-seam verification when runtime
+- [x] Confirmed findings receive interface-level regression tests and deployed-seam verification when runtime
       behaviour can be affected.
-- [ ] Both environments remain healthy and affected container logs contain no unexplained warning-or-higher
+- [x] Both environments remain healthy and affected container logs contain no unexplained warning-or-higher
       records after exercise.
-- [ ] The findings ledger records every reviewed runtime module, finding, fix, and verification result.
+- [x] The findings ledger records every reviewed runtime module, finding, fix, and verification result.
+
+**Independent audit:** GPT-5.6 Terra and GPT-5.6 Sol reported no legitimate finding.
 *** End of File

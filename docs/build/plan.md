@@ -72,6 +72,7 @@ architecture audit and handover evidence named below.
 | `.gitleaks.toml` | Pinned Gitleaks false-positive policy for documented test credentials and protocol examples |
 | `src/config/settings/` | `__init__.py`, `base.py`, `development.py`, `testing.py` |
 | `src/config/logs.py` | Structured log formatter the logging configuration names |
+| `src/config/openapi.py` | OpenAPI post-processing authority separated from the runtime HTTP boundary |
 | `src/config/routing.py` | Channels routing, empty router |
 | `src/config/channels.py` | Channel layer whose subscribe waits for the instance to register it |
 | `src/config/celery.py` | Celery application object |
