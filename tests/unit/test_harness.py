@@ -1173,10 +1173,11 @@ def test_focused_integration_task_excludes_security_timing_by_default() -> None:
 
 @pytest.mark.unit
 def test_security_timing_marker_partitions_every_statistical_case_exactly_once() -> None:
-    """Partition global statistical timing cases from deterministic core coverage.
+    """Register every statistical timing case exactly once.
 
-    Collects the whole suite through pytest and proves the timing and core selections are disjoint,
-    exhaustive, and contain exactly the approved twenty-three cases in their declared modules.
+    Collects the global timing selection once and proves it contains exactly the approved
+    twenty-three cases in their declared modules. The dual-mode runner separately enforces complete
+    collection equals core plus timing before execution.
 
     Arguments:
         None.
@@ -1188,14 +1189,10 @@ def test_security_timing_marker_partitions_every_statistical_case_exactly_once()
         AssertionError: If a case is missing, duplicated, or assigned to the wrong stage.
     """
     global_paths = (REPOSITORY_ROOT / "tests",)
-    all_cases = _collected_security_timing_cases(paths=global_paths)
     timing_cases = _collected_security_timing_cases("security_timing", paths=global_paths)
-    core_cases = _collected_security_timing_cases("not security_timing", paths=global_paths)
     cases_by_test = Counter(
         REPOSITORY_ROOT / nodeid.split("::", maxsplit=1)[0] for nodeid in timing_cases
     )
 
     assert len(timing_cases) == SECURITY_TIMING_CASES
     assert cases_by_test == Counter(SECURITY_TIMING_CASES_BY_TEST)
-    assert timing_cases.isdisjoint(core_cases)
-    assert timing_cases | core_cases == all_cases

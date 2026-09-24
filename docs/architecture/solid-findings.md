@@ -1,6 +1,6 @@
 # Phase 8 SOLID findings
 
-Status: Ticket 53 baseline complete. Area audits remain pending.
+Status: Tickets 53-62 complete. Ticket 63 handover remains.
 
 This ledger records evidence and dispositions under
 [the Phase 8 SOLID audit plan](./solid-audit-plan.md). File size, class count, naming preference, and hypothetical
@@ -184,9 +184,80 @@ before editing code and close it only after interface-level regression evidence 
 | `O60-002` | `tests/integration/config/runtime_probe.py` | One CLI exposes Mailpit, restart-persistence, and health actions | All actions are operator-controlled assertions over live service transitions, share environment and reporting contracts, and run identically in host/container modes | Another caller needs a stable subset or one action gains independent lifecycle policy |
 | `O61-001` | `config.channels` | The channel adapter imports third-party private `_wrap_close` | `channels_redis` hardcodes its loop-layer construction and exposes no public close-hook registration; replacing the import would require copying upstream lifecycle implementation. The dependency is pinned and subscription/reset behavior is exhaustively tested | Upstream exposes a public hook, the pinned implementation changes, or channel cleanup tests detect drift |
 
-## Ticket 53 disposition
+## Ticket 62 verification repairs
 
-All 182 scoped Python modules have one cluster, one area owner, a caller/interface description, composition-root or
-adapter disposition, and an evaluation of SRP, OCP, LSP, ISP, and DIP. No production behavior changed. Tickets
-54-61 now replace `Review` entries with evidence-backed clear, fixed, not-applicable, or observation dispositions.
-Independent GPT-5.6 Terra and GPT-5.6 Sol audits reported no legitimate finding after two remediation rounds.
+The definitive gate exposed three test-resilience defects rather than production-contract regressions. Each repair
+keeps the asserted behavior and strengthens the supported host/container execution path.
+
+| ID | Verification defect | Root cause | Repair | Preservation evidence |
+| --- | --- | --- | --- | --- |
+| `V62-001` | A container xdist worker crashed during nested full-suite collection | The harness test started three additional complete pytest collection processes while the supported container suite already ran under xdist | Collect the global security-timing selection once; retain exact 23-case and module membership assertions; rely on the dual-mode runner's independently tested `complete = core + timing` invariant for exhaustive partition proof | Both definitive modes collected 2,132 tests and passed 2,109 core plus 23 timing cases with no worker restart |
+| `V62-002` | One-second activation-throttle recovery tests could expire before their second rejection assertion | The tests measured an authoritative PostgreSQL admission window through wall-clock request duration and sleep | Use one-minute windows and age the authoritative `LoginThrottleEvent` rows beyond the window before the recovery request | Account activation passed in both complete modes; the integration lifecycle audit passed; production throttle policy was unchanged |
+| `V62-003` | One WebSocket integration receive could exceed ten seconds only under the loaded complete host run | The test helper's ten-second output deadline was below the supported suite's observed scheduling delay even though the project-wide network timeout remained bounded | Raise only the integration receive helper to 20 seconds, still below the enforced 60-second pytest timeout | Every WebSocket contract case passed in both complete modes; the deployed credential-absent socket closed with `4401` |
+
+## Ticket 62 final verification
+
+The final source-matched verification sequence passed without weakening any gate:
+
+```console
+uv sync --all-groups --frozen
+uv run poe development-health
+uv run poe testing-health
+uv run poe docker-audit
+uv run poe testing-test-both
+uv run poe testing-integration-audit
+uv run poe check
+uv run poe convention-audit
+uv run poe security-audit
+```
+
+The definitive dual-mode run collected 2,132 tests in each mode. Each mode passed 2,109 core tests and 23
+security-timing tests with 100% branch coverage, zero warnings, zero skips, no worker restart, exact temporary
+Mailpit ownership and removal, and clean bounded testing logs. Its windows were:
+
+- container: `2026-09-24T12:22:43.705285Z..2026-09-24T12:32:33.934843Z`;
+- host: `2026-09-24T12:32:33.934879Z..2026-09-24T12:56:43.297050Z`.
+
+The subsequent complete host quality gate again passed 2,109 core and 23 timing tests at 100% branch coverage.
+Its bounded host window was
+`2026-09-24T13:06:43.436156Z..2026-09-24T13:31:36.429676Z`. The integration audit passed five SMTP cases in both
+modes, Mailpit recreation and deletion, degraded readiness, recovery, ownership, residue, and image checks.
+Convention, security, development health, testing health, and Docker ownership audits all passed against 22
+development and six testing containers.
+
+The final deployed exercise proved:
+
+- `/health/` returned `ready` with seven working checks;
+- the live OpenAPI document matched `docs/api/openapi-v1.yaml` and retained exactly 15 paths and 19 operations;
+- Swagger UI and ReDoc returned success through Traefik;
+- a credential-absent notification socket closed with `4401`;
+- the Celery worker completed its transient broker round trip;
+- `uv run poe help` preserved the operator command interface.
+
+The bounded window
+`2026-09-24T13:41:57.5089750Z..2026-09-24T13:42:03.6444339Z` covered all 28 project containers. Every container
+was running, every health-checked container was healthy, every restart count was zero, and every log window had
+zero warning-or-higher records.
+
+The final local image policy binds:
+
+- `localforge/django:0.1.0` image
+  `sha256:d7479c2b34414da46e485dfccd64a71a696c11839579ba1e83365c76597d389f`, artifact
+  `sha256:fd2f630db58f1366fb2e47f45c2854e93ef332e9e00844fd9b59c45c56bd8f5e`;
+- `localforge/django-test:0.1.0` image
+  `sha256:ef7923f4253f055a10a23b07b40db323c125a89beaff92b9936c6090224a92a2`, artifact
+  `sha256:9efa967dffdf6c59818d4243ee36215a6daec0630d40f5c58442734d31b704ff`;
+- `localforge/pgbackrest:18.6` image
+  `sha256:78f396863a1c8b5e417d448d3a7c549f12d8d8ad0b24af0603ffa518739914e2`, artifact
+  `sha256:a25eeb9b6eebb0efc9df90dd1a166709eb95cfe5c5ca5369afc5838bfbd10c1f`.
+
+Independent retained GPT-5.6 Terra and GPT-5.6 Sol auditors reviewed the identical complete Ticket 62 package.
+Both reported no legitimate finding.
+
+## Phase 8 disposition
+
+All 189 scoped Python modules have one cluster, one area owner, a caller/interface description, composition-root or
+adapter disposition, and an evaluation of SRP, OCP, LSP, ISP, and DIP. Tickets 54-61 replace every `Review` entry
+with evidence-backed clear, fixed, not-applicable, or observation dispositions. The seven confirmed SOLID findings
+are fixed, the eleven observations have explicit revisit triggers, and Ticket 62's three verification hardenings
+preserve production behavior while making the complete supported gate reliable.

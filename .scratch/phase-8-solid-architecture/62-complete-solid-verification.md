@@ -18,23 +18,23 @@ while the complete SOLID inventory has no unresolved required finding or improve
 - [Security audit](../../docs/security/security-audit.md)
 - [Documentation standard](../../docs/platform/documentation-standard.md)
 
-**Status:** ready-for-agent
+**Status:** complete
 
-- [ ] Every inventory row has a final clear, fixed, not-applicable, or justified observation disposition with exact
+- [x] Every inventory row has a final clear, fixed, not-applicable, or justified observation disposition with exact
       source and test evidence.
-- [ ] Every required finding and improvement is fixed; observations explain why a code change would be speculative,
+- [x] Every required finding and improvement is fixed; observations explain why a code change would be speculative,
       shallower, or unsupported by real variation.
-- [ ] `uv run poe testing-test-both` passes with identical collection and pass counts in host and container modes,
+- [x] `uv run poe testing-test-both` passes with identical collection and pass counts in host and container modes,
       100% branch coverage, zero warnings, zero skips, and clean resource teardown.
-- [ ] `uv run poe testing-integration-audit` passes every lifecycle, persistence, degraded-readiness, and recovery
+- [x] `uv run poe testing-integration-audit` passes every lifecycle, persistence, degraded-readiness, and recovery
       exercise.
-- [ ] `uv run poe check`, `uv run poe convention-audit`, and `uv run poe security-audit` pass without exclusions
+- [x] `uv run poe check`, `uv run poe convention-audit`, and `uv run poe security-audit` pass without exclusions
       added to hide Phase 8 changes.
-- [ ] Both environments pass health and Docker ownership checks after source-matched rebuilds.
-- [ ] The fixed HTTP and WebSocket contracts, command interfaces, service registry, two environments, and offline
+- [x] Both environments pass health and Docker ownership checks after source-matched rebuilds.
+- [x] The fixed HTTP and WebSocket contracts, command interfaces, service registry, two environments, and offline
       boundary remain unchanged.
-- [ ] Deployed public and operator seams changed by Phase 8 are exercised, and bounded affected-container logs have
+- [x] Deployed public and operator seams changed by Phase 8 are exercised, and bounded affected-container logs have
       no unexplained warning-or-higher record.
-- [ ] The required independent Terra and Sol audits review the complete Phase 8 evidence package and report no
+- [x] The required independent Terra and Sol audits review the complete Phase 8 evidence package and report no
       legitimate finding after any remediation loop.
 *** End of File

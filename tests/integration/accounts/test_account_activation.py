@@ -24,13 +24,14 @@ from django.db import DatabaseError, close_old_connections, connections, transac
 from django.db.backends.utils import CursorWrapper
 from django.test import Client as DjangoClient
 from django.test import override_settings
+from django.utils import timezone
 from freezegun import freeze_time
 from kombu.exceptions import OperationalError
 
 import accounts.user_profiles as user_profiles_module
 from accounts.activation_tokens import ACTIVATION_SIGNING_SALT
 from accounts.login_throttle import PostgresLoginThrottleStore
-from accounts.models import ActivationToken, User
+from accounts.models import ActivationToken, LoginThrottleEvent, User
 from accounts.tasks import send_activation_email
 from config.api_errors import ErrorCode, ServiceUnavailable
 
@@ -2043,8 +2044,8 @@ def test_resend_account_throttle_is_shared_across_addresses_and_recovers(
 ) -> None:
     """Limit one inbox across callers and recover after the exact window.
 
-    Sends one inactive account from two client addresses around a one-second account window,
-    proving the primary-backed identity is shared and later admits another task.
+    Sends one inactive account from two client addresses inside one minute, then ages authoritative
+    events beyond that window, proving the identity is shared and later admits another task.
 
     Arguments:
         client: Django test client issuing versioned requests.
@@ -2064,7 +2065,7 @@ def test_resend_account_throttle_is_shared_across_addresses_and_recovers(
 
     with override_settings(
         ACCOUNT_ACTIVATION_RESEND_ADDRESS_THROTTLE_RATE="100/minute",
-        ACCOUNT_ACTIVATION_RESEND_ACCOUNT_THROTTLE_RATE="1/second",
+        ACCOUNT_ACTIVATION_RESEND_ACCOUNT_THROTTLE_RATE="1/minute",
     ):
         first = client.post(
             "/api/v1/users/resend_activation/",
@@ -2078,7 +2079,9 @@ def test_resend_account_throttle_is_shared_across_addresses_and_recovers(
             content_type="application/json",
             REMOTE_ADDR="192.0.2.32",
         )
-        time.sleep(1.1)
+        LoginThrottleEvent.objects.using("default").update(
+            occurred_at=timezone.now() - timedelta(seconds=61)
+        )
         recovered = client.post(
             "/api/v1/users/resend_activation/",
             {"email": account.email},
@@ -2103,8 +2106,8 @@ def test_resend_address_throttle_spans_accounts_and_recovers(
 ) -> None:
     """Limit one caller across submitted accounts and recover after the window.
 
-    Sends distinct unknown addresses from one client around a one-second address window, proving
-    changing the requested inbox cannot bypass primary-backed admission.
+    Sends distinct unknown addresses from one client inside one minute, then ages authoritative
+    events beyond that window, proving inbox changes cannot bypass admission and recovery.
 
     Arguments:
         client: Django test client issuing versioned requests.
@@ -2119,7 +2122,7 @@ def test_resend_address_throttle_spans_accounts_and_recovers(
     suffix = uuid.uuid4().hex
 
     with override_settings(
-        ACCOUNT_ACTIVATION_RESEND_ADDRESS_THROTTLE_RATE="1/second",
+        ACCOUNT_ACTIVATION_RESEND_ADDRESS_THROTTLE_RATE="1/minute",
         ACCOUNT_ACTIVATION_RESEND_ACCOUNT_THROTTLE_RATE="100/minute",
     ):
         first = client.post(
@@ -2134,7 +2137,9 @@ def test_resend_address_throttle_spans_accounts_and_recovers(
             content_type="application/json",
             REMOTE_ADDR=remote_address,
         )
-        time.sleep(1.1)
+        LoginThrottleEvent.objects.using("default").update(
+            occurred_at=timezone.now() - timedelta(seconds=61)
+        )
         recovered = client.post(
             "/api/v1/users/resend_activation/",
             {"email": f"unknown-third-{suffix}@localforge.invalid"},

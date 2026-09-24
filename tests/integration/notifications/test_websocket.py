@@ -35,7 +35,7 @@ from tests.websocket import WebsocketCommunicator
 
 ROUTE = "/ws/notifications/"
 ALLOWED_ORIGIN = b"http://localhost:8080"
-RECEIVE_TIMEOUT_SECONDS = 10
+RECEIVE_TIMEOUT_SECONDS = 20
 APPLICATION_MESSAGE_LIMIT_BYTES = 64 * 1024
 TEST_ACCOUNT_ID = UUID("018f22e2-7d42-7f74-9d8a-123456789abc")
 
