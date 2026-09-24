@@ -159,8 +159,8 @@ def environment_files(root: Path) -> None:
 def run_testing_integration_audit(root: Path, runner: platform.Runner) -> int:
     """Run the integration audit with deterministic test adapters.
 
-    Supplies successful readiness and inert clock helpers so unit tests can focus on command
-    sequencing and failure propagation without invoking Docker or sleeping.
+    Supplies successful readiness so unit tests can focus on command sequencing and failure
+    propagation without invoking Docker.
 
     Arguments:
         root: Temporary repository root.
@@ -173,8 +173,6 @@ def run_testing_integration_audit(root: Path, runner: platform.Runner) -> int:
         root,
         runner,
         http_probe=lambda _url, _host: True,
-        sleep=lambda _seconds: None,
-        now=lambda: 0.0,
     )
 
 
@@ -620,7 +618,6 @@ def test_both_test_modes_report_equal_collection_timings_and_postchecks(
             "both",
             ensure_up=False,
             http_probe=lambda _url, _host: True,
-            sleep=lambda _seconds: None,
             now=iter((0.0, 1.0, 4.0, 5.0, 9.0, 10.0)).__next__,
         )
 
@@ -692,7 +689,6 @@ def test_both_test_modes_run_independently_and_return_distinct_failures(
             "both",
             ensure_up=False,
             http_probe=lambda _url, _host: True,
-            sleep=lambda _seconds: None,
             now=iter((0.0, 1.0, 2.0, 3.0, 4.0, 5.0)).__next__,
         )
         host_runner = FakeRunner(
@@ -712,7 +708,6 @@ def test_both_test_modes_run_independently_and_return_distinct_failures(
             "both",
             ensure_up=False,
             http_probe=lambda _url, _host: True,
-            sleep=lambda _seconds: None,
             now=iter((0.0, 1.0, 2.0, 3.0, 4.0, 5.0)).__next__,
         )
         both_runner = FakeRunner(
@@ -732,7 +727,6 @@ def test_both_test_modes_run_independently_and_return_distinct_failures(
             "both",
             ensure_up=False,
             http_probe=lambda _url, _host: True,
-            sleep=lambda _seconds: None,
             now=iter((0.0, 1.0, 2.0, 3.0, 4.0, 5.0)).__next__,
         )
 
@@ -786,7 +780,6 @@ def test_dual_mode_collection_mismatch_and_unreadable_counts_fail(
             "both",
             ensure_up=False,
             http_probe=lambda _url, _host: True,
-            sleep=lambda _seconds: None,
             now=iter((0.0, 1.0, 2.0, 3.0, 4.0, 5.0)).__next__,
         )
         unreadable = platform.testing_test(
@@ -801,7 +794,6 @@ def test_dual_mode_collection_mismatch_and_unreadable_counts_fail(
             "container",
             ensure_up=False,
             http_probe=lambda _url, _host: True,
-            sleep=lambda _seconds: None,
             now=iter((0.0, 1.0, 2.0, 3.0)).__next__,
         )
         partly_unreadable = platform.testing_test(
@@ -819,7 +811,6 @@ def test_dual_mode_collection_mismatch_and_unreadable_counts_fail(
             "both",
             ensure_up=False,
             http_probe=lambda _url, _host: True,
-            sleep=lambda _seconds: None,
             now=iter((0.0, 1.0, 2.0, 3.0, 4.0, 5.0)).__next__,
         )
 
@@ -1515,7 +1506,6 @@ def test_testing_integration_audit_reports_startup_and_mail_failures(tmp_path: P
                     "container",
                     ensure_up=True,
                     http_probe=lambda _url, _host: True,
-                    sleep=lambda _seconds: None,
                     now=iter((0.0, 1.0)).__next__,
                 )
                 == platform.EXIT_OK
@@ -2729,8 +2719,6 @@ def test_internal_start_rebuild_and_reset_failures_stop_immediately(tmp_path: Pa
             platform.DEVELOPMENT,
             recreate=False,
             proxy_only=False,
-            sleep=lambda _seconds: None,
-            now=lambda: 0.0,
         )
         == platform.EXIT_USAGE
     )
@@ -2740,8 +2728,6 @@ def test_internal_start_rebuild_and_reset_failures_stop_immediately(tmp_path: Pa
             missing_runner,
             platform.TESTING,
             proxy_only=False,
-            sleep=lambda _seconds: None,
-            now=lambda: 0.0,
         )
         == platform.EXIT_USAGE
     )
@@ -2752,8 +2738,6 @@ def test_internal_start_rebuild_and_reset_failures_stop_immediately(tmp_path: Pa
             platform.TESTING,
             confirmed=True,
             proxy_only=False,
-            sleep=lambda _seconds: None,
-            now=lambda: 0.0,
         )
         == platform.EXIT_USAGE
     )
@@ -2765,8 +2749,6 @@ def test_internal_start_rebuild_and_reset_failures_stop_immediately(tmp_path: Pa
             FakeRunner(results=[PREFLIGHT_FAILURE]),
             platform.TESTING,
             proxy_only=False,
-            sleep=lambda _seconds: None,
-            now=lambda: 0.0,
         )
         == PREFLIGHT_FAILURE
     )
@@ -2778,8 +2760,6 @@ def test_internal_start_rebuild_and_reset_failures_stop_immediately(tmp_path: Pa
                 platform.DEVELOPMENT,
                 confirmed=True,
                 proxy_only=False,
-                sleep=lambda _seconds: None,
-                now=lambda: 0.0,
             )
             == expected
         )
@@ -2870,8 +2850,6 @@ def test_selected_host_test_tasks_use_the_mailpit_lifecycle(tmp_path: Path) -> N
                 FakeRunner(),
                 "test-integration-stages",
                 http_probe=lambda _url, _host: True,
-                sleep=lambda _seconds: None,
-                now=lambda: 0.0,
             )
             == IMAGE_FAILURE
         )
@@ -2885,8 +2863,6 @@ def test_selected_host_test_tasks_use_the_mailpit_lifecycle(tmp_path: Path) -> N
                 FakeRunner(),
                 "test-integration-stages",
                 http_probe=lambda _url, _host: True,
-                sleep=lambda _seconds: None,
-                now=lambda: 0.0,
             )
             == LOG_FAILURE
         )
@@ -2901,8 +2877,6 @@ def test_selected_host_test_tasks_use_the_mailpit_lifecycle(tmp_path: Path) -> N
                 FakeRunner(),
                 "test-integration-stages",
                 http_probe=lambda _url, _host: True,
-                sleep=lambda _seconds: None,
-                now=lambda: 0.0,
             )
             == LOG_FAILURE
         )
@@ -2923,8 +2897,6 @@ def test_selected_host_test_tasks_use_the_mailpit_lifecycle(tmp_path: Path) -> N
                 runner,
                 "test-integration-stages",
                 http_probe=lambda _url, _host: True,
-                sleep=lambda _seconds: None,
-                now=lambda: 0.0,
             )
             == LOG_FAILURE
         )
@@ -2968,7 +2940,6 @@ def test_testing_verify_propagates_rebuild_failure(tmp_path: Path) -> None:
             tmp_path,
             FakeRunner(),
             http_probe=lambda _url, _host: True,
-            sleep=lambda _seconds: None,
             now=lambda: 0.0,
         )
 
@@ -3437,8 +3408,6 @@ def test_remaining_dispatch_and_health_failure_branches(tmp_path: Path) -> None:
                 platform.DEVELOPMENT,
                 recreate=False,
                 proxy_only=False,
-                sleep=lambda _seconds: None,
-                now=lambda: 0.0,
             )
             == IMAGE_FAILURE
         )
@@ -3496,7 +3465,6 @@ def test_remaining_dispatch_and_health_failure_branches(tmp_path: Path) -> None:
                 tmp_path,
                 FakeRunner(),
                 http_probe=lambda _url, _host: True,
-                sleep=lambda _seconds: None,
                 now=lambda: 0.0,
             )
             == GENERATION_FAILURE

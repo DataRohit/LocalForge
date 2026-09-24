@@ -922,15 +922,13 @@ def ordinary_up(  # noqa: PLR0913
     return seed_storage(root, runner, spec) if verify_storage else EXIT_OK
 
 
-def up(  # noqa: PLR0913
+def up(
     root: Path,
     runner: Runner,
     spec: EnvironmentSpec,
     *,
     recreate: bool,
     proxy_only: bool,
-    sleep: Callable[[float], None],
-    now: Callable[[], float],
 ) -> int:
     """Start one environment with its selected publication mode.
 
@@ -943,8 +941,6 @@ def up(  # noqa: PLR0913
         spec: Environment to start.
         recreate: Whether to recreate containers.
         proxy_only: Whether development should omit the direct host port.
-        sleep: Callable pausing between health polls.
-        now: Monotonic clock.
 
     Returns:
         Startup exit code.
@@ -952,7 +948,6 @@ def up(  # noqa: PLR0913
     missing = require_environment_file(root, spec)
     if missing != EXIT_OK:
         return missing
-    _ = sleep, now
     code = ensure_environment_images(runner, spec)
     if code != EXIT_OK:
         return code
@@ -965,14 +960,12 @@ def up(  # noqa: PLR0913
     )
 
 
-def rebuild(  # noqa: PLR0913
+def rebuild(
     root: Path,
     runner: Runner,
     spec: EnvironmentSpec,
     *,
     proxy_only: bool,
-    sleep: Callable[[float], None],
-    now: Callable[[], float],
 ) -> int:
     """Rebuild and recreate an environment while preserving named volumes.
 
@@ -984,8 +977,6 @@ def rebuild(  # noqa: PLR0913
         runner: External command adapter.
         spec: Environment to rebuild.
         proxy_only: Whether development should omit the direct host port.
-        sleep: Callable pausing between health polls.
-        now: Monotonic clock.
 
     Returns:
         Zero when build and recreation pass.
@@ -993,7 +984,6 @@ def rebuild(  # noqa: PLR0913
     missing = require_environment_file(root, spec)
     if missing != EXIT_OK:
         return missing
-    _ = sleep, now
     code = build(runner, spec)
     if code != EXIT_OK:
         return code
@@ -1029,15 +1019,13 @@ def down(runner: Runner, spec: EnvironmentSpec, *, volumes: bool) -> int:
     return runner.run(compose_command(spec, *arguments)).code
 
 
-def reset(  # noqa: PLR0913
+def reset(
     root: Path,
     runner: Runner,
     spec: EnvironmentSpec,
     *,
     confirmed: bool,
     proxy_only: bool,
-    sleep: Callable[[float], None],
-    now: Callable[[], float],
 ) -> int:
     """Delete environment data and perform a clean no-cache rebuild.
 
@@ -1050,8 +1038,6 @@ def reset(  # noqa: PLR0913
         spec: Environment to reset.
         confirmed: Whether destructive deletion was explicitly approved.
         proxy_only: Whether development should omit the direct host port.
-        sleep: Callable pausing between health polls.
-        now: Monotonic clock.
 
     Returns:
         Zero on success, usage when unconfirmed, or the first failed step.
@@ -1059,7 +1045,6 @@ def reset(  # noqa: PLR0913
     if not confirmed:
         print("reset requires --confirm-destroy-data")
         return EXIT_USAGE
-    _ = sleep, now
     missing = require_environment_file(root, spec)
     if missing != EXIT_OK:
         return missing
@@ -2815,7 +2800,6 @@ def testing_test(  # noqa: PLR0913
     *,
     ensure_up: bool,
     http_probe: Callable[[str, str], bool],
-    sleep: Callable[[float], None],
     now: Callable[[], float],
 ) -> int:
     """Run one or both complete testing modes with real SMTP coverage.
@@ -2830,7 +2814,6 @@ def testing_test(  # noqa: PLR0913
         mode: ``container``, ``host``, or ``both``.
         ensure_up: Whether to start and verify the testing environment first.
         http_probe: HTTP readiness adapter.
-        sleep: Callable pausing between health polls.
         now: Monotonic clock.
 
     Returns:
@@ -2843,8 +2826,6 @@ def testing_test(  # noqa: PLR0913
             TESTING,
             recreate=False,
             proxy_only=False,
-            sleep=sleep,
-            now=now,
         )
         if code != EXIT_OK:
             return code
@@ -2867,14 +2848,12 @@ def testing_test(  # noqa: PLR0913
     return body_code if body_code != EXIT_OK else cleanup_code
 
 
-def testing_host_task(  # noqa: PLR0913
+def testing_host_task(
     root: Path,
     runner: Runner,
     poe_task: str,
     *,
     http_probe: Callable[[str, str], bool],
-    sleep: Callable[[float], None],
-    now: Callable[[], float],
 ) -> int:
     """Run one host-only pytest task with the complete dependency lifecycle.
 
@@ -2886,8 +2865,6 @@ def testing_host_task(  # noqa: PLR0913
         runner: External command adapter.
         poe_task: Internal Poe test task to execute.
         http_probe: HTTP readiness adapter.
-        sleep: Callable pausing between health polls.
-        now: Monotonic clock.
 
     Returns:
         The first environment, test, post-check, log, or cleanup failure.
@@ -2898,8 +2875,6 @@ def testing_host_task(  # noqa: PLR0913
         TESTING,
         recreate=False,
         proxy_only=False,
-        sleep=sleep,
-        now=now,
     )
     if code != EXIT_OK:
         return code
@@ -3146,8 +3121,6 @@ def testing_integration_audit(
     runner: Runner,
     *,
     http_probe: Callable[[str, str], bool],
-    sleep: Callable[[float], None],
-    now: Callable[[], float],
 ) -> int:
     """Prove persistence and real degraded readiness in both test modes.
 
@@ -3159,8 +3132,6 @@ def testing_integration_audit(
         root: Repository root holding environment files.
         runner: External command adapter.
         http_probe: HTTP readiness adapter.
-        sleep: Callable pausing between health polls.
-        now: Monotonic clock.
 
     Returns:
         Zero when every transition and assertion passes, otherwise the first failure.
@@ -3171,8 +3142,6 @@ def testing_integration_audit(
         TESTING,
         recreate=False,
         proxy_only=False,
-        sleep=sleep,
-        now=now,
     )
     if code != EXIT_OK:
         return code
@@ -3235,7 +3204,6 @@ def testing_verify(
     runner: Runner,
     *,
     http_probe: Callable[[str, str], bool],
-    sleep: Callable[[float], None],
     now: Callable[[], float],
 ) -> int:
     """Rebuild testing, run both modes, and stop after success.
@@ -3247,7 +3215,6 @@ def testing_verify(
         root: Repository root.
         runner: External command adapter.
         http_probe: HTTP readiness adapter.
-        sleep: Callable pausing between health polls.
         now: Monotonic clock.
 
     Returns:
@@ -3258,8 +3225,6 @@ def testing_verify(
         runner,
         TESTING,
         proxy_only=False,
-        sleep=sleep,
-        now=now,
     )
     if code != EXIT_OK:
         return code
@@ -3272,7 +3237,6 @@ def testing_verify(
         "both",
         ensure_up=False,
         http_probe=http_probe,
-        sleep=sleep,
         now=now,
     )
     if code != EXIT_OK:
@@ -3398,8 +3362,6 @@ def main(  # noqa: C901, PLR0911, PLR0912, PLR0913
             active_runner,
             HOST_TEST_TASKS[command],
             http_probe=http_probe,
-            sleep=sleep,
-            now=now,
         )
     if command.startswith("testing-test-"):
         return testing_test(
@@ -3408,7 +3370,6 @@ def main(  # noqa: C901, PLR0911, PLR0912, PLR0913
             command.removeprefix("testing-test-"),
             ensure_up=True,
             http_probe=http_probe,
-            sleep=sleep,
             now=now,
         )
     if command == "testing-integration-audit":
@@ -3419,15 +3380,12 @@ def main(  # noqa: C901, PLR0911, PLR0912, PLR0913
             root,
             active_runner,
             http_probe=http_probe,
-            sleep=sleep,
-            now=now,
         )
     if command == "testing-verify":
         return testing_verify(
             root,
             active_runner,
             http_probe=http_probe,
-            sleep=sleep,
             now=now,
         )
 
@@ -3445,8 +3403,6 @@ def main(  # noqa: C901, PLR0911, PLR0912, PLR0913
             spec,
             recreate=False,
             proxy_only=arguments.proxy_only,
-            sleep=sleep,
-            now=now,
         )
     if action == "down":
         return down(active_runner, spec, volumes=False)
@@ -3456,8 +3412,6 @@ def main(  # noqa: C901, PLR0911, PLR0912, PLR0913
             active_runner,
             spec,
             proxy_only=arguments.proxy_only,
-            sleep=sleep,
-            now=now,
         )
     if action == "reset":
         return reset(
@@ -3466,8 +3420,6 @@ def main(  # noqa: C901, PLR0911, PLR0912, PLR0913
             spec,
             confirmed=arguments.confirm_destroy_data,
             proxy_only=arguments.proxy_only,
-            sleep=sleep,
-            now=now,
         )
     if action == "status":
         return status(active_runner, spec)
