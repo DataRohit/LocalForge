@@ -33,7 +33,8 @@ Two constraints that are easy to trip over:
 
 ## 2. Files this plan creates
 
-Listed so scope creep is recognisable. None exists.
+Listed so scope creep is recognisable. Rows from the completed build now exist; Phase 8 planning adds only the
+architecture audit and handover evidence named below.
 
 | Path | Purpose |
 | --- | --- |
@@ -61,6 +62,9 @@ Listed so scope creep is recognisable. None exists.
 | `scripts/manage_platform.py` | Cross-platform operator command adapter exposed through Poe; centralizes safe and destructive Compose workflows |
 | `docs/security/security-audit.md`, `docs/security/image-vulnerability-policy.json` | Dated Phase 7 findings, accepted risks, review dates, and the exact machine-enforced image scan snapshot |
 | `docs/handover/phase-7.md` | Final clean-checkout, quality, contract, runtime, risk, review-date, and deferred-scope evidence for Phase 7 |
+| `docs/architecture/solid-audit-plan.md` | Phase 8 interpretation, scope, evidence rules, and gates for the SOLID architecture audit |
+| `docs/architecture/solid-findings.md` | Phase 8 module inventory and evidence-backed finding ledger, completed by ticket 53 |
+| `docs/handover/phase-8.md` | Final SOLID findings, changes, verification, runtime evidence, and deferred work, created by ticket 63 |
 | `docs/platform/documentation-standard.md` | The worked reference for the docstring standard the checker enforces |
 | `.env.example` | Committed variable manifest, placeholders only |
 | `.env.development.sops`, `.env.testing.sops` | Committed encrypted env files |
@@ -349,8 +353,8 @@ Fail: fix the Compose file, recreate the affected service, re-run the **full** a
 ### Phase 9 — Hand over to the ticket set
 
 The platform is now running, integrated, and audited. **Stop building infrastructure here** and continue from
-[.scratch/README.md](../../.scratch/README.md), where ticket phases 4 through 7 deliver the application surface —
-the REST API, WebSockets, the async services, and the full test and audit passes.
+[.scratch/README.md](../../.scratch/README.md), where ticket phases 4 through 8 deliver the application surface,
+the full test and audit passes, and the evidence-led SOLID architecture audit.
 
 Do not start a route, model, or feature outside the fixed surface listed in [AGENTS.md](../../AGENTS.md).
 

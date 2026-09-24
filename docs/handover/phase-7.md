@@ -1,8 +1,7 @@
 # Phase 7 final verification and handover
 
-Reverified **2026-09-23** after repairing the manual handover failures. This report records the final built scope,
-test and runtime evidence, accepted risks, review dates, and the one destructive clean-room step left to upstream
-because the current LocalForge volumes were preserved.
+Reverified **2026-09-24** after repairing the manual handover failures. This report records the final built scope,
+test and runtime evidence, accepted risks, review dates, and the completed operator-run clean-room rehearsal.
 
 ## Built scope
 
@@ -46,16 +45,15 @@ layers before starting with `--no-build`. The final auditor-remediated run compl
 repeated cached run in 25.499 seconds. Both passed health and Docker ownership. Consecutive no-edit builds produced
 identical image IDs.
 
-A new destructive zero-resource rehearsal was not run because it would delete the current LocalForge named volumes
-and the user was unavailable to approve data loss. Upstream should perform that final rehearsal on a disposable
-machine or after explicitly approving project-scoped volume removal, then require `docker-clean-check` to pass
-before following the setup commands above.
+On 2026-09-24 the operator removed the LocalForge Docker resources, confirmed the zero-resource precondition, and
+ran the full written handover sequence. Every command passed. This operator-run rehearsal closes the final Phase 7
+blocker without changing the ordinary non-destructive setup path.
 
 ## Verification commands and results
 
 | Gate | Command | Result |
 | --- | --- | --- |
-| Clean runtime precondition | `uv run poe docker-clean-check` | not run destructively; expected to fail while the preserved platform exists |
+| Clean runtime precondition | `uv run poe docker-clean-check` | pass after operator-approved LocalForge cleanup |
 | Written setup | `uv sync --all-groups --frozen`; `uv run poe help`; `uv run poe environments-setup --proxy-only` | pass twice; 165.902 seconds then 25.499 seconds |
 | Dual-mode parity | `uv run poe testing-test-both` | pass; 2,112 collected per mode |
 | Container suite | dual-mode container stage | 2,089 core passed, 23 timing passed, zero skips/warnings, 100% branch coverage, 524.892 seconds |
@@ -169,6 +167,5 @@ The following work is deliberately outside this platform:
 - Any HTTP route, WebSocket route, model, or feature outside the fixed application surface.
 - Cloud services or runtime internet access.
 
-One in-scope handover proof remains blocked on explicit approval to destroy current LocalForge data: the
-zero-resource clean-clone rehearsal described above. All non-destructive implementation, test, security, convention,
-health, ownership, deterministic-build, and runtime-log gates pass.
+The zero-resource clean-clone rehearsal and all implementation, test, security, convention, health, ownership,
+deterministic-build, and runtime-log gates pass.

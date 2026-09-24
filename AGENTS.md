@@ -172,7 +172,7 @@ means adding a registry row in a documentation change first.
 ## Phase order
 
 Nine build-plan phases with explicit gates, in [docs/build/plan.md](./docs/build/plan.md) Section 3, delivered by
-the 52 tickets in [.scratch/](./.scratch/README.md), grouped into 7 ticket phases:
+the 63 tickets in [.scratch/](./.scratch/README.md), grouped into 8 ticket phases:
 
 | Ticket phase | Delivers                                                                             |
 | ------------ | ------------------------------------------------------------------------------------ |
@@ -183,6 +183,7 @@ the 52 tickets in [.scratch/](./.scratch/README.md), grouped into 7 ticket phase
 | 5            | WebSockets: authenticated sockets over the channel layer                             |
 | 6            | Async services: worker, scheduler, dashboard, async email, event fan-out             |
 | 7            | Testing and audit: both modes in parallel, convention and security audits            |
+| 8            | SOLID architecture: evidence-led audit, focused improvements, final verification     |
 
 Infrastructure comes first, then the project is brought up to meet it, then Django is wired to each running
 service, then the application is built on top. Do not build the application against services that are not yet
@@ -235,8 +236,9 @@ These predate this work.
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | Which workflow or skill fits this task                        | **`/ask-matt`**, the router over `.agents/skills/`                                   |
 | What do the words mean                                        | [CONTEXT.md](./CONTEXT.md)                                                           |
-| What should I work on next                                    | [.scratch/README.md](./.scratch/README.md) — 52 tickets, phased, with blockers       |
+| What should I work on next                                    | [.scratch/README.md](./.scratch/README.md) — 63 tickets, phased, with blockers       |
 | Which tool, and why that one                                  | [docs/adr/](./docs/adr/README.md) — one decision per file, indexed                   |
+| How SOLID applies to this Python project                      | [docs/architecture/solid-audit-plan.md](./docs/architecture/solid-audit-plan.md)     |
 | Names, IDs, variables, secrets, script contracts              | [docs/platform/conventions.md](./docs/platform/conventions.md)                       |
 | What a docstring must contain, and which comments are allowed | [docs/platform/documentation-standard.md](./docs/platform/documentation-standard.md) |
 | Ports, startup order, health checks, dashboards, audits       | [docs/platform/service-inventory.md](./docs/platform/service-inventory.md)           |

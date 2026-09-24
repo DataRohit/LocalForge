@@ -1,6 +1,6 @@
 # LocalForge build tickets
 
-52 tracer-bullet tickets across 7 phases, numbered globally in dependency order. Each ticket is sized to fit one
+63 tracer-bullet tickets across 8 phases, numbered globally in dependency order. Each ticket is sized to fit one
 fresh context window and is verifiable on its own.
 
 Format follows [the ticket-writing skill](../.agents/skills/to-tickets/SKILL.md). Ticket files avoid implementation
@@ -31,6 +31,7 @@ the application surface is built on top.
 | 5 | [phase-5-websockets](./phase-5-websockets) | 38–41 | Authenticated WebSockets over the Channels layer |
 | 6 | [phase-6-async-services](./phase-6-async-services) | 42–46 | Celery worker, scheduler, Flower, async email, event fan-out |
 | 7 | [phase-7-testing-and-audit](./phase-7-testing-and-audit) | 47–52 | Full suites in both modes, convention and security audits |
+| 8 | [phase-8-solid-architecture](./phase-8-solid-architecture) | 53–63 | Evidence-led SOLID audit, focused improvements, final verification |
 
 ## Ticket index
 
@@ -91,6 +92,17 @@ search; its title is never used to predict its filename.
 | 50 | [50: Convention audit](./phase-7-testing-and-audit/50-convention-audit.md) |
 | 51 | [51: Security and reliability audit](./phase-7-testing-and-audit/51-security-and-reliability-audit.md) |
 | 52 | [52: Final verification and handover](./phase-7-testing-and-audit/52-final-verification-and-handover.md) |
+| 53 | [53: SOLID audit baseline and module inventory](./phase-8-solid-architecture/53-solid-audit-baseline-and-module-inventory.md) |
+| 54 | [54: Operator orchestration SOLID audit](./phase-8-solid-architecture/54-operator-orchestration-solid-audit.md) |
+| 55 | [55: Support script SOLID audit](./phase-8-solid-architecture/55-support-script-solid-audit.md) |
+| 56 | [56: Django runtime SOLID audit](./phase-8-solid-architecture/56-django-runtime-solid-audit.md) |
+| 57 | [57: Account authentication SOLID audit](./phase-8-solid-architecture/57-account-authentication-solid-audit.md) |
+| 58 | [58: Account lifecycle SOLID audit](./phase-8-solid-architecture/58-account-lifecycle-solid-audit.md) |
+| 59 | [59: Notification delivery SOLID audit](./phase-8-solid-architecture/59-notification-delivery-solid-audit.md) |
+| 60 | [60: Test architecture SOLID audit](./phase-8-solid-architecture/60-test-architecture-solid-audit.md) |
+| 61 | [61: Cross-module dependency audit](./phase-8-solid-architecture/61-cross-module-dependency-audit.md) |
+| 62 | [62: Complete SOLID verification](./phase-8-solid-architecture/62-complete-solid-verification.md) |
+| 63 | [63: Phase 8 handover](./phase-8-solid-architecture/63-phase-8-handover.md) |
 
 ## Dependency graph
 
@@ -131,6 +143,11 @@ Arrows point from blocker to blocked. Tickets on the same line can run in parall
 
 16 + phases 4-6 ──> 47 ──> 48 ──> 49 ──┬──> 50 ──┐
                                        └──> 51 ──┴──> 52
+
+52 ──> 53 ──┬──> 54 ────────────────┐
+            ├──> 55 ────────────────┤
+            ├──> 56 ──> 59 ─────────┤
+            └──> 57 ──> 58 ─────────┼──> 60 ──> 61 ──> 62 ──> 63
 ```
 
 ## Standards every ticket inherits
@@ -168,4 +185,6 @@ silently accept them because the response or tests succeeded.
 - Every documented route returns every documented status code, and the schema proves it.
 - WebSockets authenticate and broadcast across two processes.
 - The suite passes in a container and on the host, at 100% branch coverage, in parallel.
+- Every project-owned Python module has a Phase 8 SOLID disposition backed by source and test evidence.
+- Every confirmed SOLID violation is fixed without changing the bounded application surface.
 - `uv run poe check` is green.
