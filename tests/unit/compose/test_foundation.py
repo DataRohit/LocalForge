@@ -1920,6 +1920,7 @@ STORAGE_INSTANCES = {
 }
 
 STORAGE_REQUIRED_FLAGS = (
+    "-s3.iam=false",
     "-s3.port.iceberg=0",
     "-s3.port.lance=0",
     "-ip.bind=0.0.0.0",
@@ -2009,6 +2010,7 @@ def test_every_storage_service_takes_its_keys_from_the_environment(environment: 
     assert "./docker/seaweedfs/s3.json:/etc/seaweedfs/s3.json.template:ro" in definition["volumes"]
     assert "$$S3_ACCESS_KEY_ID" in command
     assert "$$S3_SECRET_ACCESS_KEY" in command
+    assert "WEED_S3_SSE_KEK_PASSPHRASE:?" in command
     assert "__S3_ACCESS_KEY_ID__" in template
     assert "__S3_SECRET_ACCESS_KEY__" in template
 

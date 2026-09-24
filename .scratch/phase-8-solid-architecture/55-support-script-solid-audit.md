@@ -17,19 +17,21 @@ storage, broker, readiness, worker-health, and documentation scripts.
 - [Security audit](../../docs/security/security-audit.md)
 - [Documentation standard](../../docs/platform/documentation-standard.md)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Each script has one coherent policy or lifecycle responsibility, with parsing, environment access, external
+- [x] Each script has one coherent policy or lifecycle responsibility, with parsing, environment access, external
       commands, and reporting separated only where evidence shows independent change.
-- [ ] Shared policy is consolidated behind a deep interface when duplication causes changes to spread across
+- [x] Shared policy is consolidated behind a deep interface when duplication causes changes to spread across
       scripts; unrelated one-off logic remains local.
-- [ ] Security, naming, and prerequisite checks depend on injectable or substitutable data sources where tests and
+- [x] Security, naming, and prerequisite checks depend on injectable or substitutable data sources where tests and
       runtime already use different adapters.
-- [ ] Exit codes, redaction, machine-readable output, operator diagnostics, offline behaviour, and exact audit
+- [x] Exit codes, redaction, machine-readable output, operator diagnostics, offline behaviour, and exact audit
       coverage remain unchanged unless their governing source changes first.
-- [ ] Framework hooks and adapter implementations preserve their accepted input domain, errors, and return
+- [x] Framework hooks and adapter implementations preserve their accepted input domain, errors, and return
       contracts under substitution.
-- [ ] Confirmed findings receive regression tests through each script's supported command or callable interface.
-- [ ] The complete script test layer passes under parallel execution with zero warnings and zero skips.
-- [ ] The findings ledger records every reviewed script, finding, fix, and verification result.
+- [x] Confirmed findings receive regression tests through each script's supported command or callable interface.
+- [x] The complete script test layer passes under parallel execution with zero warnings and zero skips.
+- [x] The findings ledger records every reviewed script, finding, fix, and verification result.
+
+**Independent audit:** GPT-5.6 Terra and GPT-5.6 Sol reported no legitimate finding after one remediation round.
 *** End of File

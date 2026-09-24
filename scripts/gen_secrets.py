@@ -48,12 +48,14 @@ CREDENTIAL_DERIVED_VOLUMES: Mapping[str, tuple[str, ...]] = {
         "postgres-pg3ka-data",
         "postgres-replica-pg6vy-data",
         "rabbitmq-rq4sx-data",
+        "seaweedfs-sw9cr-data",
         "grafana-gf7qv-data",
         "pgadmin-pa7fe-data",
     ),
     TESTING: (
         "postgres-tp8vn-data",
         "rabbitmq-tr6mc-data",
+        "seaweedfs-ts3jd-data",
     ),
     TESTING_HOST: (
         "postgres-tp8vn-data",
@@ -245,6 +247,7 @@ SECRET_RECIPES: Mapping[str, Callable[[], str]] = {
     "DJANGO_API_THROTTLE_IDENTITY_HMAC_KEY": generate_hmac_key,
     "S3_ACCESS_KEY_ID": generate_access_key,
     "S3_SECRET_ACCESS_KEY": generate_access_key,
+    "WEED_S3_SSE_KEK_PASSPHRASE": generate_password,
     "FLOWER_BASIC_AUTH": generate_plain_auth,
     "MP_UI_AUTH": generate_plain_auth,
 }

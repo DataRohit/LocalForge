@@ -48,6 +48,7 @@ SECRET_VARIABLES = (
     "RABBITMQ_DEFAULT_PASS",
     "S3_ACCESS_KEY_ID",
     "S3_SECRET_ACCESS_KEY",
+    "WEED_S3_SSE_KEK_PASSPHRASE",
     "GRAFANA_ADMIN_PASSWORD",
     "TRAEFIK_DASHBOARD_PASSWORD",
     "TRAEFIK_DASHBOARD_AUTH",
@@ -150,6 +151,25 @@ def values_in(root: Path, relative: str) -> dict[str, str]:
         The variables the file declares.
     """
     return gen_secrets.parse_env_text((root / relative).read_text(encoding="utf-8"))
+
+
+def encrypted_variable_names(path: Path) -> set[str]:
+    """Read application variable names from one SOPS dotenv artifact.
+
+    Excludes only SOPS metadata and comments, so an obsolete encrypted application variable
+    remains visible to exact manifest-parity assertions.
+
+    Arguments:
+        path: Encrypted dotenv artifact to inspect.
+
+    Returns:
+        Application variable names declared by the artifact.
+    """
+    return {
+        line.partition("=")[0]
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if "=" in line and not line.startswith(("#", "sops_"))
+    }
 
 
 def documented_variables() -> set[str]:
@@ -388,8 +408,10 @@ def test_a_forced_run_replaces_every_value(repository: Path) -> None:
     [
         ("development", "postgres-pg3ka-data", "postgres-tp8vn-data"),
         ("development", "postgres-replica-pg6vy-data", "rabbitmq-tr6mc-data"),
+        ("development", "seaweedfs-sw9cr-data", "seaweedfs-ts3jd-data"),
         ("testing", "postgres-tp8vn-data", "postgres-pg3ka-data"),
         ("testing", "rabbitmq-tr6mc-data", "grafana-gf7qv-data"),
+        ("testing", "seaweedfs-ts3jd-data", "seaweedfs-sw9cr-data"),
     ],
 )
 def test_a_forced_run_names_the_volumes_for_the_environment_it_touched(
@@ -2243,13 +2265,36 @@ def test_the_committed_encrypted_file_declares_the_same_variables(environment: s
     """
     manifest = set(gen_secrets.read_manifest(MANIFEST_SOURCE))
     encrypted = gen_secrets.REPOSITORY_ROOT / f".env.{environment}.sops"
-    declared = {
-        line.partition("=")[0]
-        for line in encrypted.read_text(encoding="utf-8").splitlines()
-        if "=" in line and not line.startswith(("#", "sops_"))
-    }
+    declared = encrypted_variable_names(encrypted)
 
-    assert manifest - declared == set()
+    assert declared == manifest
+
+
+@pytest.mark.unit
+def test_encrypted_manifest_parity_keeps_obsolete_variables_visible(tmp_path: Path) -> None:
+    """Refuse to hide an obsolete encrypted application variable.
+
+    Builds one minimal SOPS-shaped dotenv artifact with an extra application key, proving the
+    parity parser excludes metadata but not a stale secret name.
+
+    Arguments:
+        tmp_path: Temporary directory holding the fabricated artifact.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the parser hides the obsolete variable.
+    """
+    encrypted = tmp_path / ".env.development.sops"
+    encrypted.write_text(
+        "CURRENT=ENC[AES256_GCM,data:a]\n"
+        "OBSOLETE_SECRET=ENC[AES256_GCM,data:b]\n"
+        "sops_age__list_0__map_recipient=age1example\n",
+        encoding="utf-8",
+    )
+
+    assert encrypted_variable_names(encrypted) == {"CURRENT", "OBSOLETE_SECRET"}
 
 
 @pytest.mark.unit

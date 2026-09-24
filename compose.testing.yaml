@@ -146,10 +146,12 @@ services:
       - >-
         : "$${S3_ACCESS_KEY_ID:?S3_ACCESS_KEY_ID is unset}"
         && : "$${S3_SECRET_ACCESS_KEY:?S3_SECRET_ACCESS_KEY is unset}"
+        && : "$${WEED_S3_SSE_KEK_PASSPHRASE:?WEED_S3_SSE_KEK_PASSPHRASE is unset}"
         && sed -e "s|__S3_ACCESS_KEY_ID__|$$S3_ACCESS_KEY_ID|"
         -e "s|__S3_SECRET_ACCESS_KEY__|$$S3_SECRET_ACCESS_KEY|"
         /etc/seaweedfs/s3.json.template > /etc/seaweedfs/s3.json
         && exec weed server -dir=/data -s3 -s3.config=/etc/seaweedfs/s3.json
+        -s3.iam=false
         -s3.port.iceberg=0 -s3.port.lance=0 -ip.bind=0.0.0.0
         -master.telemetry=false
 
