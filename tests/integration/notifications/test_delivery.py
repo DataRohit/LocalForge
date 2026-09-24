@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 from channels.db import database_sync_to_async
-from channels.testing import WebsocketCommunicator
 from django.conf import settings
 from redis import asyncio as aioredis
 
@@ -22,6 +21,7 @@ from accounts.jwt_authentication import PrimaryRefreshToken
 from config.asgi import application
 from notifications.delivery import JsonValue, notification_group_name, publish_notification
 from notifications.protocol import WebSocketOutcome
+from tests.websocket import WebsocketCommunicator
 
 if TYPE_CHECKING:
     from accounts.models import User
@@ -103,10 +103,7 @@ async def connect_notification_socket(account: User) -> WebsocketCommunicator:
         headers=HEADERS,
         subprotocols=[access],
     )
-    connected, accepted = cast(
-        "tuple[bool, str | int | None]",
-        await communicator.connect(),
-    )
+    connected, accepted = await communicator.connect()
 
     assert connected
     assert accepted == access

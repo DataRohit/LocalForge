@@ -6,6 +6,7 @@ fields, so the collector shipping container output always receives one parsable 
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -342,6 +343,94 @@ async def test_asgi_stream_finalizer_preserves_events_without_a_stream(
             "http.response.start",
             "http.response.body",
         ]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error_type", [asyncio.CancelledError, ValueError])
+async def test_asgi_stream_finalizer_preserves_application_failures(
+    error_type: type[BaseException],
+) -> None:
+    """Propagate application failures without a transport failure.
+
+    Raises cancellation and ordinary failure before any response event, requiring the outer
+    boundary to retain correlation while leaving transport-error translation inactive.
+
+    Arguments:
+        error_type: Application failure to raise.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If cancellation is swallowed or loses correlation.
+    """
+
+    async def application(
+        _scope: Scope,
+        _receive: ASGIReceiveCallable,
+        _send: ASGISendCallable,
+    ) -> None:
+        """Cancel one application invocation.
+
+        Raises directly without using the outbound transport, isolating application failures from
+        translated send failures.
+
+        Arguments:
+            _scope: Unused ASGI scope.
+            _receive: Unused inbound event callable.
+            _send: Unused outbound event callable.
+
+        Returns:
+            Never returns.
+
+        Raises:
+            BaseException: Selected application failure.
+        """
+        message = "application failure"
+        raise error_type(message)
+
+    async def receive() -> ASGIReceiveEvent:
+        """Return a disconnected inbound state.
+
+        Supplies the callable required by the ASGI contract even though the application cancels
+        before reading it.
+
+        Arguments:
+            None.
+
+        Returns:
+            ASGI disconnect event.
+
+        Raises:
+            None.
+        """
+        return {"type": "http.disconnect"}
+
+    async def send(_message: ASGISendEvent) -> None:
+        """Reject unexpected outbound delivery.
+
+        Fails if the cancelled application emits any response event.
+        Provides the callable required by the ASGI contract.
+
+        Arguments:
+            _message: Unexpected outbound event.
+
+        Returns:
+            None.
+
+        Raises:
+            AssertionError: Always, because no event is expected.
+        """
+        pytest.fail("cancelled application emitted a response")
+
+    wrapped = finalize_streaming_asgi(cast("ASGI3Application", application))
+    scope = cast("Scope", {"type": "http"})
+
+    with pytest.raises(error_type) as caught:
+        await wrapped(scope, receive, send)
+
+    assert getattr(caught.value, REQUEST_ID_EXCEPTION_ATTRIBUTE, None)
 
 
 @pytest.mark.unit

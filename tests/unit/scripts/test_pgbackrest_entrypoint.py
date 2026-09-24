@@ -6,7 +6,6 @@ proved rather than inferred from reading the script.
 """
 
 import os
-import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -16,14 +15,11 @@ import pytest
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 ENTRYPOINT = REPOSITORY_ROOT / "scripts" / "pgbackrest_entrypoint.sh"
 CONVENTIONS = REPOSITORY_ROOT / "docs" / "platform" / "conventions.md"
-BASH = shutil.which("bash")
 TIMEOUT_SECONDS = 30
 
 EXIT_OK = 0
 EXIT_STANZA_FAILED = 1
 EXIT_BACKUP_FAILED = 2
-
-pytestmark = pytest.mark.skipif(BASH is None, reason="the entrypoint needs a POSIX shell")
 
 
 def write_tool(directory: Path, name: str, body: str) -> None:
@@ -69,7 +65,12 @@ def environment(directory: Path) -> dict[str, str]:
     }
 
 
-def run(directory: Path, *, timeout: int = TIMEOUT_SECONDS) -> subprocess.CompletedProcess[str]:
+def run(
+    directory: Path,
+    posix_shell: Path,
+    *,
+    timeout: int = TIMEOUT_SECONDS,
+) -> subprocess.CompletedProcess[str]:
     """Run the entrypoint against the fabricated tools.
 
     Executes the script as a process so its exit code is the real one, which is the whole point of
@@ -77,13 +78,14 @@ def run(directory: Path, *, timeout: int = TIMEOUT_SECONDS) -> subprocess.Comple
 
     Arguments:
         directory: Directory holding the fabricated commands.
+        posix_shell: Functional Bash executable supplied by the unit harness.
         timeout: Seconds to allow before giving up.
 
     Returns:
         The completed process.
     """
     process = subprocess.Popen(  # noqa: S603
-        [str(BASH), str(ENTRYPOINT)],
+        [str(posix_shell), str(ENTRYPOINT)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -151,7 +153,10 @@ def tools(tmp_path: Path) -> Path:
 
 
 @pytest.mark.unit
-def test_a_failed_stanza_creation_reports_the_documented_code(tools: Path) -> None:
+def test_a_failed_stanza_creation_reports_the_documented_code(
+    tools: Path,
+    posix_shell: Path,
+) -> None:
     """Report a stanza that could not be created.
 
     Confirms the documented stanza failure code is returned, because an operator scripting around
@@ -159,6 +164,7 @@ def test_a_failed_stanza_creation_reports_the_documented_code(tools: Path) -> No
 
     Arguments:
         tools: Directory of fabricated commands.
+        posix_shell: Functional Bash executable supplied by the unit harness.
 
     Returns:
         None.
@@ -168,11 +174,14 @@ def test_a_failed_stanza_creation_reports_the_documented_code(tools: Path) -> No
     """
     write_tool(tools, "pgbackrest", '[ "$2" = "stanza-create" ] && exit 1\nexit 0')
 
-    assert run(tools).returncode == EXIT_STANZA_FAILED
+    assert run(tools, posix_shell).returncode == EXIT_STANZA_FAILED
 
 
 @pytest.mark.unit
-def test_a_failed_configuration_check_reports_the_stanza_code(tools: Path) -> None:
+def test_a_failed_configuration_check_reports_the_stanza_code(
+    tools: Path,
+    posix_shell: Path,
+) -> None:
     """Report a primary and agent that disagree.
 
     Confirms a failing configuration check stops the agent rather than proceeding to back up a
@@ -180,6 +189,7 @@ def test_a_failed_configuration_check_reports_the_stanza_code(tools: Path) -> No
 
     Arguments:
         tools: Directory of fabricated commands.
+        posix_shell: Functional Bash executable supplied by the unit harness.
 
     Returns:
         None.
@@ -189,11 +199,14 @@ def test_a_failed_configuration_check_reports_the_stanza_code(tools: Path) -> No
     """
     write_tool(tools, "pgbackrest", '[ "$2" = "check" ] && exit 1\nexit 0')
 
-    assert run(tools).returncode == EXIT_STANZA_FAILED
+    assert run(tools, posix_shell).returncode == EXIT_STANZA_FAILED
 
 
 @pytest.mark.unit
-def test_an_unreachable_primary_reports_the_stanza_code(tools: Path) -> None:
+def test_an_unreachable_primary_reports_the_stanza_code(
+    tools: Path,
+    posix_shell: Path,
+) -> None:
     """Give up on a primary that never arrives.
 
     Confirms the agent stops rather than waiting forever when the database never becomes ready,
@@ -201,6 +214,7 @@ def test_an_unreachable_primary_reports_the_stanza_code(tools: Path) -> None:
 
     Arguments:
         tools: Directory of fabricated commands.
+        posix_shell: Functional Bash executable supplied by the unit harness.
 
     Returns:
         None.
@@ -210,7 +224,7 @@ def test_an_unreachable_primary_reports_the_stanza_code(tools: Path) -> None:
     """
     write_tool(tools, "pg_isready", "exit 1")
 
-    assert run(tools).returncode == EXIT_STANZA_FAILED
+    assert run(tools, posix_shell).returncode == EXIT_STANZA_FAILED
 
 
 @pytest.mark.unit

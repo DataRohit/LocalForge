@@ -118,10 +118,6 @@ def _mailpit_request(method: str) -> MailpitMessages | None:
 @pytest.mark.integration
 @pytest.mark.services("mailpit")
 @pytest.mark.timeout(MAILPIT_TIMEOUT_SECONDS)
-@pytest.mark.skipif(
-    settings.EMAIL_BACKEND != SMTP_BACKEND,
-    reason="the Mailpit authentication boundary runs only under the Compose smtp profile",
-)
 def test_mailpit_rejects_unauthenticated_api_access() -> None:
     """Reject access to captured messages without the generated UI credential.
 
@@ -158,10 +154,6 @@ def test_mailpit_rejects_unauthenticated_api_access() -> None:
 @pytest.mark.serial
 @pytest.mark.timeout(MAILPIT_TIMEOUT_SECONDS)
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
-@pytest.mark.skipif(
-    settings.EMAIL_BACKEND != SMTP_BACKEND,
-    reason="the real SMTP round trip runs only under the Compose smtp profile",
-)
 @override_settings(EMAIL_BACKEND=SMTP_BACKEND)
 def test_a_message_round_trips_through_smtp_and_mailpit() -> None:
     """Execute an account task through SMTP and assert on the capture service.

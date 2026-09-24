@@ -405,14 +405,16 @@ async def running_uvicorn(
         await wait_for_server(process, port)
         yield f"ws://127.0.0.1:{port}/ws/notifications/"
     finally:
-        process.terminate()
-        try:
-            await asyncio.to_thread(process.wait, SERVER_STOP_TIMEOUT_SECONDS)
-        except subprocess.TimeoutExpired as error:
-            process.kill()
-            await asyncio.to_thread(process.wait, SERVER_STOP_TIMEOUT_SECONDS)
-            message = "Uvicorn did not stop within the timeout"
-            raise AssertionError(message) from error
+        if process.poll() is None:
+            process.terminate()
+            try:
+                await asyncio.to_thread(process.wait, SERVER_STOP_TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired as error:
+                process.kill()
+                await asyncio.to_thread(process.wait, SERVER_STOP_TIMEOUT_SECONDS)
+                message = "Uvicorn did not stop within the timeout"
+                raise AssertionError(message) from error
+        await asyncio.to_thread(process.communicate)
 
 
 @asynccontextmanager

@@ -16,7 +16,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 from channels.db import database_sync_to_async
-from channels.testing import WebsocketCommunicator
 from redis import asyncio as aioredis
 
 from accounts.jwt_authentication import PrimaryRefreshToken
@@ -29,6 +28,7 @@ from notifications.admission import (
 )
 from notifications.delivery import notification_group_name
 from notifications.protocol import WebSocketOutcome
+from tests.websocket import WebsocketCommunicator
 
 if TYPE_CHECKING:
     from typing import Protocol
@@ -135,7 +135,7 @@ async def connect_with_token(access: str) -> tuple[WebsocketCommunicator, bool, 
         headers=HEADERS,
         subprotocols=[access],
     )
-    connected, detail = cast("tuple[bool, str | int | None]", await communicator.connect())
+    connected, detail = await communicator.connect()
 
     return communicator, connected, detail
 

@@ -1568,7 +1568,7 @@ def test_the_two_valkey_passwords_hold_different_values() -> None:
         checked += 1
 
     if not checked:
-        pytest.skip("no environment file has been generated in this checkout")
+        pytest.fail("no environment file has been generated in this checkout")
 
 
 @pytest.mark.unit
@@ -1872,7 +1872,7 @@ def test_each_broker_takes_its_credentials_and_virtual_host_from_the_environment
 
     source = REPOSITORY_ROOT / f".env.{environment}"
     if not source.exists():
-        pytest.skip("this checkout has generated no environment file")
+        pytest.fail("this checkout has generated no environment file")
 
     values = {
         line.partition("=")[0]: line.partition("=")[2]

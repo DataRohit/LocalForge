@@ -39,7 +39,6 @@ RUNTIME_DISTRIBUTIONS = (
 )
 
 DEVELOPMENT_DISTRIBUTIONS = (
-    "daphne",
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
@@ -272,10 +271,10 @@ def test_the_asgi_server_carries_websocket_support() -> None:
 
 @pytest.mark.unit
 def test_consumer_test_support_is_importable() -> None:
-    """Reach the consumer testing helpers.
+    """Reach the project WebSocket testing helper.
 
-    Confirms the Channels testing package imports, which it does not on Channels alone because its
-    live-server helper pulls in the alternative ASGI server even when that server is never run.
+    Confirms the in-process communicator imports without the alternative ASGI server or its Windows
+    event-loop policy side effect.
 
     Arguments:
         None.
@@ -284,9 +283,9 @@ def test_consumer_test_support_is_importable() -> None:
         None.
 
     Raises:
-        ImportError: If the testing package or its dependency is missing.
+        ImportError: If the testing helper or its ASGI dependency is missing.
     """
-    assert import_module("channels.testing").WebsocketCommunicator is not None
+    assert import_module("tests.websocket").WebsocketCommunicator is not None
 
 
 @pytest.mark.unit

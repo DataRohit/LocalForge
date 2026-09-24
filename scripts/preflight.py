@@ -36,18 +36,17 @@ SECRETS_TOOLING_NOTE = "Needed before the first commit of an encrypted env file.
 class Status(StrEnum):
     """Outcome of a single prerequisite check.
 
-    Separates a required failure, which blocks the build, from an optional shortfall, which is
-    reported so the developer knows what is missing and when it will start to matter. Inherits
-    StrEnum, so a member compares and serialises as its display string.
+    Separates a required failure, which blocks the build, from an informational optional shortfall
+    that names what is absent and when it would start to matter. Inherits ``StrEnum`` for display.
 
     Attributes:
         OK: The requirement is satisfied, displayed as PASS.
-        WARN: An optional requirement is unsatisfied and does not block the build.
+        INFO: An optional requirement is unsatisfied and does not block the build.
         FAIL: A required requirement is unsatisfied and blocks the build.
     """
 
     OK = "PASS"
-    WARN = "WARN"
+    INFO = "INFO"
     FAIL = "FAIL"
 
 
@@ -637,22 +636,22 @@ def satisfied(requirement: Requirement, observed: str) -> CheckResult:
 
 
 def unsatisfied(requirement: Requirement, observed: str) -> CheckResult:
-    """Build a failing or warning result for a checklist row.
+    """Build a failing or informational result for a checklist row.
 
     Grades the shortfall by whether the row is required, so an optional tool never turns into a
-    build blocker while still being reported.
+    build warning or blocker while still being reported.
 
     Arguments:
         requirement: Checklist row the result belongs to.
         observed: What this machine reports in place of an acceptable value.
 
     Returns:
-        A failing result for a required row, or a warning result for an optional one.
+        A failing result for a required row, or an informational result for an optional one.
     """
     return CheckResult(
         number=requirement.number,
         title=requirement.title,
-        status=Status.FAIL if requirement.required else Status.WARN,
+        status=Status.FAIL if requirement.required else Status.INFO,
         minimum=requirement.minimum_label,
         observed=observed,
         remediation=requirement.remediation,
@@ -942,7 +941,7 @@ def note_for(result: CheckResult) -> str:
     if result.status is Status.OK:
         return ""
 
-    if result.status is Status.WARN:
+    if result.status is Status.INFO:
         return f"{result.matters_when} Remediation: {result.remediation}"
 
     return f"Remediation: {result.remediation}"
@@ -961,11 +960,11 @@ def summary_line(results: Sequence[CheckResult]) -> str:
         A single-line summary of the report.
     """
     failed = sum(1 for result in results if result.status is Status.FAIL)
-    warned = sum(1 for result in results if result.status is Status.WARN)
+    informational = sum(1 for result in results if result.status is Status.INFO)
     if failed:
-        return f"FAIL: {failed} required check(s) failed, {warned} warning(s)."
+        return f"FAIL: {failed} required check(s) failed, {informational} informational item(s)."
 
-    return f"PASS: every required check passed, {warned} warning(s)."
+    return f"PASS: every required check passed, {informational} informational item(s)."
 
 
 def render_report(results: Sequence[CheckResult]) -> str:

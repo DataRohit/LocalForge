@@ -18,6 +18,9 @@ broker, real channel layer, real object storage — covering every documented ro
 
 **Status:** done
 
+**Reverified 2026-09-23:** complete runs include all five Mailpit cases in both modes, use a Daphne-free in-process
+WebSocket communicator, close ASGI, Uvicorn, Celery, and Redis resources explicitly, and report no skips or warnings.
+
 - [x] Every route in the API surface has an integration test for each status code documented in the schema,
       including those produced by middleware and framework layers rather than by view code.
 - [x] Authentication flows are covered end to end for both credential types: obtain, use, refresh where

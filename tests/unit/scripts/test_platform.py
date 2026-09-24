@@ -607,6 +607,8 @@ def test_both_test_modes_report_equal_collection_timings_and_postchecks(
     )
 
     with (
+        patch.object(platform, "start_testing_mailpit", return_value=0) as start_mailpit,
+        patch.object(platform, "finalize_testing_mailpit", return_value=0) as stop_mailpit,
         patch.object(platform, "health", return_value=0) as health,
         patch.object(platform, "docker_environment_audit", return_value=0) as ownership,
         patch.object(platform, "audit_testing_container_set", return_value=0) as residue,
@@ -626,12 +628,17 @@ def test_both_test_modes_report_equal_collection_timings_and_postchecks(
     output = capsys.readouterr().out
     assert code == platform.EXIT_OK
     assert sum("--collect-only" in command for command in commands) == ENVIRONMENT_COUNT * 3
-    assert sum("poe" in command and "test" in command for command in commands) == ENVIRONMENT_COUNT
+    assert (
+        sum("poe" in command and "test-stages" in command for command in commands)
+        == ENVIRONMENT_COUNT
+    )
+    start_mailpit.assert_called_once()
+    stop_mailpit.assert_called_once()
     assert health.call_count == ENVIRONMENT_COUNT
     assert ownership.call_count == ENVIRONMENT_COUNT
     assert residue.call_count == ENVIRONMENT_COUNT
     assert logs.call_count == ENVIRONMENT_COUNT
-    assert all(call.kwargs["mode_passed"] is True for call in logs.call_args_list)
+    assert all(not call.kwargs for call in logs.call_args_list)
     assert "COLLECTION mode=container complete=2031 core=2008 timing=23" in output
     assert "COLLECTION mode=host complete=2031 core=2008 timing=23" in output
     assert "TIMING phase=test-container seconds=3.000 status=0" in output
@@ -661,16 +668,12 @@ def test_both_test_modes_run_independently_and_return_distinct_failures(
     environment_files(tmp_path)
 
     with (
+        patch.object(platform, "start_testing_mailpit", return_value=0),
+        patch.object(platform, "finalize_testing_mailpit", return_value=0),
         patch.object(platform, "health", return_value=0),
         patch.object(platform, "docker_environment_audit", return_value=0),
         patch.object(platform, "audit_testing_container_set", return_value=0),
-        patch.object(
-            platform,
-            "audit_testing_logs",
-            side_effect=lambda _runner, _start, _end, *, mode_passed: (
-                platform.EXIT_OK if mode_passed else platform.EXIT_FAILED
-            ),
-        ) as logs,
+        patch.object(platform, "audit_testing_logs", return_value=0) as logs,
     ):
         container_runner = FakeRunner(
             results=[0, 0, 0, 0, 0, 0, LOG_FAILURE, 0],
@@ -736,15 +739,9 @@ def test_both_test_modes_run_independently_and_return_distinct_failures(
     assert container_code == platform.EXIT_CONTAINER_TEST_FAILED
     assert host_code == platform.EXIT_HOST_TEST_FAILED
     assert both_code == platform.EXIT_BOTH_TEST_MODES_FAILED
-    assert ("uv", "run", "poe", "test") in [call[0] for call in container_runner.calls]
-    assert [call.kwargs["mode_passed"] for call in logs.call_args_list] == [
-        False,
-        True,
-        True,
-        False,
-        False,
-        False,
-    ]
+    assert ("uv", "run", "poe", "test-stages") in [call[0] for call in container_runner.calls]
+    assert logs.call_count == ENVIRONMENT_COUNT * 3
+    assert all(not call.kwargs for call in logs.call_args_list)
 
 
 def test_dual_mode_collection_mismatch_and_unreadable_counts_fail(
@@ -767,16 +764,12 @@ def test_dual_mode_collection_mismatch_and_unreadable_counts_fail(
     environment_files(tmp_path)
 
     with (
+        patch.object(platform, "start_testing_mailpit", return_value=0),
+        patch.object(platform, "finalize_testing_mailpit", return_value=0),
         patch.object(platform, "health", return_value=0),
         patch.object(platform, "docker_environment_audit", return_value=0),
         patch.object(platform, "audit_testing_container_set", return_value=0),
-        patch.object(
-            platform,
-            "audit_testing_logs",
-            side_effect=lambda _runner, _start, _end, *, mode_passed: (
-                platform.EXIT_OK if mode_passed else platform.EXIT_FAILED
-            ),
-        ) as logs,
+        patch.object(platform, "audit_testing_logs", return_value=0) as logs,
     ):
         mismatch = platform.testing_test(
             tmp_path,
@@ -833,13 +826,8 @@ def test_dual_mode_collection_mismatch_and_unreadable_counts_fail(
     assert mismatch == platform.EXIT_TEST_COLLECTION_MISMATCH
     assert unreadable == platform.EXIT_FAILED
     assert partly_unreadable == platform.EXIT_CONTAINER_TEST_FAILED
-    assert [call.kwargs["mode_passed"] for call in logs.call_args_list] == [
-        True,
-        True,
-        False,
-        False,
-        True,
-    ]
+    assert logs.call_count == ENVIRONMENT_COUNT * 2 + 1
+    assert all(not call.kwargs for call in logs.call_args_list)
 
 
 def test_collection_and_testing_container_evidence_helpers() -> None:
@@ -1107,10 +1095,10 @@ def test_log_severity_classifier_recognizes_supported_formats(line: str) -> None
 
 
 def test_testing_log_audit_bounds_expected_and_unexpected_records() -> None:
-    """Accept only documented RabbitMQ records in a fully passing mode.
+    """Accept only documented negative-path and connection-close records.
 
-    Covers listing and per-container command failures, clean output, documented broker warnings,
-    ordinary false-positive text, and unexpected failure-level records.
+    Covers listing and per-container command failures, clean output, database diagnostics, paired
+    connection closes, fixed global-QoS regressions, and unexpected failure-level records.
 
     Arguments:
         None.
@@ -1139,19 +1127,11 @@ def test_testing_log_audit_bounds_expected_and_unexpected_records() -> None:
         "To continue using this feature when it is not permitted by default",
         "deprecated_features.permit.global_qos",
     ):
-        assert (
-            platform.expected_testing_log_line(
-                "rabbitmq-tr6mc",
-                marker,
-                mode_passed=True,
-            )
-            is True
-        )
+        assert platform.expected_testing_log_line("rabbitmq-tr6mc", marker) is False
     assert (
         platform.expected_testing_log_line(
             "postgres-tp8vn",
             "global_qos",
-            mode_passed=True,
         )
         is False
     )
@@ -1159,7 +1139,6 @@ def test_testing_log_audit_bounds_expected_and_unexpected_records() -> None:
         platform.expected_testing_log_line(
             "postgres-tp8vn",
             'ERROR: duplicate key value violates unique constraint "accounts_user_email_key"',
-            mode_passed=True,
         )
         is True
     )
@@ -1167,7 +1146,6 @@ def test_testing_log_audit_bounds_expected_and_unexpected_records() -> None:
         platform.expected_testing_log_line(
             "postgres-tp8vn",
             "ERROR: unrelated database failure",
-            mode_passed=True,
         )
         is False
     )
@@ -1175,15 +1153,6 @@ def test_testing_log_audit_bounds_expected_and_unexpected_records() -> None:
         platform.expected_testing_log_line(
             "seaweedfs-ts3jd",
             "global_qos",
-            mode_passed=True,
-        )
-        is False
-    )
-    assert (
-        platform.expected_testing_log_line(
-            "rabbitmq-tr6mc",
-            "global_qos",
-            mode_passed=False,
         )
         is False
     )
@@ -1191,7 +1160,6 @@ def test_testing_log_audit_bounds_expected_and_unexpected_records() -> None:
         platform.expected_testing_log_line(
             "rabbitmq-tr6mc",
             "different warning",
-            mode_passed=True,
         )
         is False
     )
@@ -1233,7 +1201,6 @@ def test_testing_log_audit_bounds_expected_and_unexpected_records() -> None:
             FakeRunner(results=[LOG_FAILURE]),
             "2026-09-21T00:00:00Z",
             "2026-09-21T00:00:02Z",
-            mode_passed=True,
         )
         == LOG_FAILURE
     )
@@ -1245,7 +1212,6 @@ def test_testing_log_audit_bounds_expected_and_unexpected_records() -> None:
             ),
             "2026-09-21T00:00:00Z",
             "2026-09-21T00:00:02Z",
-            mode_passed=True,
         )
         == IMAGE_FAILURE
     )
@@ -1253,13 +1219,13 @@ def test_testing_log_audit_bounds_expected_and_unexpected_records() -> None:
         outputs=[
             "rabbitmq-tr6mc\npostgres-tp8vn",
             (
-                "[error] Deprecated features: `global_qos`\n"
+                "logger=uvicorn.error level=INFO\n"
                 "2026-09-21 22:00:00.000000+00:00 [warning] <0.1.0> "
                 "closing AMQP connection <0.1.0> (client -> server):\n"
                 "2026-09-21 22:00:00.000000+00:00 [warning] <0.1.0> "
                 "client unexpectedly closed TCP connection"
             ),
-            "logger=uvicorn.error level=INFO",
+            'ERROR: duplicate key value violates unique constraint "accounts_user_email_key"',
         ]
     )
     assert (
@@ -1267,7 +1233,6 @@ def test_testing_log_audit_bounds_expected_and_unexpected_records() -> None:
             expected,
             "2026-09-21T00:00:00Z",
             "2026-09-21T00:00:02Z",
-            mode_passed=True,
         )
         == 0
     )
@@ -1285,7 +1250,20 @@ def test_testing_log_audit_bounds_expected_and_unexpected_records() -> None:
             unexpected,
             "2026-09-21T00:00:00Z",
             "2026-09-21T00:00:02Z",
-            mode_passed=False,
+        )
+        == platform.EXIT_FAILED
+    )
+    global_qos = FakeRunner(
+        outputs=[
+            "rabbitmq-tr6mc",
+            "[error] Deprecated features: `global_qos`",
+        ]
+    )
+    assert (
+        platform.audit_testing_logs(
+            global_qos,
+            "2026-09-21T00:00:00Z",
+            "2026-09-21T00:00:02Z",
         )
         == platform.EXIT_FAILED
     )
@@ -1453,6 +1431,13 @@ def test_testing_runtime_helpers_cover_each_mode_and_failure(tmp_path: Path) -> 
     assert platform.wait_for_testing_service(tmp_path, waiting, "mailpit") == 0
     assert waiting.calls[0][0][-1] == "mailpit"
 
+    start_failure = FakeRunner(results=[LOG_FAILURE, 0])
+    assert platform.start_testing_mailpit(tmp_path, start_failure) == LOG_FAILURE
+    assert start_failure.calls[-1][0][-4:] == ("rm", "-f", "-s", "mailpit-tm7bh")
+    readiness_failure = FakeRunner(results=[0, LOG_FAILURE, 0])
+    assert platform.start_testing_mailpit(tmp_path, readiness_failure) == LOG_FAILURE
+    assert readiness_failure.calls[-1][0][-4:] == ("rm", "-f", "-s", "mailpit-tm7bh")
+
     smtp_host = FakeRunner()
     smtp_container = FakeRunner()
     assert platform.testing_smtp_integration_tests(tmp_path, smtp_host, "host") == 0
@@ -1519,18 +1504,22 @@ def test_testing_integration_audit_reports_startup_and_mail_failures(tmp_path: P
         patch.object(platform, "health", return_value=0),
         patch.object(platform, "run_testing_mode", return_value=successful),
     ):
-        assert (
-            platform.testing_test(
-                tmp_path,
-                FakeRunner(),
-                "container",
-                ensure_up=True,
-                http_probe=lambda _url, _host: True,
-                sleep=lambda _seconds: None,
-                now=iter((0.0, 1.0)).__next__,
+        with (
+            patch.object(platform, "start_testing_mailpit", return_value=0),
+            patch.object(platform, "finalize_testing_mailpit", return_value=0),
+        ):
+            assert (
+                platform.testing_test(
+                    tmp_path,
+                    FakeRunner(),
+                    "container",
+                    ensure_up=True,
+                    http_probe=lambda _url, _host: True,
+                    sleep=lambda _seconds: None,
+                    now=iter((0.0, 1.0)).__next__,
+                )
+                == platform.EXIT_OK
             )
-            == platform.EXIT_OK
-        )
         readiness_failure = FakeRunner(results=[0, LOG_FAILURE])
         assert run_testing_integration_audit(tmp_path, readiness_failure) == LOG_FAILURE
         assert readiness_failure.calls[-1][0][-4:] == ("rm", "-f", "-s", "mailpit-tm7bh")
@@ -2514,11 +2503,13 @@ def test_missing_image_setup_builds_each_unique_local_image_once() -> None:
     assert "pgbackrest-pb2wj" not in build_targets
 
 
-def test_existing_image_setup_skips_build_and_uses_no_build_up(tmp_path: Path) -> None:
-    """Start and verify existing images without rebuilding or forcing recreation.
+def test_existing_image_setup_rebuilds_local_images_and_uses_no_build_up(
+    tmp_path: Path,
+) -> None:
+    """Refresh local images before starting without Compose-time builds.
 
-    Models a repeated setup run with every exact image tag present and requires both Compose starts
-    to use the no-build no-recreate path while retaining readiness and audit phases.
+    Models a repeated setup run with every exact image tag present and requires cached local builds
+    before both Compose starts use the no-build path.
 
     Arguments:
         tmp_path: Temporary repository root.
@@ -2527,7 +2518,7 @@ def test_existing_image_setup_skips_build_and_uses_no_build_up(tmp_path: Path) -
         None.
 
     Raises:
-        AssertionError: If an existing image is rebuilt or a persistent service is force-recreated.
+        AssertionError: If a local image is stale, an external image is pulled, or Compose builds.
     """
     environment_files(tmp_path)
     runner = ImageStateRunner(present_images=set(platform.SETUP_IMAGES))
@@ -2544,9 +2535,12 @@ def test_existing_image_setup_skips_build_and_uses_no_build_up(tmp_path: Path) -
 
     commands = [call[0] for call in runner.calls]
     starts = [command for command in commands if "up" in command]
+    builds = [command for command in commands if "build" in command]
     assert code == platform.EXIT_OK
-    assert all("build" not in command for command in commands)
     assert all("pull" not in command for command in commands)
+    assert len(builds) == ENVIRONMENT_COUNT
+    assert builds[0][-3:] == ("build", "postgres-pg3ka", "django-uv5n2")
+    assert builds[1][-2:] == ("build", "django-test-dt5qx")
     assert len(starts) == ENVIRONMENT_COUNT
     assert all("--no-build" in command for command in starts)
     assert all("--force-recreate" not in command for command in starts)
@@ -2554,11 +2548,11 @@ def test_existing_image_setup_skips_build_and_uses_no_build_up(tmp_path: Path) -
     audit.assert_called_once()
 
 
-def test_partial_image_setup_builds_only_missing_unique_images() -> None:
-    """Build only missing local image tags from a partial Docker cache.
+def test_partial_image_setup_refreshes_every_local_image() -> None:
+    """Refresh every local image from a partial Docker cache.
 
-    Keeps every external image and the development Django image present while requiring the shared
-    pgBackRest image and the testing image to be built once each.
+    Keeps every external image and one local image present while requiring all local targets to be
+    rebuilt exactly once through their representative services.
 
     Arguments:
         None.
@@ -2567,7 +2561,7 @@ def test_partial_image_setup_builds_only_missing_unique_images() -> None:
         None.
 
     Raises:
-        AssertionError: If setup rebuilds present images or duplicates a shared-image target.
+        AssertionError: If setup omits a local target or duplicates a shared-image target.
     """
     missing = {"localforge/pgbackrest:18.6", "localforge/django-test:0.1.0"}
     runner = ImageStateRunner(present_images=set(platform.SETUP_IMAGES) - missing)
@@ -2576,9 +2570,8 @@ def test_partial_image_setup_builds_only_missing_unique_images() -> None:
 
     build_commands = [call[0] for call in runner.calls if "build" in call[0]]
     assert code == platform.EXIT_OK
-    assert build_commands[0][-2:] == ("build", "postgres-pg3ka")
+    assert build_commands[0][-3:] == ("build", "postgres-pg3ka", "django-uv5n2")
     assert build_commands[1][-2:] == ("build", "django-test-dt5qx")
-    assert all("django-uv5n2" not in command for command in build_commands)
     assert all("pgbackrest-pb2wj" not in command for command in build_commands)
 
 
@@ -2830,6 +2823,114 @@ def test_testing_modes_propagate_start_and_health_failures(tmp_path: Path) -> No
             )
             == LOG_FAILURE
         )
+    with (
+        patch.object(platform, "up", return_value=0),
+        patch.object(platform, "health", return_value=0),
+        patch.object(platform, "start_testing_mailpit", return_value=LOG_FAILURE),
+        patch.object(platform, "execute_testing_modes") as execute,
+        patch.object(platform, "finalize_testing_mailpit") as finalize,
+    ):
+        assert (
+            platform.main(
+                ["testing-test-both"],
+                root=tmp_path,
+                runner=FakeRunner(),
+            )
+            == LOG_FAILURE
+        )
+    execute.assert_not_called()
+    finalize.assert_not_called()
+
+
+def test_selected_host_test_tasks_use_the_mailpit_lifecycle(tmp_path: Path) -> None:
+    """Route every public focused host task through one dependency lifecycle.
+
+    Verifies command dispatch, startup failures, successful execution, post-checks, log audit, and
+    cleanup while preserving the selected internal Poe task and first failure code.
+
+    Arguments:
+        tmp_path: Temporary repository root.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If routing, failure propagation, post-checking, or cleanup drifts.
+    """
+    environment_files(tmp_path)
+    with patch.object(platform, "testing_host_task", return_value=0) as selected:
+        for command, task in platform.HOST_TEST_TASKS.items():
+            assert platform.main([command], root=tmp_path, runner=FakeRunner()) == 0
+            assert selected.call_args.args[2] == task
+
+    with patch.object(platform, "up", return_value=IMAGE_FAILURE):
+        assert (
+            platform.testing_host_task(
+                tmp_path,
+                FakeRunner(),
+                "test-integration-stages",
+                http_probe=lambda _url, _host: True,
+                sleep=lambda _seconds: None,
+                now=lambda: 0.0,
+            )
+            == IMAGE_FAILURE
+        )
+    with (
+        patch.object(platform, "up", return_value=0),
+        patch.object(platform, "health", return_value=LOG_FAILURE),
+    ):
+        assert (
+            platform.testing_host_task(
+                tmp_path,
+                FakeRunner(),
+                "test-integration-stages",
+                http_probe=lambda _url, _host: True,
+                sleep=lambda _seconds: None,
+                now=lambda: 0.0,
+            )
+            == LOG_FAILURE
+        )
+    with (
+        patch.object(platform, "up", return_value=0),
+        patch.object(platform, "health", return_value=0),
+        patch.object(platform, "start_testing_mailpit", return_value=LOG_FAILURE),
+    ):
+        assert (
+            platform.testing_host_task(
+                tmp_path,
+                FakeRunner(),
+                "test-integration-stages",
+                http_probe=lambda _url, _host: True,
+                sleep=lambda _seconds: None,
+                now=lambda: 0.0,
+            )
+            == LOG_FAILURE
+        )
+
+    runner = FakeRunner(results=[LOG_FAILURE])
+    with (
+        patch.object(platform, "up", return_value=0),
+        patch.object(platform, "health", return_value=0),
+        patch.object(platform, "start_testing_mailpit", return_value=0),
+        patch.object(platform, "docker_environment_audit", return_value=0),
+        patch.object(platform, "audit_testing_container_set", return_value=0),
+        patch.object(platform, "audit_testing_logs", return_value=0),
+        patch.object(platform, "finalize_testing_mailpit", return_value=0) as cleanup,
+    ):
+        assert (
+            platform.testing_host_task(
+                tmp_path,
+                runner,
+                "test-integration-stages",
+                http_probe=lambda _url, _host: True,
+                sleep=lambda _seconds: None,
+                now=lambda: 0.0,
+            )
+            == LOG_FAILURE
+        )
+
+    assert runner.calls[0][0] == ("uv", "run", "poe", "test-integration-stages")
+    cleanup.assert_called_once()
 
 
 def test_testing_verify_propagates_rebuild_failure(tmp_path: Path) -> None:

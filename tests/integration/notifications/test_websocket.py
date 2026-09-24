@@ -14,7 +14,6 @@ from uuid import UUID, uuid4
 import pytest
 from channels.layers import get_channel_layer
 from channels.routing import ProtocolTypeRouter, URLRouter
-from channels.testing import WebsocketCommunicator
 from django.conf import settings
 from django.urls import path
 from redis import asyncio as aioredis
@@ -32,6 +31,7 @@ from notifications.websocket import (
     NotificationConsumer,
     WebSocketFailureBoundary,
 )
+from tests.websocket import WebsocketCommunicator
 
 ROUTE = "/ws/notifications/"
 ALLOWED_ORIGIN = b"http://localhost:8080"
@@ -142,7 +142,7 @@ async def connect_notification_socket(
         subprotocols=subprotocols,
     )
     communicator.scope["user"] = SimpleNamespace(pk=account_id)
-    connected, detail = cast("tuple[bool, str | int | None]", await communicator.connect())
+    connected, detail = await communicator.connect()
 
     return communicator, connected, detail
 

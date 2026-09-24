@@ -19,6 +19,13 @@ failures.
 
 **Status:** done
 
+**Reverified 2026-09-23:** both modes collected 2,112 tests, then passed 2,089 covered core tests and 23 timing
+tests. Container mode took 524.892 seconds, host mode 1,333.515 seconds, and the total was 1,919.697 seconds.
+
+**Audit remediation:** every public task that can select SMTP tests now owns the same temporary Mailpit lifecycle;
+skips fail the controller session; exact expected log records no longer become secondary failures when pytest fails;
+and any RabbitMQ `global_qos` record remains a blocker.
+
 - [x] The testing stack starts headless, containing only the services the suite needs and no dashboard or UI
       service.
 - [x] The suite passes inside the test container, resolving services by container name.

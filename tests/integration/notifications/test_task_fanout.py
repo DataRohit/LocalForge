@@ -21,7 +21,6 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 from channels.db import database_sync_to_async
-from channels.testing import WebsocketCommunicator
 from django.conf import settings
 from django.test import Client as DjangoClient
 from kombu import Exchange, Queue
@@ -31,6 +30,7 @@ from rest_framework.authtoken.models import Token
 from accounts.jwt_authentication import PrimaryRefreshToken
 from config.asgi import application
 from config.celery import app
+from tests.websocket import WebsocketCommunicator
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -223,10 +223,7 @@ async def _connect_socket(access: str) -> WebsocketCommunicator:
         headers=HEADERS,
         subprotocols=[access],
     )
-    connected, accepted = cast(
-        "tuple[bool, str | int | None]",
-        await communicator.connect(),
-    )
+    connected, accepted = await communicator.connect()
     assert connected
     assert accepted == access
     return communicator

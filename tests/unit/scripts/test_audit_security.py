@@ -718,7 +718,10 @@ def test_image_check_scans_unique_images_and_rejects_findings(tmp_path: Path) ->
     assert not audit.image_check(invalid, tmp_path)
 
 
-def test_image_check_rejects_missing_or_drifted_policy(tmp_path: Path) -> None:
+def test_image_check_rejects_missing_or_drifted_policy(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     """Reject absent, malformed, wrong-scanner, and incomplete policies.
 
     Exercises every policy precondition before a scanner can run.
@@ -726,6 +729,7 @@ def test_image_check_rejects_missing_or_drifted_policy(tmp_path: Path) -> None:
 
     Arguments:
         tmp_path: Temporary repository root.
+        capsys: Fixture capturing actionable failure diagnostics.
 
     Returns:
         None.
@@ -735,6 +739,7 @@ def test_image_check_rejects_missing_or_drifted_policy(tmp_path: Path) -> None:
     """
     runner = FakeRunner()
     assert not audit.image_check(runner, tmp_path)
+    assert "image-policy unavailable-or-incompatible" in capsys.readouterr().out
 
     path = tmp_path / audit.IMAGE_POLICY_RELATIVE_PATH
     path.parent.mkdir(parents=True)
@@ -747,6 +752,7 @@ def test_image_check_rejects_missing_or_drifted_policy(tmp_path: Path) -> None:
     ):
         path.write_text(policy, encoding="utf-8")
         assert not audit.image_check(runner, tmp_path)
+        assert "FAIL image-policy" in capsys.readouterr().out
     assert runner.calls == []
 
 
@@ -806,6 +812,13 @@ def test_image_check_rejects_identity_and_live_container_drift(tmp_path: Path) -
                 ]
             ),
             tmp_path,
+        )
+
+        assert not audit.image_matches_policy(
+            FakeRunner([audit.CommandResult(0, f"{TEST_IMAGE_ID}\n")]),
+            first_image,
+            [],
+            "cache",
         )
 
     wrong_artifact = trivy_payload(artifact_name=f"sha256:{'5' * 64}")

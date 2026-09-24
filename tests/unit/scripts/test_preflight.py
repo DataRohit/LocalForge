@@ -177,7 +177,7 @@ def passing_probes() -> FakeProbes:
     """Build a machine on which every requirement is satisfied.
 
     Supplies a version at or above every floor, ample resources on every volume, and the optional
-    tooling, so the resulting report contains no warning and no failure.
+    tooling, so the resulting report contains no informational item and no failure.
 
     Arguments:
         None.
@@ -195,7 +195,7 @@ def passing_probes() -> FakeProbes:
     )
 
 
-def warning_probes() -> FakeProbes:
+def informational_probes() -> FakeProbes:
     """Build a machine that satisfies every required row and no optional one.
 
     Removes the host interpreter, the cluster tooling, the encryption tooling, and the database
@@ -205,7 +205,7 @@ def warning_probes() -> FakeProbes:
         None.
 
     Returns:
-        A probe surface describing a machine that can build the platform with warnings.
+        A probe surface describing a machine that can build with optional informational items.
     """
     probes = passing_probes()
     for command in (("sops", "--version"), ("age", "--version"), ("psql", "--version")):
@@ -221,7 +221,7 @@ def failing_probes() -> FakeProbes:
     """Build a machine on which nothing is available.
 
     Reports every tool as absent, the container engine as unreachable, and every volume as
-    unmeasurable, which drives every required row to a failure and every optional row to a warning.
+    unmeasurable, which drives required rows to failure and optional rows to information.
 
     Arguments:
         None.
@@ -316,8 +316,8 @@ def test_every_version_floor_matches_the_checklist_document() -> None:
 def test_a_fully_equipped_machine_passes_every_check() -> None:
     """Report success when every requirement is met.
 
-    Confirms a machine matching the recorded prerequisites produces no warning and no failure, so a
-    green report genuinely means nothing is outstanding.
+    Confirms a machine matching the recorded prerequisites produces no informational item and no
+    failure, so a green report genuinely means nothing is outstanding.
 
     Arguments:
         None.
@@ -335,7 +335,7 @@ def test_a_fully_equipped_machine_passes_every_check() -> None:
 
 
 @pytest.mark.unit
-def test_warnings_alone_do_not_block_the_build() -> None:
+def test_information_alone_does_not_block_the_build() -> None:
     """Let the build proceed when only optional rows are unsatisfied.
 
     Confirms a machine missing the host interpreter, the cluster tooling, and the encryption tooling
@@ -348,22 +348,24 @@ def test_warnings_alone_do_not_block_the_build() -> None:
         None.
 
     Raises:
-        AssertionError: If the exit code is non-zero, or the summary miscounts the warnings.
+        AssertionError: If the exit code is non-zero, or the summary miscounts optional items.
     """
-    results = preflight.build_report(warning_probes())
-    warned = [result for result in results if result.status is preflight.Status.WARN]
+    results = preflight.build_report(informational_probes())
+    informational = [result for result in results if result.status is preflight.Status.INFO]
 
-    assert [result.number for result in warned] == [4, 10, 11, 12, 13]
+    assert [result.number for result in informational] == [4, 10, 11, 12, 13]
     assert preflight.exit_code(results) == 0
-    assert preflight.summary_line(results) == "PASS: every required check passed, 5 warning(s)."
+    assert preflight.summary_line(results) == (
+        "PASS: every required check passed, 5 informational item(s)."
+    )
 
 
 @pytest.mark.unit
-def test_every_warning_says_when_it_starts_to_matter() -> None:
+def test_every_informational_item_says_when_it_starts_to_matter() -> None:
     """Explain the consequence of leaving an optional row unsatisfied.
 
-    Confirms each warning names both the point at which it begins to block work and the remediation,
-    so a reader can decide whether to act now or later.
+    Confirms each optional item names when it begins to block work and its remediation, so a reader
+    can decide whether to act now or later.
 
     Arguments:
         None.
@@ -372,24 +374,24 @@ def test_every_warning_says_when_it_starts_to_matter() -> None:
         None.
 
     Raises:
-        AssertionError: If a warning omits either half of its guidance.
+        AssertionError: If an informational item omits either half of its guidance.
     """
-    results = preflight.build_report(warning_probes())
-    warned = [result for result in results if result.status is preflight.Status.WARN]
+    results = preflight.build_report(informational_probes())
+    informational = [result for result in results if result.status is preflight.Status.INFO]
 
-    assert warned
-    for result in warned:
+    assert informational
+    for result in informational:
         note = preflight.note_for(result)
         assert result.matters_when in note
         assert result.remediation in note
 
 
 @pytest.mark.unit
-def test_a_bare_machine_fails_required_checks_and_warns_on_optional_ones() -> None:
+def test_a_bare_machine_fails_required_checks_and_reports_optional_ones() -> None:
     """Separate blocking failures from optional shortfalls.
 
-    Confirms an empty machine drives required rows to a failure and optional rows only to a warning,
-    and returns the documented failure exit code.
+    Confirms an empty machine drives required rows to failure and optional rows to information,
+    while returning the documented failure exit code.
 
     Arguments:
         None.
@@ -403,10 +405,10 @@ def test_a_bare_machine_fails_required_checks_and_warns_on_optional_ones() -> No
     """
     results = preflight.build_report(failing_probes())
     failed = [result.number for result in results if result.status is preflight.Status.FAIL]
-    warned = [result.number for result in results if result.status is preflight.Status.WARN]
+    informational = [result.number for result in results if result.status is preflight.Status.INFO]
 
     assert failed == [1, 2, 3, 5, 6, 7, 8, 9]
-    assert warned == [4, 10, 11, 12, 13]
+    assert informational == [4, 10, 11, 12, 13]
     assert preflight.exit_code(results) == 1
 
 
@@ -611,9 +613,9 @@ def test_the_host_interpreter_is_probed_without_the_project_virtualenv() -> None
     Raises:
         AssertionError: If the host row does not warn while the virtualenv row passes.
     """
-    results = {result.number: result for result in preflight.build_report(warning_probes())}
+    results = {result.number: result for result in preflight.build_report(informational_probes())}
 
-    assert results[4].status is preflight.Status.WARN
+    assert results[4].status is preflight.Status.INFO
     assert results[4].observed == "3.12.10"
     assert results[5].status is preflight.Status.OK
     assert results[5].observed == "3.14.6"
@@ -1123,13 +1125,13 @@ def test_an_outdated_cluster_tool_reports_its_version_not_its_absence() -> None:
 
     result = preflight.evaluate_cluster_tooling(probes)
 
-    assert result.status is preflight.Status.WARN
+    assert result.status is preflight.Status.INFO
     assert result.observed == "kind 0.20.0, minikube not present"
 
 
 @pytest.mark.unit
-def test_absent_cluster_tooling_warns_and_says_when_it_matters() -> None:
-    """Warn rather than fail when no cluster tool is installed.
+def test_absent_cluster_tooling_informs_and_says_when_it_matters() -> None:
+    """Inform rather than fail when no cluster tool is installed.
 
     Confirms the row reports both tools as absent and explains that Kubernetes is reasoning-only,
     which is why its absence does not block the build.
@@ -1145,7 +1147,7 @@ def test_absent_cluster_tooling_warns_and_says_when_it_matters() -> None:
     """
     result = preflight.evaluate_cluster_tooling(FakeProbes())
 
-    assert result.status is preflight.Status.WARN
+    assert result.status is preflight.Status.INFO
     assert result.observed == "kind not present, minikube not present"
     assert "reasoning-only" in result.matters_when
 
@@ -1171,7 +1173,7 @@ def test_the_report_aligns_every_row_and_ends_with_a_summary() -> None:
 
     assert lines[0].startswith("#")
     assert set(lines[1]) <= {"-", " "}
-    assert lines[-1] == "PASS: every required check passed, 0 warning(s)."
+    assert lines[-1] == "PASS: every required check passed, 0 informational item(s)."
     assert "Guidance:" not in lines
 
 
@@ -1201,11 +1203,11 @@ def test_guidance_is_listed_below_the_table_rather_than_in_a_column() -> None:
 
 
 @pytest.mark.unit
-def test_the_summary_counts_failures_and_warnings() -> None:
+def test_the_summary_counts_failures_and_informational_items() -> None:
     """State the counts behind a failing verdict.
 
-    Confirms a failing report summarises how many required checks failed and how many warnings were
-    raised, so the outcome is legible without reading the table.
+    Confirms a failing report summarises required failures and optional informational items, so the
+    outcome is legible without reading the table.
 
     Arguments:
         None.
@@ -1218,7 +1220,9 @@ def test_the_summary_counts_failures_and_warnings() -> None:
     """
     results = preflight.build_report(failing_probes())
 
-    assert preflight.summary_line(results) == "FAIL: 8 required check(s) failed, 5 warning(s)."
+    assert preflight.summary_line(results) == (
+        "FAIL: 8 required check(s) failed, 5 informational item(s)."
+    )
 
 
 @pytest.mark.unit
@@ -1237,7 +1241,7 @@ def test_json_output_carries_every_field_of_every_result() -> None:
     Raises:
         AssertionError: If the document does not mirror the evaluated report.
     """
-    results = preflight.build_report(warning_probes())
+    results = preflight.build_report(informational_probes())
     payload = json.loads(preflight.render_json(results))
 
     assert payload["ok"] is True
@@ -1281,7 +1285,7 @@ def test_the_default_run_prints_the_report_and_returns_zero(
 
     assert code == 0
     assert "Requirement" in printed
-    assert printed.rstrip().endswith("0 warning(s).")
+    assert printed.rstrip().endswith("0 informational item(s).")
 
 
 @pytest.mark.unit

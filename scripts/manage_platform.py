@@ -75,6 +75,11 @@ TESTING_CONTAINERS = frozenset(TESTING_SERVICES)
 TESTING_OPTIONAL_CONTAINERS = frozenset({"mailpit-tm7bh"})
 TESTING_RUNTIME_PROBE_MODULE = "tests.integration.config.runtime_probe"
 SMTP_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+HOST_TEST_TASKS = {
+    "testing-test-host-serial": "test-serial-stages",
+    "testing-test-host-fresh": "test-fresh-stages",
+    "testing-test-host-integration": "test-integration-stages",
+}
 SMTP_INTEGRATION_TESTS = (
     (
         "tests/integration/accounts/test_account_activation.py"
@@ -88,6 +93,7 @@ SMTP_INTEGRATION_TESTS = (
         "tests/integration/accounts/test_username_management.py"
         "::test_username_recovery_round_trips_through_smtp_and_mailpit"
     ),
+    "tests/integration/config/test_email.py::test_mailpit_rejects_unauthenticated_api_access",
     "tests/integration/config/test_email.py::test_a_message_round_trips_through_smtp_and_mailpit",
 )
 TEST_COLLECTION_PATTERN = re.compile(r"(?:(?P<selected>\d+)/)?(?P<total>\d+) tests? collected")
@@ -219,7 +225,7 @@ LocalForge environment commands
 First setup
   uv sync --all-groups --frozen
   uv run poe setup                 Check prerequisites and prepare environment files
-  uv run poe environments-setup    Bootstrap missing images, start, time, and audit both
+  uv run poe environments-setup    Pull missing images, rebuild local images, start, and audit both
   uv run poe docker-clean-check     Require zero LocalForge Docker resources
   uv run poe docker-audit           Verify running resources, labels, health, and ownership
 
@@ -1741,16 +1747,19 @@ def ensure_images(
     runner: Runner,
     local_targets: Sequence[tuple[str, EnvironmentSpec, str]],
     external_targets: Sequence[tuple[str, EnvironmentSpec, str]],
+    *,
+    refresh_local: bool = False,
 ) -> int:
     """Provide selected images through unique representative services.
 
-    Pulls only absent external images and builds only absent local image tags through one
-    representative service per distinct image.
+    Pulls only absent external images and builds local image tags through one representative
+    service per distinct image, either when absent or whenever source matching is requested.
 
     Arguments:
         runner: External command adapter.
         local_targets: Local image build targets.
         external_targets: External image pull targets.
+        refresh_local: Whether every selected local image must be rebuilt through cached layers.
 
     Returns:
         Zero when every selected image tag exists or was created successfully.
@@ -1764,14 +1773,16 @@ def ensure_images(
     if code != EXIT_OK:
         return code
 
-    return run_image_targets(runner, local_targets, missing, "build")
+    local_images = {image for image, _spec, _service in local_targets}
+    build_images = local_images if refresh_local else missing
+    return run_image_targets(runner, local_targets, build_images, "build")
 
 
 def ensure_setup_images(runner: Runner) -> int:
     """Provide every image needed by two-environment bootstrap.
 
-    Uses one global target list so images shared across environments are inspected and acquired
-    once.
+    Uses one global target list so external images shared across environments are inspected and
+    acquired once, while every local image is rebuilt through deterministic cached layers.
 
     Arguments:
         runner: External command adapter.
@@ -1779,7 +1790,12 @@ def ensure_setup_images(runner: Runner) -> int:
     Returns:
         Zero when every exact setup image tag exists or was created successfully.
     """
-    return ensure_images(runner, LOCAL_BUILD_TARGETS, EXTERNAL_PULL_TARGETS)
+    return ensure_images(
+        runner,
+        LOCAL_BUILD_TARGETS,
+        EXTERNAL_PULL_TARGETS,
+        refresh_local=True,
+    )
 
 
 def ensure_environment_images(runner: Runner, spec: EnvironmentSpec) -> int:
@@ -2148,7 +2164,7 @@ def testing_mode_commands(
                 "-T",
                 "django-test-dt5qx",
                 "poe",
-                "test",
+                "test-stages",
             ),
         )
     if mode == "host":
@@ -2164,7 +2180,7 @@ def testing_mode_commands(
             )
             for selection in selections
         )
-        return collections, ("uv", "run", "poe", "test")
+        return collections, ("uv", "run", "poe", "test-stages")
 
     msg = f"unsupported testing mode: {mode}"
     raise ValueError(msg)
@@ -2342,14 +2358,20 @@ def docker_environment_audit(runner: Runner, spec: EnvironmentSpec) -> int:
     return EXIT_OK
 
 
-def audit_testing_container_set(runner: Runner) -> int:
-    """Require exactly the six default testing containers after a suite.
+def audit_testing_container_set(
+    runner: Runner,
+    *,
+    include_mailpit: bool = False,
+) -> int:
+    """Require the exact testing container set after a suite.
 
     Uses the Compose project label so unrelated Docker objects are ignored, while optional profile
-    containers, generated run containers, missing services, and stale project resources fail.
+    containers are accepted only during a complete SMTP-enabled run and generated run containers,
+    missing services, and stale project resources fail.
 
     Arguments:
         runner: External command adapter.
+        include_mailpit: Whether the temporary SMTP profile container must be present.
 
     Returns:
         Zero for the exact headless set, otherwise failure.
@@ -2369,10 +2391,12 @@ def audit_testing_container_set(runner: Runner) -> int:
     if result.code != EXIT_OK:
         return result.code
 
+    optional = TESTING_OPTIONAL_CONTAINERS if include_mailpit else frozenset()
+    expected = TESTING_CONTAINERS | optional
     observed = {line for line in result.output.splitlines() if line}
     failures = [
-        *(f"missing-container {name}" for name in sorted(TESTING_CONTAINERS - observed)),
-        *(f"unexpected-container {name}" for name in sorted(observed - TESTING_CONTAINERS)),
+        *(f"missing-container {name}" for name in sorted(expected - observed)),
+        *(f"unexpected-container {name}" for name in sorted(observed - expected)),
     ]
     if failures:
         for failure in failures:
@@ -2453,22 +2477,19 @@ def log_line_is_warning_or_higher(line: str) -> bool:
     )
 
 
-def expected_testing_log_line(container: str, line: str, *, mode_passed: bool) -> bool:
-    """Recognize the narrowly accepted testing RabbitMQ records.
+def expected_testing_log_line(container: str, line: str) -> bool:
+    """Recognize narrowly accepted testing database records.
 
-    Accepts only the documented focused-worker records and only after the containing mode's suite,
-    ownership, residue, and health checks have already passed.
+    Accepts only exact negative-path PostgreSQL records required by integration tests. RabbitMQ
+    deprecation and global-QoS records remain blockers because the queue topology fixed them.
 
     Arguments:
         container: Container that emitted the line.
         line: Warning-or-higher log line.
-        mode_passed: Whether all non-log gates for the mode passed.
 
     Returns:
         Whether the record is documented and safe in this exact test window.
     """
-    if not mode_passed:
-        return False
     line = normalize_log_line(line)
     if container == "postgres-tp8vn":
         return any(
@@ -2482,18 +2503,7 @@ def expected_testing_log_line(container: str, line: str, *, mode_passed: bool) -
                 'relation "accounts_login_throttle_event" does not exist',
             )
         )
-    if container != "rabbitmq-tr6mc":
-        return False
-    return any(
-        marker in line
-        for marker in (
-            "global_qos",
-            "By default, this feature is not permitted anymore.",
-            "The feature will be removed from a future major RabbitMQ version",
-            "To continue using this feature when it is not permitted by default",
-            "deprecated_features.permit.global_qos",
-        )
-    )
+    return False
 
 
 def rabbitmq_connection_close_pair(first: str, second: str) -> bool:
@@ -2527,8 +2537,6 @@ def rabbitmq_connection_close_pair(first: str, second: str) -> bool:
 def unexpected_testing_log_count(
     container: str,
     lines: Sequence[str],
-    *,
-    mode_passed: bool,
 ) -> int:
     """Count unexplained warning-or-higher records for one testing container.
 
@@ -2538,7 +2546,6 @@ def unexpected_testing_log_count(
     Arguments:
         container: Container that emitted the lines.
         lines: Ordered bounded log records.
-        mode_passed: Whether the requested mode set passed every non-log gate.
 
     Returns:
         Number of unexplained warning-or-higher records.
@@ -2550,12 +2557,11 @@ def unexpected_testing_log_count(
         if not log_line_is_warning_or_higher(line):
             index += 1
             continue
-        if expected_testing_log_line(container, line, mode_passed=mode_passed):
+        if expected_testing_log_line(container, line):
             index += 1
             continue
         if (
             container == "rabbitmq-tr6mc"
-            and mode_passed
             and index + 1 < len(lines)
             and rabbitmq_connection_close_pair(line, lines[index + 1])
         ):
@@ -2571,20 +2577,17 @@ def audit_testing_logs(
     runner: Runner,
     started_at: str,
     ended_at: str,
-    *,
-    mode_passed: bool,
 ) -> int:
     """Audit a bounded testing-container log window after one mode.
 
     Reads both stdout and stderr from every running project container, rejects warning-or-higher
-    records, and permits only the documented RabbitMQ test-worker records after all other mode
-    gates pass.
+    records, and permits only exact documented negative-path database records and paired focused
+    worker connection closes.
 
     Arguments:
         runner: External command adapter.
         started_at: Absolute UTC suite-start boundary.
         ended_at: Absolute UTC post-check boundary.
-        mode_passed: Whether collection, suite, health, ownership, and residue passed.
 
     Returns:
         Zero when every record is clean or documented, otherwise failure.
@@ -2623,7 +2626,6 @@ def audit_testing_logs(
         unexpected = unexpected_testing_log_count(
             container,
             result.output.splitlines(),
-            mode_passed=mode_passed,
         )
         if unexpected:
             failures[container] = unexpected
@@ -2669,7 +2671,7 @@ def run_testing_mode(
 
     health_code = health(root, runner, TESTING, http_probe=http_probe)
     ownership_code = docker_environment_audit(runner, TESTING)
-    residue_code = audit_testing_container_set(runner)
+    residue_code = audit_testing_container_set(runner, include_mailpit=True)
     non_log_post_code = next(
         (code for code in (health_code, ownership_code, residue_code) if code != EXIT_OK),
         EXIT_OK,
@@ -2686,17 +2688,15 @@ def run_testing_mode(
     )
 
 
-def testing_test(  # noqa: C901, PLR0913
+def execute_testing_modes(
     root: Path,
     runner: Runner,
     mode: str,
     *,
-    ensure_up: bool,
     http_probe: Callable[[str, str], bool],
-    sleep: Callable[[float], None],
     now: Callable[[], float],
 ) -> int:
-    """Run one or both complete testing modes.
+    """Execute one or both complete testing modes with dependencies ready.
 
     Collects every requested mode before any suite executes, then reports independent execution,
     post-check, timing, and parity evidence with raw single-mode or stable dual-mode statuses.
@@ -2705,30 +2705,12 @@ def testing_test(  # noqa: C901, PLR0913
         root: Repository root.
         runner: External command adapter.
         mode: ``container``, ``host``, or ``both``.
-        ensure_up: Whether to start and verify the testing environment first.
         http_probe: HTTP readiness adapter.
-        sleep: Callable pausing between health polls.
         now: Monotonic clock.
 
     Returns:
         Zero on success, raw child status for one mode, or stable dual-mode status.
     """
-    if ensure_up:
-        code = up(
-            root,
-            runner,
-            TESTING,
-            recreate=False,
-            proxy_only=False,
-            sleep=sleep,
-            now=now,
-        )
-        if code != EXIT_OK:
-            return code
-        code = health(root, runner, TESTING, http_probe=http_probe)
-        if code != EXIT_OK:
-            return code
-
     requested_modes = ("container", "host") if mode == "both" else (mode,)
     total_started = now()
     collections = [
@@ -2757,11 +2739,6 @@ def testing_test(  # noqa: C901, PLR0913
                 runner,
                 result.started_at,
                 result.ended_at,
-                mode_passed=(
-                    result.collection.valid
-                    and result.test_code == EXIT_OK
-                    and result.non_log_post_code == EXIT_OK
-                ),
             ),
         )
         for result in results
@@ -2798,6 +2775,164 @@ def testing_test(  # noqa: C901, PLR0913
     total_duration = now() - total_started
     print(f"TIMING phase=test-both seconds={total_duration:.3f} status={code}")
     return code
+
+
+def start_testing_mailpit(root: Path, runner: Runner) -> int:
+    """Start and verify the temporary SMTP profile service.
+
+    Creates only the registered Mailpit container and verifies it through the host environment used
+    by the complete suite before collection can decide whether any test is runnable.
+
+    Arguments:
+        root: Repository root holding the host environment file.
+        runner: External command adapter.
+
+    Returns:
+        Zero when Mailpit is ready, otherwise the first command failure.
+    """
+    code = runner.run(
+        compose_command(
+            TESTING,
+            "--profile",
+            "smtp",
+            "up",
+            "-d",
+            "--no-build",
+            "mailpit-tm7bh",
+        )
+    ).code
+    if code == EXIT_OK:
+        code = wait_for_testing_service(root, runner, "mailpit")
+    if code != EXIT_OK:
+        runner.run(compose_command(TESTING, "rm", "-f", "-s", "mailpit-tm7bh"))
+    return code
+
+
+def testing_test(  # noqa: PLR0913
+    root: Path,
+    runner: Runner,
+    mode: str,
+    *,
+    ensure_up: bool,
+    http_probe: Callable[[str, str], bool],
+    sleep: Callable[[float], None],
+    now: Callable[[], float],
+) -> int:
+    """Run one or both complete testing modes with real SMTP coverage.
+
+    Starts the default testing dependencies when requested, adds the temporary Mailpit profile
+    before collection, executes every test in each requested mode, and removes Mailpit even when a
+    suite or post-check fails.
+
+    Arguments:
+        root: Repository root.
+        runner: External command adapter.
+        mode: ``container``, ``host``, or ``both``.
+        ensure_up: Whether to start and verify the testing environment first.
+        http_probe: HTTP readiness adapter.
+        sleep: Callable pausing between health polls.
+        now: Monotonic clock.
+
+    Returns:
+        Zero on complete success, or the first environment, suite, post-check, or cleanup failure.
+    """
+    if ensure_up:
+        code = up(
+            root,
+            runner,
+            TESTING,
+            recreate=False,
+            proxy_only=False,
+            sleep=sleep,
+            now=now,
+        )
+        if code != EXIT_OK:
+            return code
+        code = health(root, runner, TESTING, http_probe=http_probe)
+        if code != EXIT_OK:
+            return code
+
+    code = start_testing_mailpit(root, runner)
+    if code != EXIT_OK:
+        return code
+
+    body_code = execute_testing_modes(
+        root,
+        runner,
+        mode,
+        http_probe=http_probe,
+        now=now,
+    )
+    cleanup_code = finalize_testing_mailpit(root, runner)
+    return body_code if body_code != EXIT_OK else cleanup_code
+
+
+def testing_host_task(  # noqa: PLR0913
+    root: Path,
+    runner: Runner,
+    poe_task: str,
+    *,
+    http_probe: Callable[[str, str], bool],
+    sleep: Callable[[float], None],
+    now: Callable[[], float],
+) -> int:
+    """Run one host-only pytest task with the complete dependency lifecycle.
+
+    Starts and verifies the default testing environment, adds temporary Mailpit, executes the
+    selected Poe task, audits health, ownership, residue, and logs, then always removes Mailpit.
+
+    Arguments:
+        root: Repository root.
+        runner: External command adapter.
+        poe_task: Internal Poe test task to execute.
+        http_probe: HTTP readiness adapter.
+        sleep: Callable pausing between health polls.
+        now: Monotonic clock.
+
+    Returns:
+        The first environment, test, post-check, log, or cleanup failure.
+    """
+    code = up(
+        root,
+        runner,
+        TESTING,
+        recreate=False,
+        proxy_only=False,
+        sleep=sleep,
+        now=now,
+    )
+    if code != EXIT_OK:
+        return code
+    code = health(root, runner, TESTING, http_probe=http_probe)
+    if code != EXIT_OK:
+        return code
+    code = start_testing_mailpit(root, runner)
+    if code != EXIT_OK:
+        return code
+
+    started_at = utc_timestamp()
+    test_code = runner.run(("uv", "run", "poe", poe_task)).code
+    health_code = health(root, runner, TESTING, http_probe=http_probe)
+    ownership_code = docker_environment_audit(runner, TESTING)
+    residue_code = audit_testing_container_set(runner, include_mailpit=True)
+    ended_at = utc_timestamp()
+    log_code = audit_testing_logs(runner, started_at, ended_at)
+    cleanup_code = finalize_testing_mailpit(root, runner)
+    return next(
+        (
+            failure
+            for failure in (
+                test_code,
+                health_code,
+                ownership_code,
+                residue_code,
+                log_code,
+                cleanup_code,
+            )
+            if failure != EXIT_OK
+        ),
+        EXIT_OK,
+    )
 
 
 def testing_runtime_probe(
@@ -3045,24 +3180,8 @@ def testing_integration_audit(
     if code != EXIT_OK:
         return code
 
-    initial_steps = (
-        compose_command(
-            TESTING,
-            "--profile",
-            "smtp",
-            "up",
-            "-d",
-            "--no-build",
-            "mailpit-tm7bh",
-        ),
-        python_command(root, "wait_for_services.py", "mailpit"),
-    )
-    host_environment = load_environment(root, ".env.testing.host")
-    code = runner.run(initial_steps[0]).code
-    if code == EXIT_OK:
-        code = runner.run(initial_steps[1], host_environment).code
+    code = start_testing_mailpit(root, runner)
     if code != EXIT_OK:
-        runner.run(compose_command(TESTING, "rm", "-f", "-s", "mailpit-tm7bh"))
         return code
 
     mailpit_steps: tuple[Callable[[], int], ...] = (
@@ -3190,6 +3309,7 @@ def build_parser() -> argparse.ArgumentParser:
         "testing-test-container",
         "testing-test-host",
         "testing-test-both",
+        *HOST_TEST_TASKS,
         "testing-integration-audit",
         "testing-verify",
     )
@@ -3272,6 +3392,15 @@ def main(  # noqa: C901, PLR0911, PLR0912, PLR0913
         return generate_secrets(root, active_runner)
     if command == "secrets-decrypt":
         return decrypt_secrets(root, active_runner)
+    if command in HOST_TEST_TASKS:
+        return testing_host_task(
+            root,
+            active_runner,
+            HOST_TEST_TASKS[command],
+            http_probe=http_probe,
+            sleep=sleep,
+            now=now,
+        )
     if command.startswith("testing-test-"):
         return testing_test(
             root,

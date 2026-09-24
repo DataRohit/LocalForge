@@ -254,6 +254,9 @@ TESTING_PORTS = ports(
         "seaweedfs-ts3jd": {"8333/tcp": ("28333", LOOPBACK_HOSTS)},
     }
 )
+COMPOSE_CONFIG_FILES_LABEL = "com.docker.compose.project.config_files"
+DEVELOPMENT_CONFIG_FILES = frozenset({"compose.yaml", "compose.development.yaml"})
+PROXY_ONLY_CONFIG_FILE = "compose.proxy-only.yaml"
 DEVELOPMENT_MEMBERSHIPS = {
     "traefik-tk2jp": frozenset({"edge-net-ne2vk"}),
     "django-uv5n2": frozenset(
@@ -503,6 +506,42 @@ def live_port_bindings(record: dict[str, object]) -> dict[str, LivePortBinding]:
     return normalized
 
 
+def development_uses_proxy_only(
+    records: Sequence[dict[str, object]],
+) -> tuple[bool | None, list[str]]:
+    """Read the active development publication mode from Compose labels.
+
+    Requires the Django container to name the shared and development configuration files, then
+    reports whether the documented proxy-only overlay also created the running container.
+
+    Arguments:
+        records: Project-scoped development container inspect records.
+
+    Returns:
+        Proxy-only state when unambiguous plus stable label failures.
+    """
+    django = next(
+        (record for record in records if platform.record_name(record) == "django-uv5n2"),
+        None,
+    )
+    if django is None:
+        return None, []
+
+    raw = platform.record_labels(django).get(COMPOSE_CONFIG_FILES_LABEL, "")
+    files = {
+        entry.strip().replace("\\", "/").rsplit("/", maxsplit=1)[-1]
+        for entry in raw.split(",")
+        if entry.strip()
+    }
+    missing = DEVELOPMENT_CONFIG_FILES - files
+    if missing:
+        return None, [
+            f"compose-config-files django-uv5n2 missing={sorted(missing)} actual={sorted(files)}"
+        ]
+
+    return PROXY_ONLY_CONFIG_FILE in files, []
+
+
 def port_failures(
     records: Sequence[dict[str, object]],
     spec: ConventionSpec,
@@ -520,10 +559,20 @@ def port_failures(
         Stable port failures.
     """
     failures: list[str] = []
+    proxy_only = False
+    if spec is DEVELOPMENT_SPEC:
+        detected, mode_failures = development_uses_proxy_only(records)
+        failures.extend(mode_failures)
+        if detected is None and mode_failures:
+            return failures
+        proxy_only = detected is True
+
     for record in records:
         name = platform.record_name(record)
         actual = live_port_bindings(record)
         expected = spec.ports.get(name, {})
+        if proxy_only and name == "django-uv5n2":
+            expected = {}
         if set(actual) != set(expected):
             failures.append(f"ports {name} expected={sorted(expected)} actual={sorted(actual)}")
             continue

@@ -35,7 +35,7 @@ losing the message.
       real email.
 - [x] The API response does not change based on whether mail succeeded, so enumeration is not possible through
       timing or status.
-- [x] In the testing environment tasks run eagerly and assert against the in-memory backend; the SMTP path is
-      covered by one profile-gated integration test.
+- [x] In the testing environment tasks run eagerly and assert against the in-memory backend; every complete host
+      and container gate temporarily starts Mailpit and runs all five real SMTP cases without skips.
 - [x] Tests cover successful send, transient failure with retry and permanent failure for retry-safe notifications,
       plus the intentional no-retry failure outcome for credential-bearing delivery.

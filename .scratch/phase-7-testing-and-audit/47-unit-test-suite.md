@@ -19,6 +19,9 @@ routers, validators, tasks, helpers — running with no external service and fin
 
 **Status:** done
 
+**Reverified 2026-09-23:** the parallel unit layer reports 1,471 passes with warnings treated as errors. Script
+tests resolve functional Git Bash on Windows instead of PATH-dependent WSL aliases.
+
 - [x] The unit tree mirrors the application package layout, one test module per source module.
 - [x] No unit test opens a socket, touches the broker, the cache, object storage, or the mail service; external
       collaborators are substituted.

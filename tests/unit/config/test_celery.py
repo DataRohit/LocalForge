@@ -6,7 +6,9 @@ apps, and the base task's retry policy, acknowledgement, and failure record.
 
 import logging
 import os
+from types import SimpleNamespace
 from typing import Any, cast
+from unittest.mock import MagicMock
 
 import pytest
 from celery import Task, signals
@@ -143,9 +145,79 @@ def test_the_broker_and_the_result_backend_come_from_the_environment() -> None:
 
     assert queue.app.conf.broker_url == settings.CELERY_BROKER_URL
     assert queue.app.conf.result_backend == settings.CELERY_RESULT_BACKEND
+    assert queue.app.loader.override_backends == queue.RESULT_BACKEND_OVERRIDES
     assert results_database == os.environ["VALKEY_RESULTS_DB"]
     assert results_database != os.environ["VALKEY_CACHE_DB"]
     assert os.environ["RABBITMQ_HOST"] in settings.CELERY_BROKER_URL
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("expires", [None, settings.CELERY_RESULT_EXPIRES])
+def test_the_result_backend_uses_supported_set_expiry(
+    expires: int | None,
+) -> None:
+    """Store results without the deprecated Redis command.
+
+    Exercises expiring and non-expiring writes against a fabricated pipeline, preserving result
+    publication while requiring expiry to travel through the supported ``SET`` option.
+
+    Arguments:
+        expires: Result lifetime or None for a persistent value.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If storage, expiry, publication, or execution changes.
+    """
+    pipeline = MagicMock()
+    pipeline.__enter__.return_value = pipeline
+    backend = SimpleNamespace(
+        client=SimpleNamespace(pipeline=MagicMock(return_value=pipeline)),
+        expires=expires,
+    )
+
+    queue.LocalForgeRedisBackend._set(
+        cast("queue.LocalForgeRedisBackend", backend),
+        "task-key",
+        "task-value",
+    )
+
+    if expires is None:
+        pipeline.set.assert_called_once_with("task-key", "task-value")
+    else:
+        pipeline.set.assert_called_once_with("task-key", "task-value", ex=expires)
+    pipeline.publish.assert_called_once_with("task-key", "task-value")
+    pipeline.execute.assert_called_once_with()
+
+
+@pytest.mark.unit
+def test_the_result_backend_closes_worker_resources() -> None:
+    """Close Redis resources when a worker finishes.
+
+    Exercises the worker cleanup hook against fabricated consumer and pool boundaries, preventing
+    result sockets from being abandoned to garbage collection.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If either result-consumer or connection-pool cleanup is omitted.
+    """
+    consumer = MagicMock()
+    pool = MagicMock()
+    backend = SimpleNamespace(
+        client=SimpleNamespace(connection_pool=pool),
+        result_consumer=consumer,
+    )
+
+    queue.LocalForgeRedisBackend.process_cleanup(cast("queue.LocalForgeRedisBackend", backend))
+
+    consumer.stop.assert_called_once_with()
+    pool.disconnect.assert_called_once_with()
 
 
 @pytest.mark.unit

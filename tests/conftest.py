@@ -9,15 +9,140 @@ import os
 import pytest
 
 SERIAL_GROUP = "serial"
+_SKIPPED_TESTS: set[str] = set()
 
 
-def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+def record_skipped_report(
+    report: pytest.TestReport | pytest.CollectReport,
+    skipped_tests: set[str],
+) -> None:
+    """Record one skipped runtime or collection report.
+
+    Adds only skipped report node identifiers to the supplied tracker so hook behavior can be
+    tested without mutating the live session's evidence.
+
+    Arguments:
+        report: Runtime or collection report.
+        skipped_tests: Tracker receiving skipped node identifiers.
+
+    Returns:
+        None.
+
+    Raises:
+        None.
+    """
+    if report.skipped:
+        skipped_tests.add(report.nodeid)
+
+
+def apply_no_skip_policy(session: pytest.Session, skipped_tests: set[str]) -> None:
+    """Apply the no-skip verdict to one controller session.
+
+    Leaves worker sessions unchanged and fails a controller only when its supplied tracker contains
+    skipped runtime or collection reports.
+
+    Arguments:
+        session: Pytest session finishing execution.
+        skipped_tests: Skipped node identifiers observed by the controller.
+
+    Returns:
+        None.
+
+    Raises:
+        None.
+    """
+    if hasattr(session.config, "workerinput") or not skipped_tests:
+        return
+    session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Reset skipped-test evidence for one pytest controller.
+
+    Clears retained node identifiers before collection so repeated in-process test runs cannot
+    inherit another session's result.
+
+    Arguments:
+        session: Pytest session beginning execution.
+
+    Returns:
+        None.
+
+    Raises:
+        None.
+    """
+    del session
+    _SKIPPED_TESTS.clear()
+
+
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    """Record every skipped test report.
+
+    Receives local and xdist-forwarded reports and retains the stable node identifier for the
+    controller's final verdict.
+
+    Arguments:
+        report: Completed test phase report.
+
+    Returns:
+        None.
+
+    Raises:
+        None.
+    """
+    record_skipped_report(report, _SKIPPED_TESTS)
+
+
+def pytest_collectreport(report: pytest.CollectReport) -> None:
+    """Record a module or collector skipped during collection.
+
+    Captures collection-time skip outcomes that never produce a runtime ``TestReport``.
+    The controller applies the same final no-skip verdict to both report kinds.
+
+    Arguments:
+        report: Completed collection report.
+
+    Returns:
+        None.
+
+    Raises:
+        None.
+    """
+    record_skipped_report(report, _SKIPPED_TESTS)
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Fail the controller session when any test was skipped.
+
+    Leaves worker-process exit handling unchanged while converting an otherwise successful
+    controller result into a test failure whenever a skip reached the report stream.
+
+    Arguments:
+        session: Pytest session finishing execution.
+        exitstatus: Status produced by pytest before the no-skip policy.
+
+    Returns:
+        None.
+
+    Raises:
+        None.
+    """
+    del exitstatus
+    apply_no_skip_policy(session, _SKIPPED_TESTS)
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_collection_modifyitems(
+    config: pytest.Config,
+    items: list[pytest.Item],
+) -> None:
     """Pin every serial test to one worker.
 
     Stamps each test marked serial with a shared distribution group, so the marker actually
     serialises rather than documenting an intention the parallel runner ignores.
 
     Arguments:
+        config: Active pytest configuration.
         items: Tests collected for this run.
 
     Returns:
@@ -26,9 +151,16 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     Raises:
         None.
     """
+    try:
+        loadgroup = bool(config.getvalue("loadgroup"))
+    except ValueError:
+        loadgroup = False
     for item in items:
         if item.get_closest_marker(SERIAL_GROUP) is not None:
             item.add_marker(pytest.mark.xdist_group(SERIAL_GROUP))
+            if loadgroup:
+                base_nodeid = item.nodeid.rsplit("@", maxsplit=1)[0]
+                item._nodeid = f"{base_nodeid}@{SERIAL_GROUP}"
 
 
 @pytest.fixture(scope="session")

@@ -728,6 +728,55 @@ def accepted_image_policy(root: Path = REPOSITORY_ROOT) -> dict[str, object] | N
     return cast("dict[str, object]", accepted)
 
 
+def image_matches_policy(
+    runner: AuditRunner,
+    image: str,
+    expected: object,
+    cache: str,
+) -> bool:
+    """Verify one image tag, live identity, and scanner result.
+
+    Evaluates each boundary in order and emits one non-secret diagnostic naming the first drift
+    found, while keeping the combined image audit fail-closed.
+
+    Arguments:
+        runner: Command execution boundary.
+        image: Registered image tag.
+        expected: Reviewed policy entry for the image.
+        cache: Docker-compatible temporary Trivy cache path.
+
+    Returns:
+        Whether the image and every live consumer match reviewed evidence.
+    """
+    image_id = inspected_image_id(runner, image)
+    failure = ""
+    if image_id is None:
+        failure = f"image-tag unavailable-or-malformed image={image}"
+    elif not isinstance(expected, dict):
+        failure = f"image-policy entry-not-object image={image}"
+    elif expected.get("image_id") != image_id:
+        failure = (
+            f"image-policy identity image={image} "
+            f"expected={expected.get('image_id')} actual={image_id}"
+        )
+    elif not live_containers_use_image(runner, image, image_id):
+        failure = f"image-live-identity image={image} expected={image_id}"
+    else:
+        scanned = scanned_image_policy_entry(runner, image_id, cache)
+        if scanned is None:
+            failure = f"image-scan unavailable-or-invalid image={image} id={image_id}"
+        elif scanned != expected:
+            fields = sorted(
+                key for key in set(expected) | set(scanned) if expected.get(key) != scanned.get(key)
+            )
+            failure = f"image-policy drift image={image} fields={fields}"
+
+    if failure:
+        print(f"FAIL {failure}")
+        return False
+    return True
+
+
 def image_check(
     runner: AuditRunner,
     root: Path = REPOSITORY_ROOT,
@@ -746,26 +795,20 @@ def image_check(
     """
     accepted = accepted_image_policy(root)
     if accepted is None:
+        print("FAIL image-policy unavailable-or-incompatible")
         return False
 
     images = sorted(set(CONTAINER_IMAGES.values()))
     if set(accepted) != set(images):
+        missing = sorted(set(images) - set(accepted))
+        unexpected = sorted(set(accepted) - set(images))
+        print(f"FAIL image-policy inventory missing={missing} unexpected={unexpected}")
         return False
 
     with tempfile.TemporaryDirectory(prefix="localforge-trivy-") as temporary:
         cache = str(Path(temporary)).replace("\\", "/")
         for image in images:
-            image_id = inspected_image_id(runner, image)
-            expected = accepted[image]
-            if (
-                image_id is None
-                or not isinstance(expected, dict)
-                or expected.get("image_id") != image_id
-            ):
-                return False
-            if not live_containers_use_image(runner, image, image_id):
-                return False
-            if scanned_image_policy_entry(runner, image_id, cache) != expected:
+            if not image_matches_policy(runner, image, accepted[image], cache):
                 return False
     return True
 

@@ -10,6 +10,7 @@ import runpy
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 from unittest.mock import patch
 
 import pytest
@@ -79,6 +80,7 @@ def container_record(
     *,
     ports: dict[str, list[dict[str, str]]] | None = None,
     mounts: list[object] | None = None,
+    proxy_only: bool = False,
 ) -> dict[str, object]:
     """Build one healthy registered container inspect record.
 
@@ -89,10 +91,16 @@ def container_record(
         name: Registered container name.
         ports: Optional Docker port mapping.
         mounts: Optional Docker mount records.
+        proxy_only: Whether the development proxy-only overlay created the container.
 
     Returns:
         Docker inspect-shaped mapping.
     """
+    config_files = (
+        "Q:\\projects\\localforge\\compose.yaml,Q:\\projects\\localforge\\compose.development.yaml"
+    )
+    if proxy_only:
+        config_files = f"{config_files},Q:\\projects\\localforge\\compose.proxy-only.yaml"
     return {
         "Name": f"/{name}",
         "Config": {
@@ -101,6 +109,7 @@ def container_record(
                 "com.docker.compose.project": platform.CONTAINER_PROJECTS[name],
                 "com.docker.compose.service": name,
                 "com.docker.compose.oneoff": "False",
+                "com.docker.compose.project.config_files": config_files,
             },
         },
         "State": {"Status": "running", "Health": {"Status": "healthy"}},
@@ -193,6 +202,13 @@ def test_port_registry_and_normalization_cover_exact_and_malformed_bindings() ->
         )
     }
     assert audit.port_failures([record], audit.DEVELOPMENT_SPEC) == []
+    proxy_only = container_record("django-uv5n2", proxy_only=True)
+    assert audit.port_failures([proxy_only], audit.DEVELOPMENT_SPEC) == []
+    assert audit.development_uses_proxy_only([record]) == (False, [])
+    assert audit.development_uses_proxy_only([proxy_only]) == (True, [])
+    assert audit.development_uses_proxy_only([]) == (None, [])
+    assert audit.port_failures([], audit.DEVELOPMENT_SPEC) == []
+    assert audit.port_failures([], audit.TESTING_SPEC) == []
 
     wrong = container_record(
         "django-uv5n2",
@@ -207,6 +223,12 @@ def test_port_registry_and_normalization_cover_exact_and_malformed_bindings() ->
         },
     )
     assert audit.port_failures([extra], audit.DEVELOPMENT_SPEC)
+    missing_label = container_record("django-uv5n2")
+    labels = cast("dict[str, str]", cast("dict[str, object]", missing_label["Config"])["Labels"])
+    del labels[audit.COMPOSE_CONFIG_FILES_LABEL]
+    missing = "missing=['compose.development.yaml', 'compose.yaml'] actual=[]"
+    expected = f"compose-config-files django-uv5n2 {missing}"
+    assert audit.port_failures([missing_label], audit.DEVELOPMENT_SPEC) == [expected]
 
 
 def test_mount_rules_reject_anonymous_writable_and_unregistered_mounts() -> None:

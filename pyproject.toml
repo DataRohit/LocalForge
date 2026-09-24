@@ -72,7 +72,6 @@ dev = [
     "bcrypt>=5.0.0",
     "boto3-stubs[s3]>=1.40.0",
     "coverage[toml]>=7.16.0",
-    "daphne>=4.2.3",
     "django-stubs[compatible-mypy]>=6.1.0",
     "factory-boy>=3.3.3",
     "freezegun>=1.5.5",
@@ -123,9 +122,14 @@ convention = "google"
 "scripts/manage_platform.py" = ["S603"]
 "scripts/audit_security.py" = ["S603"]
 "tests/**/*.py" = ["S101"]
+"tests/conftest.py" = ["S101", "SLF001"]
+"tests/websocket.py" = ["ANN401", "ASYNC109", "S101"]
+"tests/unit/conftest.py" = ["S101", "S603"]
+"tests/unit/config/test_celery.py" = ["S101", "SLF001"]
 "tests/unit/test_harness.py" = ["S101", "S603"]
 "tests/unit/scripts/test_django_entrypoint.py" = ["S101", "S603"]
 "tests/integration/config/test_worker_service.py" = ["S603"]
+"tests/integration/config/test_task_queue.py" = ["S101", "SLF001"]
 "tests/integration/notifications/test_task_fanout.py" = ["S603"]
 ".github/scripts/validate_commit_message.py" = ["C901", "INP001", "PLR0912"]
 
@@ -213,6 +217,7 @@ markers = [
     "serial: tests that must not share a worker pool, justified in the test docstring",
     "security_timing: statistical wall-clock security criteria run in the bounded timing stage",
 ]
+filterwarnings = ["error"]
 xfail_strict = true
 
 [tool.coverage.run]
@@ -444,15 +449,27 @@ help = "Run all type checkers"
 sequence = ["types-mypy", "types-ty"]
 
 [tool.poe.tasks.test]
-help = "Run the complete core and security timing test stages"
+help = "Start testing dependencies and run the complete host suite"
+cmd = "python -m scripts.manage_platform testing-test-host"
+
+[tool.poe.tasks.test-stages]
+help = "Run the complete core and security timing stages with dependencies already prepared"
 sequence = ["test-core", "test-security-timing"]
 
 [tool.poe.tasks.test-serial]
 help = "Run the whole suite in one process; re-run this to read a timeout's stack"
+cmd = "python -m scripts.manage_platform testing-test-host-serial"
+
+[tool.poe.tasks.test-serial-stages]
+help = "Run the whole suite serially with dependencies already prepared"
 cmd = "pytest"
 
 [tool.poe.tasks.test-fresh]
-help = "Run both stages after recreating the core test databases"
+help = "Start testing dependencies and recreate the host core test databases"
+cmd = "python -m scripts.manage_platform testing-test-host-fresh"
+
+[tool.poe.tasks.test-fresh-stages]
+help = "Run both stages with fresh core databases and prepared dependencies"
 sequence = ["test-core-fresh", "test-security-timing"]
 
 [tool.poe.tasks.test-unit]
@@ -460,13 +477,19 @@ help = "Run focused unit tests without the whole-suite coverage gate"
 cmd = "pytest -m unit --no-cov"
 
 [tool.poe.tasks.test-integration]
-help = "Run focused integration tests without the whole-suite coverage gate"
-cmd = """pytest -m "integration and not security_timing"
-  --no-cov"""
+help = "Start testing dependencies and run focused host integration tests"
+cmd = "python -m scripts.manage_platform testing-test-host-integration"
+
+[tool.poe.tasks.test-integration-stages]
+help = "Run focused integration tests with dependencies already prepared"
+cmd = """pytest -n auto --dist loadgroup
+  -m "integration and not security_timing"
+  --no-cov
+  --max-worker-restart=0"""
 
 [tool.poe.tasks.test-parallel]
 help = "Alias of the default test task, retained for scripts that name it"
-sequence = ["test-core", "test-security-timing"]
+sequence = ["test"]
 
 [tool.poe.tasks.test-core]
 help = "Run the core suite in high-parallel mode with 100 percent branch coverage"

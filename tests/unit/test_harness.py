@@ -13,11 +13,12 @@ import tomllib
 from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import psycopg
 import pytest
 
+from tests import conftest as suite_conftest
 from tests.factories import (
     build_activation_token,
     build_login_throttle_event,
@@ -26,7 +27,11 @@ from tests.factories import (
     build_username_reset_token,
 )
 from tests.integration import conftest as integration_conftest
-from tests.unit.conftest import NetworkAccessInUnitTestError
+from tests.unit.conftest import NetworkAccessInUnitTestError, posix_shell_candidates
+from tests.websocket import WebsocketCommunicator
+
+if TYPE_CHECKING:
+    from asgiref.typing import ASGI3Application, ASGIReceiveCallable, ASGISendCallable, Scope
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent
 SOURCE_ROOT = REPOSITORY_ROOT / "src"
@@ -77,6 +82,198 @@ API_RUNTIME_TESTS = (
     REPOSITORY_ROOT / "tests" / "integration" / "config" / "test_api.py",
     REPOSITORY_ROOT / "tests" / "integration" / "config" / "test_security.py",
 )
+
+
+@pytest.mark.unit
+def test_skipped_tests_fail_only_the_controller_session() -> None:
+    """Convert skipped reports into a failed complete test session.
+
+    Exercises clean, skipped, and xdist-worker finalization so skips are mechanically forbidden
+    without changing worker-process exit handling.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If skips remain successful or workers rewrite their status.
+    """
+    skipped_tests: set[str] = set()
+    runtime_report = cast(
+        "pytest.TestReport",
+        cast(
+            "object",
+            SimpleNamespace(skipped=True, nodeid="tests/test_probe.py::test_skipped"),
+        ),
+    )
+    collection_report = cast(
+        "pytest.CollectReport",
+        cast("object", SimpleNamespace(skipped=True, nodeid="tests/test_module.py")),
+    )
+    passing_report = cast(
+        "pytest.TestReport",
+        cast(
+            "object",
+            SimpleNamespace(skipped=False, nodeid="tests/test_probe.py::test_passed"),
+        ),
+    )
+    suite_conftest.record_skipped_report(passing_report, skipped_tests)
+    suite_conftest.record_skipped_report(runtime_report, skipped_tests)
+    suite_conftest.record_skipped_report(collection_report, skipped_tests)
+    assert skipped_tests == {
+        "tests/test_module.py",
+        "tests/test_probe.py::test_skipped",
+    }
+
+    controller = SimpleNamespace(config=SimpleNamespace(), exitstatus=pytest.ExitCode.OK)
+    controller_session = cast("pytest.Session", cast("object", controller))
+    suite_conftest.apply_no_skip_policy(controller_session, skipped_tests)
+    assert controller.exitstatus == pytest.ExitCode.TESTS_FAILED
+
+    worker = SimpleNamespace(
+        config=SimpleNamespace(workerinput={}),
+        exitstatus=pytest.ExitCode.OK,
+    )
+    worker_session = cast("pytest.Session", cast("object", worker))
+    suite_conftest.apply_no_skip_policy(worker_session, skipped_tests)
+    assert worker.exitstatus == pytest.ExitCode.OK
+
+    clean_controller = SimpleNamespace(
+        config=SimpleNamespace(),
+        exitstatus=pytest.ExitCode.OK,
+    )
+    suite_conftest.apply_no_skip_policy(
+        cast("pytest.Session", cast("object", clean_controller)),
+        set(),
+    )
+    assert clean_controller.exitstatus == pytest.ExitCode.OK
+
+
+@pytest.mark.unit
+def test_serial_tests_override_inherited_xdist_groups() -> None:
+    """Force every serial test onto one final load-group node identifier.
+
+    Models a test that already inherited a module group and requires collection normalization to
+    replace the combined suffix with the single shared serial group.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If inherited grouping survives or the serial marker is omitted.
+    """
+    markers: list[object] = []
+    item = SimpleNamespace(
+        _nodeid=(
+            "tests/integration/accounts/test_username_management.py"
+            "::test_username_recovery@username-management"
+        ),
+        nodeid=(
+            "tests/integration/accounts/test_username_management.py"
+            "::test_username_recovery@username-management"
+        ),
+        get_closest_marker=lambda name: object() if name == "serial" else None,
+        add_marker=markers.append,
+    )
+    config = SimpleNamespace(getvalue=lambda name: name == "loadgroup")
+
+    suite_conftest.pytest_collection_modifyitems(
+        cast("pytest.Config", cast("object", config)),
+        [cast("pytest.Item", cast("object", item))],
+    )
+
+    normalized = cast("str", vars(item)["_nodeid"])
+    assert normalized.endswith("@serial")
+    assert "username-management" not in normalized
+    assert len(markers) == 1
+
+
+@pytest.mark.unit
+def test_windows_posix_shell_candidates_prefer_git_bash() -> None:
+    """Exclude the WSL launcher and prefer Git Bash on Windows.
+
+    Supplies the original failing System32 path together with Git for Windows and requires every
+    Git-derived candidate to precede any safe ambient fallback.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the WSL launcher survives or Git Bash loses priority.
+    """
+    candidates = posix_shell_candidates(
+        r"C:\Windows\System32\bash.exe",
+        r"C:\Program Files\Git\cmd\git.exe",
+        windows=True,
+    )
+
+    assert candidates
+    assert candidates[0] == Path(r"C:\Program Files\Git\cmd\bash")
+    assert all(
+        "windows/system32/bash" not in candidate.as_posix().casefold() for candidate in candidates
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_websocket_communicator_wait_reports_timeout() -> None:
+    """Report a hung ASGI application as a timeout.
+
+    Starts an application that never completes and requires the communicator to cancel its task
+    only after the timeout is translated into the documented exception.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If timeout is swallowed or the application task remains active.
+    """
+
+    async def application(
+        _scope: Scope,
+        _receive: ASGIReceiveCallable,
+        _send: ASGISendCallable,
+    ) -> None:
+        """Wait forever without emitting a WebSocket event.
+
+        Provides a deterministic hung application whose cancellation belongs to communicator
+        timeout cleanup.
+
+        Arguments:
+            _scope: Unused WebSocket scope.
+            _receive: Unused inbound event callable.
+            _send: Unused outbound event callable.
+
+        Returns:
+            Never returns.
+
+        Raises:
+            asyncio.CancelledError: When communicator timeout cleanup cancels the task.
+        """
+        await asyncio.Event().wait()
+
+    communicator = WebsocketCommunicator(
+        cast("ASGI3Application", application),
+        "/ws/notifications/",
+    )
+
+    with pytest.raises(TimeoutError):
+        await communicator.wait(0.01)
+
+    assert communicator.future.cancelled()
+
+
 UNDECLARED_INTEGRATION_TEST = '''"""Probe module for the collection guard.
 
 Holds one integration test that names no service, so a real collection can be observed rejecting
@@ -837,10 +1034,10 @@ def test_the_api_cache_guard_fires_during_real_collection(tmp_path: Path) -> Non
 
 @pytest.mark.unit
 def test_complete_test_tasks_compose_core_and_security_timing_stages() -> None:
-    """Keep every complete task behind the same two-stage runner interface.
+    """Keep every complete task behind the SMTP-aware runner interface.
 
-    Confirms the default, fresh-database, and compatibility task names all execute the core stage
-    before the bounded security timing stage, so no complete gate can silently omit either.
+    Confirms every public task that can select SMTP tests enters the platform orchestrator while
+    its internal stage tasks retain their original focused or staged behavior.
 
     Arguments:
         None.
@@ -853,9 +1050,18 @@ def test_complete_test_tasks_compose_core_and_security_timing_stages() -> None:
     """
     tasks = _configured_tasks()
 
-    assert tasks["test"]["sequence"] == ["test-core", "test-security-timing"]
-    assert tasks["test-fresh"]["sequence"] == ["test-core-fresh", "test-security-timing"]
-    assert tasks["test-parallel"]["sequence"] == ["test-core", "test-security-timing"]
+    assert tasks["test"]["cmd"] == "python -m scripts.manage_platform testing-test-host"
+    assert tasks["test-stages"]["sequence"] == ["test-core", "test-security-timing"]
+    assert tasks["test-serial"]["cmd"].endswith("testing-test-host-serial")
+    assert tasks["test-serial-stages"]["cmd"] == "pytest"
+    assert tasks["test-fresh"]["cmd"].endswith("testing-test-host-fresh")
+    assert tasks["test-fresh-stages"]["sequence"] == [
+        "test-core-fresh",
+        "test-security-timing",
+    ]
+    assert tasks["test-integration"]["cmd"].endswith("testing-test-host-integration")
+    assert "integration and not security_timing" in tasks["test-integration-stages"]["cmd"]
+    assert tasks["test-parallel"]["sequence"] == ["test"]
 
 
 @pytest.mark.unit
@@ -934,8 +1140,10 @@ def test_focused_integration_task_excludes_security_timing_by_default() -> None:
     Raises:
         AssertionError: If focused integration execution includes timing cases.
     """
-    command = _configured_tasks()["test-integration"]["cmd"]
+    tasks = _configured_tasks()
+    command = tasks["test-integration-stages"]["cmd"]
 
+    assert tasks["test-integration"]["cmd"].endswith("testing-test-host-integration")
     assert '-m "integration and not security_timing"' in command
 
 

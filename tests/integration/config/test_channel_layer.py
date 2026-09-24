@@ -16,7 +16,6 @@ import pytest
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from channels.layers import get_channel_layer
 from channels.routing import ProtocolTypeRouter, URLRouter
-from channels.testing import WebsocketCommunicator
 from channels_redis.pubsub import RedisPubSubChannelLayer
 from django.conf import settings
 from django.urls import path
@@ -24,6 +23,7 @@ from redis import asyncio as aioredis
 
 from config.channels import ConfirmedRedisPubSubChannelLayer
 from config.settings.base import CHANNEL_LAYER_PREFIX
+from tests.websocket import WebsocketCommunicator
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 RECEIVE_TIMEOUT_SECONDS = 10

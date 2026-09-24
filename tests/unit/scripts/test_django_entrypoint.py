@@ -6,7 +6,6 @@ no test needs the image.
 """
 
 import os
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -14,7 +13,6 @@ import pytest
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 ENTRYPOINT = REPOSITORY_ROOT / "docker" / "django" / "entrypoint.sh"
-BASH = shutil.which("bash")
 
 TIMEOUT_SECONDS = 30
 MINIMUM_SUPERVISED_PHASES = 5
@@ -107,7 +105,11 @@ def tools(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def run(directory: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
+def run(
+    directory: Path,
+    posix_shell: Path,
+    *arguments: str,
+) -> subprocess.CompletedProcess[str]:
     """Run the entrypoint against the fabricated commands.
 
     Executes the script as a process so its exit code and ordering are the real ones, which is what
@@ -115,6 +117,7 @@ def run(directory: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
 
     Arguments:
         directory: Directory holding the fabricated commands.
+        posix_shell: Functional Bash executable supplied by the unit harness.
         *arguments: Arguments to hand the entrypoint.
 
     Returns:
@@ -124,7 +127,7 @@ def run(directory: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
         subprocess.TimeoutExpired: If the script does not finish in time.
     """
     return subprocess.run(
-        [str(BASH), str(ENTRYPOINT), *arguments],
+        [str(posix_shell), str(ENTRYPOINT), *arguments],
         capture_output=True,
         text=True,
         env=environment(directory),
@@ -155,7 +158,7 @@ def calls(directory: Path) -> list[str]:
 
 
 @pytest.mark.unit
-def test_the_port_is_bound_last(tools: Path) -> None:
+def test_the_port_is_bound_last(tools: Path, posix_shell: Path) -> None:
     """Open the port only once the instance can serve.
 
     Confirms dependency waiting, broker preparation, bucket seeding, migration, and static
@@ -163,6 +166,7 @@ def test_the_port_is_bound_last(tools: Path) -> None:
 
     Arguments:
         tools: Directory of fabricated commands.
+        posix_shell: Functional Bash executable supplied by the unit harness.
 
     Returns:
         None.
@@ -170,7 +174,7 @@ def test_the_port_is_bound_last(tools: Path) -> None:
     Raises:
         AssertionError: If the startup sequence is not the documented one.
     """
-    assert run(tools).returncode == 0
+    assert run(tools, posix_shell).returncode == 0
 
     recorded = calls(tools)
 
@@ -183,7 +187,7 @@ def test_the_port_is_bound_last(tools: Path) -> None:
 
 
 @pytest.mark.unit
-def test_an_unready_dependency_stops_the_startup(tools: Path) -> None:
+def test_an_unready_dependency_stops_the_startup(tools: Path, posix_shell: Path) -> None:
     """Refuse to serve without the dependencies.
 
     Confirms a failed readiness gate ends the startup rather than continuing, so a container never
@@ -191,6 +195,7 @@ def test_an_unready_dependency_stops_the_startup(tools: Path) -> None:
 
     Arguments:
         tools: Directory of fabricated commands.
+        posix_shell: Functional Bash executable supplied by the unit harness.
 
     Returns:
         None.
@@ -200,12 +205,12 @@ def test_an_unready_dependency_stops_the_startup(tools: Path) -> None:
     """
     write_tool(tools, "python", 'echo "python $*" >>"$0.calls"\nexit 1')
 
-    assert run(tools).returncode != 0
+    assert run(tools, posix_shell).returncode != 0
     assert not any("uvicorn" in call for call in calls(tools))
 
 
 @pytest.mark.unit
-def test_a_failed_migration_stops_the_startup(tools: Path) -> None:
+def test_a_failed_migration_stops_the_startup(tools: Path, posix_shell: Path) -> None:
     """Refuse to serve on a schema that did not apply.
 
     Confirms a migration failure ends the startup, because serving against a half-applied schema is
@@ -213,6 +218,7 @@ def test_a_failed_migration_stops_the_startup(tools: Path) -> None:
 
     Arguments:
         tools: Directory of fabricated commands.
+        posix_shell: Functional Bash executable supplied by the unit harness.
 
     Returns:
         None.
@@ -227,12 +233,12 @@ def test_a_failed_migration_stops_the_startup(tools: Path) -> None:
         f'echo "python $*" >>"{calls_file}"\ncase "$*" in *migrate*) exit 1 ;; esac\nexit 0',
     )
 
-    assert run(tools).returncode != 0
+    assert run(tools, posix_shell).returncode != 0
     assert not any("uvicorn" in call for call in calls(tools))
 
 
 @pytest.mark.unit
-def test_a_failed_bucket_seed_stops_the_startup(tools: Path) -> None:
+def test_a_failed_bucket_seed_stops_the_startup(tools: Path, posix_shell: Path) -> None:
     """Refuse to serve without the configured media bucket.
 
     Fails only the idempotent seed command, proving a fresh object-storage volume cannot leave the
@@ -240,6 +246,7 @@ def test_a_failed_bucket_seed_stops_the_startup(tools: Path) -> None:
 
     Arguments:
         tools: Directory of fabricated commands.
+        posix_shell: Functional Bash executable supplied by the unit harness.
 
     Returns:
         None.
@@ -254,14 +261,17 @@ def test_a_failed_bucket_seed_stops_the_startup(tools: Path) -> None:
         (f'echo "python $*" >>"{calls_file}"\ncase "$*" in *seed_storage*) exit 1 ;; esac\nexit 0'),
     )
 
-    assert run(tools).returncode != 0
+    assert run(tools, posix_shell).returncode != 0
     recorded = calls(tools)
     assert any("seed_storage.py" in call for call in recorded)
     assert not any("migrate" in call or "uvicorn" in call for call in recorded)
 
 
 @pytest.mark.unit
-def test_a_companion_command_waits_but_does_not_migrate(tools: Path) -> None:
+def test_a_companion_command_waits_but_does_not_migrate(
+    tools: Path,
+    posix_shell: Path,
+) -> None:
     """Let a companion process share the image without migrating.
 
     Confirms a command passed to the entrypoint still waits for dependencies and then replaces the
@@ -269,6 +279,7 @@ def test_a_companion_command_waits_but_does_not_migrate(tools: Path) -> None:
 
     Arguments:
         tools: Directory of fabricated commands.
+        posix_shell: Functional Bash executable supplied by the unit harness.
 
     Returns:
         None.
@@ -279,7 +290,7 @@ def test_a_companion_command_waits_but_does_not_migrate(tools: Path) -> None:
     calls_file = (tools / "calls").as_posix()
     write_tool(tools, "celery", f'echo "celery $*" >>"{calls_file}"\nexit 0')
 
-    assert run(tools, "celery", "worker").returncode == 0
+    assert run(tools, posix_shell, "celery", "worker").returncode == 0
 
     recorded = calls(tools)
 
@@ -290,7 +301,10 @@ def test_a_companion_command_waits_but_does_not_migrate(tools: Path) -> None:
 
 
 @pytest.mark.unit
-def test_the_worker_count_comes_from_the_environment(tools: Path) -> None:
+def test_the_worker_count_comes_from_the_environment(
+    tools: Path,
+    posix_shell: Path,
+) -> None:
     """Serve with the worker count the environment sets.
 
     Confirms the configured worker count reaches the server, since the value is the one knob an
@@ -298,6 +312,7 @@ def test_the_worker_count_comes_from_the_environment(tools: Path) -> None:
 
     Arguments:
         tools: Directory of fabricated commands.
+        posix_shell: Functional Bash executable supplied by the unit harness.
 
     Returns:
         None.
@@ -305,13 +320,16 @@ def test_the_worker_count_comes_from_the_environment(tools: Path) -> None:
     Raises:
         AssertionError: If the configured count is not passed through.
     """
-    run(tools)
+    run(tools, posix_shell)
 
     assert any("--workers 3" in call for call in calls(tools))
 
 
 @pytest.mark.unit
-def test_metrics_are_aggregated_across_workers_without_plain_access_logs(tools: Path) -> None:
+def test_metrics_are_aggregated_across_workers_without_plain_access_logs(
+    tools: Path,
+    posix_shell: Path,
+) -> None:
     """Prepare multiprocess metrics before starting the server.
 
     Confirms every worker writes into one freshly prepared directory and Uvicorn's prose access
@@ -319,6 +337,7 @@ def test_metrics_are_aggregated_across_workers_without_plain_access_logs(tools: 
 
     Arguments:
         tools: Directory of fabricated commands.
+        posix_shell: Functional Bash executable supplied by the unit harness.
 
     Returns:
         None.
@@ -326,7 +345,7 @@ def test_metrics_are_aggregated_across_workers_without_plain_access_logs(tools: 
     Raises:
         AssertionError: If aggregation is absent or plain access logging remains enabled.
     """
-    run(tools)
+    run(tools, posix_shell)
 
     server_calls = [call for call in calls(tools) if call.startswith("uvicorn")]
     application = next(call for call in server_calls if "config.asgi:application" in call)
@@ -344,7 +363,10 @@ def test_metrics_are_aggregated_across_workers_without_plain_access_logs(tools: 
 
 
 @pytest.mark.unit
-def test_a_missing_settings_module_stops_the_startup(tools: Path) -> None:
+def test_a_missing_settings_module_stops_the_startup(
+    tools: Path,
+    posix_shell: Path,
+) -> None:
     """Refuse to start without a settings module.
 
     Confirms the required variable is asserted rather than defaulted, so a container started
@@ -352,6 +374,7 @@ def test_a_missing_settings_module_stops_the_startup(tools: Path) -> None:
 
     Arguments:
         tools: Directory of fabricated commands.
+        posix_shell: Functional Bash executable supplied by the unit harness.
 
     Returns:
         None.
@@ -363,7 +386,7 @@ def test_a_missing_settings_module_stops_the_startup(tools: Path) -> None:
     del incomplete["DJANGO_SETTINGS_MODULE"]
 
     completed = subprocess.run(
-        [str(BASH), str(ENTRYPOINT)],
+        [str(posix_shell), str(ENTRYPOINT)],
         capture_output=True,
         text=True,
         env=incomplete,

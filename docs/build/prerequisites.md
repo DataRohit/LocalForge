@@ -18,10 +18,12 @@ uv run poe environments-setup
 If port 8000 is already occupied, use `uv run poe environments-setup --proxy-only`; the override applies only to
 the development project and the testing project remains unchanged.
 
-The combined command reports redacted durations for environment preparation, missing-image work, Compose startup,
-health waiting, the Docker ownership audit, and the total. It builds each absent local image once, skips existing
-local image tags, starts with `--no-build`, and runs no application tests. Use the environment-specific rebuild
-commands after source or Dockerfile changes.
+The combined command reports redacted durations for environment preparation, image work, Compose startup, health
+waiting, the Docker ownership audit, and the total. It pulls absent external images, rebuilds every local image
+through cached deterministic layers, starts with `--no-build`, and runs no application tests.
+
+Optional or deliberately unused tools appear as `INFO`, not `WARN`. On this project that includes the bare PATH
+Python, kind/minikube, and host `psql`; their absence does not weaken a required gate.
 
 Use `uv run poe secrets-decrypt` when committed encrypted values must replace absent plaintext files explicitly.
 Use `uv run poe secrets-generate` to create or top up machine-local values without decrypting.
@@ -29,7 +31,7 @@ Use `uv run poe secrets-generate` to create or top up machine-local values witho
 ## 1. Checklist
 
 | # | Requirement | Check | Minimum | Observed 2026-09-13 | If missing |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | 1 | Docker Engine | `docker --version` | 27.0 | **29.7.2** (build a7dcaa6) — pass | Docker Desktop for Windows, or Docker Engine + WSL2 |
 | 2 | Docker Compose | `docker compose version` | 2.24 | **v5.5.1** — pass | Ships with Docker Desktop; else the `docker-compose-plugin` package |
 | 3 | Git | `git --version` | 2.40 | **2.53.0.windows.4** — pass | `git-scm.com` |

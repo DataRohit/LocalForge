@@ -4147,10 +4147,6 @@ def test_reset_recipient_dimensions_survive_account_creation_and_email_change(
 @pytest.mark.serial
 @pytest.mark.timeout(MAILPIT_TIMEOUT_SECONDS)
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
-@pytest.mark.skipif(
-    settings.EMAIL_BACKEND != SMTP_BACKEND,
-    reason="the real password recovery loop runs only under the Compose smtp profile",
-)
 @override_settings(EMAIL_BACKEND=SMTP_BACKEND)
 def test_password_recovery_round_trips_through_smtp_and_mailpit(
     client: DjangoClient,

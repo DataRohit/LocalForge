@@ -18,6 +18,9 @@ adversarial or degraded conditions, with every finding either fixed or recorded 
 
 **Status:** done
 
+**Reverified 2026-09-23:** image setup rebuilds local tags from current source, audit failures identify the exact
+image boundary, and the refreshed immutable image snapshot passes the complete security audit.
+
 - [x] The framework's own deployment checks run clean in the production-shaped configuration, and every silenced
       check is justified in writing.
 - [x] No credential, token, or key appears in the repository, in an image layer, in a log line, or in an error

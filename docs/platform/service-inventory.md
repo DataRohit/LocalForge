@@ -241,8 +241,8 @@ must not recur in a post-readiness exercise window:
 | `pgadmin-pa7fe` | Python `SyntaxWarning: 'return' in a 'finally' block` from `sshtunnel.py` | pgAdmin's vendored dependency is compiled during Python 3.14 startup and warns about syntax that remains executable. The warning must occur only before readiness; the dashboard health check and authenticated database connection must pass. |
 | `rabbitmq-rq4sx` | deprecated `management_metrics_collection` warning | RabbitMQ 4.3 reports the management plugin's metrics collector that Flower uses for queue depth. The authenticated management API and Prometheus endpoint must both pass. |
 | `rabbitmq-*` | none for worker QoS | Consumed task queues are quorum queues and Celery detects that topology, so it uses consumer-scoped QoS instead of RabbitMQ's removed global QoS mode. Any `global_qos` record is a blocker. |
-| `rabbitmq-tr6mc` | `client unexpectedly closed TCP connection` during the bounded suite window | Separate-process worker tests use Celery's remote shutdown before their bounded fallback, but Celery and pytest worker process exit still close AMQP sockets without RabbitMQ's close handshake. This is accepted only inside an identified window whose containing mode passes collection, suite, health, ownership, and residue gates; every per-test queue must be deleted and broker health green afterward. Combined-mode parity and the other mode are evaluated separately. Any idle or non-test occurrence is a blocker. |
-| `postgres-tp8vn` | Account duplicate-key violations, the two named diagnostic-marker cast failures, or missing `accounts_login_throttle_event` during a bounded suite window | Integration tests deliberately exercise PostgreSQL uniqueness races, redacted driver diagnostics, and authoritative throttle-table loss. Only the exact registered constraint/table names and marker values are accepted, only when the containing mode passes collection, suite, health, ownership, and residue gates. Combined-mode parity and the other mode are evaluated separately. Any other PostgreSQL warning-or-higher record or any idle occurrence is a blocker. |
+| `rabbitmq-tr6mc` | `client unexpectedly closed TCP connection` during the bounded suite window | Separate-process worker tests use Celery's remote shutdown before their bounded fallback, but Celery and pytest worker process exit still close AMQP sockets without RabbitMQ's close handshake. The exact paired signature is classified independently of collection, suite, health, ownership, and residue so another failure does not manufacture a secondary log-policy failure; the original failing gate still blocks the mode. Every per-test queue must be deleted and broker health green afterward. Any idle, unpaired, or non-test occurrence is a blocker. |
+| `postgres-tp8vn` | Account duplicate-key violations, the two named diagnostic-marker cast failures, or missing `accounts_login_throttle_event` during a bounded suite window | Integration tests deliberately exercise PostgreSQL uniqueness races, redacted driver diagnostics, and authoritative throttle-table loss. Exact registered constraint/table names and marker values are classified independently of collection, suite, health, ownership, and residue so another failure does not manufacture a secondary log-policy failure; the original failing gate still blocks the mode. Any other PostgreSQL warning-or-higher record or any idle occurrence is a blocker. |
 | `seaweedfs-*` | info-level `Not current leader` or local gRPC socket connection failure | SeaweedFS all-in-one components begin dialing before the embedded Raft leader and local sockets exist. Both `/healthz` probes and an S3 byte round trip must pass. |
 | `traefik-tk2jp` | encoded-character rejection warning | Traefik 3.7 warns when the entrypoint explicitly rejects encoded slash, backslash, null, semicolon, percent, question-mark, and hash characters. Both entrypoints pin every option to `false` to prevent proxy/backend split views. |
 
@@ -387,6 +387,10 @@ The runner's Compose command is an idle Python process with a local filesystem h
 `compose up`; explicit container-mode test commands use `compose exec`. This keeps the registered container inside
 the `localforge-test` project and prevents generated `*-run-*` one-off containers.
 
+WebSocket integration tests use the repository's ASGI queue communicator from `tests/websocket.py`. They do not
+import `channels.testing`, so Daphne and its deprecated Windows event-loop-policy side effect are absent from the
+development dependency group.
+
 ### 4.1 Exclusions, and why
 
 | Excluded | Reason |
@@ -399,7 +403,7 @@ the `localforge-test` project and prevents generated `*-run-*` one-off container
 | `postgres-replica-pg6vy` | The `replica` alias points at `postgres-tp8vn`. Router paths are exercised; replication lag is not. See [../adr/0012-streaming-replication.md](../adr/0012-streaming-replication.md) |
 | `pgbackrest-pb2wj` | Time-based operational behaviour, verified in development by the phase 6 gate |
 | `celery-worker-cw8rt`, `celery-beat-cb4hq` | `CELERY_TASK_ALWAYS_EAGER=true` runs ordinary tasks in-process. Broker tests override the namespaced setting; worker-service tests start the real Celery command as a separate bounded process, while focused logging tests retain the in-process worker. Control, reply, and event queues are also declared directly because the focused workers skip bootsteps |
-| `mailpit-tm7bh` | Default `EMAIL_BACKEND` is `locmem`. The SMTP round-trip runs under `--profile smtp`. The web port is published so a host-mode run can assert through the REST API, not only send |
+| `mailpit-tm7bh` | Default `EMAIL_BACKEND` is `locmem`. Every complete host/container gate temporarily starts `--profile smtp`, runs all five SMTP cases, then clears and removes the container. The web port lets host mode assert through the REST API, not only send |
 
 Every account email uses a Celery task. Credential-link tasks carry account ID plus the required raw bearer and keep
 their durable at-most-once claim/no-retry contract. Credential-free password and username change notices carry only
@@ -419,8 +423,9 @@ so the email task does not retry or fail because live notification delivery is t
 | Container | `uv run poe testing-test-container` | `.env.testing` | container names on the testing networks |
 | Host | `uv run poe testing-test-host` | `.env.testing.host` | `127.0.0.1` and the published ports above |
 
-Both modes run the same complete Poe task, which keeps their collection arithmetic and stage timings comparable.
-That interface hides two stages:
+Both modes temporarily start Mailpit before collection and run the same complete internal Poe task, which keeps
+their collection arithmetic and stage timings comparable. Mailpit is accepted only during the complete run and is
+removed before the command returns. That interface hides two stages:
 
 1. `test-core` selects `not security_timing` and runs `pytest -n auto --dist loadgroup` with 100% branch coverage.
 2. `test-security-timing` selects `security_timing` and runs `pytest -n 4 --dist load --no-cov`.
@@ -435,9 +440,11 @@ schedule, and policy tests remain in the covered core stage. Timing cases carry 
 `--dist load` deliberately ignores the modules' load-group affinity so independent parameter cases can occupy the
 bounded four-worker pool.
 
-`test`, `test-fresh`, and `test-parallel` all compose both stages and stop with failure if either fails.
-`test-security-timing` is the focused timing interface. `test-integration` excludes timing cases by default so an
-ordinary focused workflow cannot accidentally serialize the benchmarks. A bare `uv run pytest` remains the same
+`test`, `test-parallel`, `test-serial`, `test-fresh`, and `test-integration` enter SMTP-aware host orchestration.
+Their internal `*-stages` tasks run only after dependencies and temporary Mailpit are ready. Focused integration
+uses the same parallel load-group runner while excluding timing cases, so shared-state tests keep their required
+process isolation. `test-security-timing` remains the internal focused timing interface. Pytest warnings are errors,
+and the controller fails the session if any report is skipped. A bare `uv run pytest` remains the same
 complete collection in one process, and `uv run poe test-serial` is the documented way to read the stack of a test
 that timed out.
 

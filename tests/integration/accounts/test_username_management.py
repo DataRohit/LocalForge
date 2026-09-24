@@ -2845,11 +2845,8 @@ def test_username_reset_request_outcomes_meet_the_approved_timing_criterion(
 
 @pytest.mark.integration
 @pytest.mark.services("postgres", "mailpit", "valkey-cache")
+@pytest.mark.serial
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
-@pytest.mark.skipif(
-    settings.EMAIL_BACKEND != SMTP_BACKEND,
-    reason="requires the testing SMTP profile",
-)
 @override_settings(EMAIL_BACKEND=SMTP_BACKEND)
 def test_username_recovery_round_trips_through_smtp_and_mailpit(
     client: DjangoClient,

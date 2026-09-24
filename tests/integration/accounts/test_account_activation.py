@@ -3375,10 +3375,6 @@ def test_resend_account_lookup_failure_after_admission_is_service_unavailable(
 @pytest.mark.serial
 @pytest.mark.timeout(MAILPIT_TIMEOUT_SECONDS)
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
-@pytest.mark.skipif(
-    settings.EMAIL_BACKEND != SMTP_BACKEND,
-    reason="the real activation loop runs only under the Compose smtp profile",
-)
 @override_settings(EMAIL_BACKEND=SMTP_BACKEND)
 def test_registration_activation_loop_round_trips_through_mailpit(client: Client) -> None:
     """Register, capture, and activate through real SMTP.

@@ -41,6 +41,11 @@ Task results go to the Valkey cache instance. `django-celery-results` 2.6.0 is *
 months and Django classifiers stopping at 5.2. Routing results to Valkey removes a stale dependency and keeps a
 write path out of PostgreSQL.
 
+Reviewed 2026-09-23 after warnings became test failures. Celery 5.6.3 calls redis-py's deprecated `setex` method for
+every expiring result. `LocalForgeRedisBackend` preserves the same expiry and publication semantics through
+`SET ... EX`, and its worker cleanup closes the result consumer plus connection pool so focused thread workers and
+production shutdown do not abandon Redis sockets.
+
 ## Quorum queues keep QoS current
 
 Reviewed 2026-09-22 during the degraded-recovery audit. Celery's classic-queue compatibility path requests
@@ -241,9 +246,10 @@ because it carries no action, bearer, account field, or mutable identifier.
 
 Request paths publish these tasks through `transaction.on_commit` and contain broker publication errors, so response
 status, body, and enumeration timing do not depend on mail or queue success. Testing remains eager with the locmem
-backend by default. The profile-gated SMTP task path passed against Mailpit in host and container modes. Development
-runtime verification observed SMTP outage retry followed by successful delivery, and permanent outage failure after
-five retries with one scrubbed dead-letter record.
+backend by default. Every complete host and container gate temporarily starts profile-gated Mailpit and runs the
+activation, password recovery, username recovery, direct delivery, and unauthenticated-boundary SMTP cases with no
+skips. Development runtime verification observed SMTP outage retry followed by successful delivery, and permanent
+outage failure after five retries with one scrubbed dead-letter record.
 
 The after-commit dispatch boundary deliberately contains any task-execution exception and logs only its type. In
 testing, eager propagation can surface Celery's `Retry` after the first rejected attempt; in development, ordinary

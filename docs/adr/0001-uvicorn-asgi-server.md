@@ -49,14 +49,8 @@ closes `1002`, invalid UTF-8 text closes `1007`, keepalive timeout closes `1011`
 closes `1012`. Invalid handshake syntax returns HTTP `400`. None can carry a LocalForge private close code or
 request identifier because the transport produces it before or outside ASGI handling.
 
-**Daphne is nevertheless a development dependency.** Measured 2026-09-14 on Channels 4.3.2:
-`channels/testing/__init__.py` imports `ChannelsLiveServerTestCase`, which imports `daphne.testing`, so
-`from channels.testing import WebsocketCommunicator` raises `ModuleNotFoundError: No module named 'daphne'` with
-Channels alone. Every consumer test in this platform goes through that import, so `daphne` 4.2.3 — above both CVEs
-above — sits in the **development group only**. It is never installed into the runtime image and never serves a
-request; Uvicorn remains the server. This does not reopen the decision above.
-
-Importing it on Windows emits two `DeprecationWarning`s from `daphne/__init__.py`, which calls
-`asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())`; both are slated for removal in Python
-3.16. They are host-only, upstream's to fix, and harmless before 3.16 — recorded here so they are recognised rather
-than investigated twice.
+**Daphne is not a development dependency.** Reversed 2026-09-23 after pytest warnings became errors:
+`channels.testing` imports Daphne's live-server package and changes the Windows event-loop policy through APIs
+deprecated for removal in Python 3.16. The integration suite now uses the narrow project-owned
+`tests.websocket.WebsocketCommunicator`, built directly on ASGI queues, so consumer tests retain their in-process
+protocol seam without importing or installing an alternative server. Uvicorn remains the only server.

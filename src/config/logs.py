@@ -1583,6 +1583,7 @@ class _ASGIResponseObserver:
         response_status: Status observed in the response-start event.
         captured_finalizer: Django finalizer or scope-derived fallback.
         disconnected: Whether the application observed an inbound disconnect.
+        transport_error: Original outbound transport failure retained through Django cleanup.
 
     Members:
         active_finalizer: Return the finalizer representing this response.
@@ -1625,6 +1626,7 @@ class _ASGIResponseObserver:
         self.response_status: int | None = None
         self.captured_finalizer: _RequestFinalizer | None = None
         self.disconnected = False
+        self.transport_error: BaseException | None = None
 
     def active_finalizer(self) -> _RequestFinalizer:
         """Return Django's finalizer or build a pre-middleware fallback.
@@ -1728,9 +1730,13 @@ class _ASGIResponseObserver:
 
         try:
             await self.send_callable(outbound_message)
-        except BaseException:
+        except asyncio.CancelledError:
             self.complete_failure()
             raise
+        except BaseException as error:
+            self.transport_error = error
+            self.complete_failure()
+            raise asyncio.CancelledError from error
 
         if message["type"] == "http.response.body" and not message.get("more_body", False):
             self.active_finalizer().complete(failed=self.disconnected)
@@ -1822,11 +1828,17 @@ def finalize_streaming_asgi(application: ASGI3Application) -> ASGI3Application:
         identifier_token = request_identifier.set(observer.identifier)
         started_token = asgi_request_started.set(observer.started)
         try:
-            await application(scope, observer.receive, observer.send)
-        except BaseException as error:
-            setattr(error, REQUEST_ID_EXCEPTION_ATTRIBUTE, observer.identifier)
-            observer.complete_failure()
-            raise
+            try:
+                await application(scope, observer.receive, observer.send)
+            except asyncio.CancelledError as error:
+                if observer.transport_error is None:
+                    setattr(error, REQUEST_ID_EXCEPTION_ATTRIBUTE, observer.identifier)
+                    observer.complete_failure()
+                    raise
+            except BaseException as error:
+                setattr(error, REQUEST_ID_EXCEPTION_ATTRIBUTE, observer.identifier)
+                observer.complete_failure()
+                raise
         finally:
             try:
                 observer.complete_failure()
@@ -1840,6 +1852,13 @@ def finalize_streaming_asgi(application: ASGI3Application) -> ASGI3Application:
                 request_identifier.reset(identifier_token)
                 asgi_finalizer_holder.reset(finalizer_token)
                 asgi_stream_transport_active.reset(transport_token)
+        if observer.transport_error is not None:
+            setattr(
+                observer.transport_error,
+                REQUEST_ID_EXCEPTION_ATTRIBUTE,
+                observer.identifier,
+            )
+            raise observer.transport_error
 
     return finalize_response
 

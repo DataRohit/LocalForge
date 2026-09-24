@@ -34,11 +34,11 @@ downloads from `files.pythonhosted.org`, which fails TLS negotiation on this man
 Changing the default index alone does not redirect URLs already recorded in `uv.lock`. After an approved index change,
 run `uv lock` and then `uv sync --all-groups --frozen`. Do not disable TLS certificate verification.
 
-`environments-setup` prepares environment files, pulls missing pinned external images, builds each missing local
-image once, starts both Compose projects with `--no-build`, waits for readiness, and audits Docker ownership.
-Existing local image tags are not rebuilt, so repeated setup does not recreate persistent services. It prints
-redacted phase and total timings and never runs application tests, coverage, security tests, or the project quality
-gate. Use `development-rebuild` or `testing-rebuild` after source or Dockerfile changes.
+`environments-setup` prepares environment files, pulls missing pinned external images, rebuilds all three local
+images through cached deterministic layers, starts both Compose projects with `--no-build`, waits for readiness, and
+audits Docker ownership. Rebuilding prevents a mutable local tag from referring to source older than the checkout;
+Compose recreates a service only when its rebuilt image identity changed. Setup prints redacted phase and total
+timings and never runs application tests, coverage, security tests, or the project quality gate.
 
 `setup` performs only the prerequisite and environment-file portion. It prefers committed SOPS files when plaintext
 configuration is absent and an age key is available, then uses the idempotent secret generator to top up all three
@@ -76,6 +76,8 @@ separately from ordinary rebuilds.
 
 Run `uv run poe docker-audit` for the complete container, label, network, volume, image, and health inventory.
 `uv run poe docker-clean-check` is the inverse precondition: it fails if any LocalForge Docker resource remains.
+It is optional and belongs only at the start of a deliberate clean-room rehearsal; failure on an already configured
+machine is expected and does not mean the running inventory is invalid. The command never deletes anything.
 Run `uv run poe convention-audit` for the deeper live registry comparison: exact names, ports, mounts, internal
 flags, anonymous-volume rejection, and active offline probes for both projects. Environment-specific variants are
 `convention-audit-development` and `convention-audit-testing`.
@@ -88,7 +90,8 @@ Accepted findings and review dates are in
 
 For a development machine where port 8000 is already owned by another process, `--proxy-only` is accepted by
 `environments-setup`, `development-up`, `development-rebuild`, and `development-reset`. Every other command rejects
-the option before running a subprocess.
+the option before running a subprocess. The convention audit reads the live Compose configuration labels and
+requires port 8000 in normal mode while requiring it absent in proxy-only mode.
 
 ## Runtime verification
 
@@ -123,9 +126,12 @@ uv run poe testing-test-host
 uv run poe testing-integration-audit
 ```
 
-The testing environment keeps `django-test-dt5qx` running as a Compose service. Container-mode tests use
-`docker compose exec`, so Docker Desktop keeps the runner under `localforge-test` and no `*-run-*` container is
-created. `testing-verify` remains an explicit full-suite workflow and is not part of setup:
+The testing environment keeps `django-test-dt5qx` running as a Compose service. Every complete host or container
+command starts the profile-gated Mailpit service before collection, runs all five real SMTP cases as part of the
+same complete suite, then clears and removes Mailpit on success or failure. All other tests retain the in-memory
+mail backend. Container-mode tests use `docker compose exec`, so Docker Desktop keeps the runner under
+`localforge-test` and no `*-run-*` container is created. `testing-verify` remains an explicit full-suite workflow
+and is not part of setup:
 
 `testing-integration-audit` starts and verifies the normal testing environment, starts the profile-gated Mailpit
 service, proves host and container SMTP messages survive a container recreate and can be deleted, then stops the
@@ -141,7 +147,8 @@ uv run poe testing-down
 then runs both modes even when one fails. It reports collection arithmetic, suite duration, health, scoped Docker
 ownership, headless residue, bounded logs, and total wall-clock duration. Exit `10` identifies container-only
 failure, `11` host-only failure, `12` failure in both modes, and `13` complete-count drift. Standalone container or
-host commands return the original failed child status unchanged.
+host commands return the original failed child status unchanged. Pytest warnings are errors, and a controller hook
+turns any skipped report into test failure.
 
 ## Quality checks
 
@@ -171,9 +178,11 @@ uv run poe test
 uv run poe test-parallel
 ```
 
-Both commands run the high-parallel core stage at 100% branch coverage, then run every statistical
-credential-timing case in the bounded four-worker timing stage. Run that stage directly when timing evidence is
-the only result needed:
+Both commands enter the SMTP-aware host orchestrator, run the high-parallel core stage at 100% branch coverage,
+then run every statistical credential-timing case in the bounded four-worker timing stage. `test-serial`,
+`test-fresh`, and `test-integration` also enter the same dependency, Mailpit, post-check, log, and cleanup lifecycle
+before delegating to their internal stage tasks. Run the timing stage directly only when dependencies are already
+prepared and timing evidence is the only result needed:
 
 ```console
 uv run poe test-security-timing

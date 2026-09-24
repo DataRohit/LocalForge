@@ -18,6 +18,9 @@ drifted name is caught mechanically rather than by reading a Compose file.
 
 **Status:** done
 
+**Reverified 2026-09-23:** the audit derives normal versus proxy-only mode from Docker's Compose configuration-file
+label and enforces the corresponding presence or absence of Django's direct port 8000 publication.
+
 - [x] The audit compares live Docker objects against the registry and reports any container that is missing,
       unexpected, or misnamed.
 - [x] Every audit command filters by the Compose project label. This machine is shared and carries unrelated

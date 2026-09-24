@@ -1,6 +1,6 @@
 # Phase 7 security and reliability audit
 
-Reviewed **2026-09-22**. Re-run the complete audit with `uv run poe security-audit`; runtime-affecting changes also
+Reviewed **2026-09-23**. Re-run the complete audit with `uv run poe security-audit`; runtime-affecting changes also
 require both health gates, `uv run poe convention-audit`, deployed behavior exercise, and bounded log review.
 
 ## Findings and disposition
@@ -74,6 +74,10 @@ removed all fixable high/critical findings from
 `localforge/django:0.1.0`, `localforge/django-test:0.1.0`, Valkey, RabbitMQ, Traefik, Mailpit, Redis exporter, and
 the remaining clean registered images.
 
+`environments-setup` rebuilds every local image through cached deterministic layers on each run rather than
+trusting a pre-existing mutable tag. Consecutive no-edit builds reproduced the same three image IDs. The image
+audit reports the exact tag, live identity, scanner, artifact, or policy field boundary when evidence drifts.
+
 The exact accepted snapshot is
 [image-vulnerability-policy.json](./image-vulnerability-policy.json). It records every unique identifier, package
 finding count, and a digest over target, identifier, package, installed version, fixed version, and severity.
@@ -82,11 +86,12 @@ coordinates. Every required live container must run the inspected immutable imag
 report it as the requested artifact. A malformed or empty successful scanner response is rejected, each image uses
 an isolated in-memory scan cache, and changing any row fails the audit.
 
-Two scanner findings are accepted non-credentials: the test image contains Autobahn's published cryptographic test
-fixture in source, and PostgreSQL ships Debian's public snake-oil TLS key. Recursive Docker ignore rules exclude
-generated `__pycache__` and bytecode from every local image, and Trivy retains a matching defensive skip because
-the corresponding source is scanned. Neither finding is referenced by LocalForge configuration or trusted as an
-identity. All other registered images have zero secret findings.
+One scanner finding is an accepted non-credential: PostgreSQL ships Debian's public snake-oil TLS key. Removing
+Daphne and Autobahn from the development dependency group removed the former test-image cryptographic fixture.
+Recursive Docker ignore rules exclude generated `__pycache__` and bytecode from every local image, and Trivy
+retains a matching defensive skip because the corresponding source is scanned. The remaining finding is not
+referenced by LocalForge configuration or trusted as an identity. All other registered images have zero secret
+findings.
 
 The following vulnerability findings remain only in current pinned upstream images and are accepted until the
 upstream project publishes a replacement image; review due **2026-10-06**:

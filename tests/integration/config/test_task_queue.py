@@ -14,6 +14,7 @@ import uuid
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from celery import signals
 from celery.contrib.testing.worker import start_worker
 from celery.events.receiver import EventReceiver
 from celery.result import AsyncResult, EagerResult
@@ -39,7 +40,10 @@ NESTED_SECRET = "nested-credential-value"  # noqa: S105
 AUTH_SECRET = "authorization-credential-value"  # noqa: S105
 
 
-def dispose_result(result: AsyncResult | None) -> None:
+def dispose_result(
+    result: AsyncResult | None,
+    worker_backends: list[celery_module.LocalForgeRedisBackend] | None = None,
+) -> None:
     """Release one real result consumer while service access is still permitted.
 
     Forgets persisted state and removes the asynchronous consumer before forcing collection, so a
@@ -47,15 +51,19 @@ def dispose_result(result: AsyncResult | None) -> None:
 
     Arguments:
         result: Real asynchronous result to release, or None before publication.
+        worker_backends: Result backends created inside focused worker threads.
 
     Returns:
         None.
     """
-    if result is None:
-        return
-
-    result.forget()
-    app.backend.remove_pending_result(result)
+    if result is not None:
+        result.forget()
+        app.backend.remove_pending_result(result)
+    for backend in {id(backend): backend for backend in worker_backends or []}.values():
+        backend.process_cleanup()
+    app.backend.result_consumer.stop()
+    app.backend.result_consumer._pubsub = None
+    app.backend.client.connection_pool.disconnect()
 
 
 def add(first: int, second: int) -> int:
@@ -137,6 +145,45 @@ retry_refuse_task = app.task(
 
 
 @pytest.fixture
+def worker_result_backends() -> Iterator[list[celery_module.LocalForgeRedisBackend]]:
+    """Capture result backends created by focused worker threads.
+
+    Registers a task completion observer before the worker starts and retains each thread-local
+    backend so the test can close its Redis sockets before forcing garbage collection.
+
+    Arguments:
+        None.
+
+    Yields:
+        Result backends observed while tasks completed.
+    """
+    backends: list[celery_module.LocalForgeRedisBackend] = []
+
+    def capture(sender: Task | None = None, **_details: object) -> None:
+        """Retain one task's result backend.
+
+        Reads the backend from the task instance supplied by Celery's post-run signal and ignores
+        signal calls without a task sender.
+
+        Arguments:
+            sender: Task that completed.
+            **_details: Additional signal fields not needed by cleanup.
+
+        Returns:
+            None.
+        """
+        if sender is not None:
+            backends.append(cast("celery_module.LocalForgeRedisBackend", sender.backend))
+
+    dispatch_uid = f"localforge-test-result-backends-{uuid.uuid4().hex}"
+    signals.task_postrun.connect(capture, weak=False, dispatch_uid=dispatch_uid)
+    try:
+        yield backends
+    finally:
+        signals.task_postrun.disconnect(dispatch_uid=dispatch_uid)
+
+
+@pytest.fixture
 def broker_queue(monkeypatch: pytest.MonkeyPatch, worker_namespace: str) -> Iterator[str]:
     """Give a test its own queue on the broker, with the eager default turned off.
 
@@ -170,7 +217,10 @@ def broker_queue(monkeypatch: pytest.MonkeyPatch, worker_namespace: str) -> Iter
 
 @pytest.mark.integration
 @pytest.mark.services("rabbitmq", "valkey-cache")
-def test_a_task_enqueued_on_the_broker_comes_back_with_its_result(broker_queue: str) -> None:
+def test_a_task_enqueued_on_the_broker_comes_back_with_its_result(
+    broker_queue: str,
+    worker_result_backends: list[celery_module.LocalForgeRedisBackend],
+) -> None:
     """Enqueue a task on the broker and read the result back.
 
     Runs a worker in this process against the real broker with the eager default explicitly turned
@@ -179,6 +229,7 @@ def test_a_task_enqueued_on_the_broker_comes_back_with_its_result(broker_queue: 
 
     Arguments:
         broker_queue: Queue this test owns on the broker.
+        worker_result_backends: Thread-local result backends requiring explicit cleanup.
 
     Returns:
         None.
@@ -208,7 +259,7 @@ def test_a_task_enqueued_on_the_broker_comes_back_with_its_result(broker_queue: 
             assert enqueued.get(timeout=RESULT_TIMEOUT_SECONDS) == FIRST_ADDEND + SECOND_ADDEND
             assert enqueued.successful()
     finally:
-        dispose_result(enqueued)
+        dispose_result(enqueued, worker_result_backends)
         enqueued = None
         gc.collect()
 
@@ -218,6 +269,7 @@ def test_a_task_enqueued_on_the_broker_comes_back_with_its_result(broker_queue: 
 def test_a_failing_task_logs_no_argument_the_caller_passed(
     broker_queue: str,
     monkeypatch: pytest.MonkeyPatch,
+    worker_result_backends: list[celery_module.LocalForgeRedisBackend],
 ) -> None:
     """Keep every argument value out of everything the queue logs.
 
@@ -228,6 +280,7 @@ def test_a_failing_task_logs_no_argument_the_caller_passed(
     Arguments:
         broker_queue: Queue this test owns on the broker.
         monkeypatch: Fixture replacing the terminal-record publisher.
+        worker_result_backends: Thread-local result backends requiring explicit cleanup.
 
     Returns:
         None.
@@ -269,7 +322,7 @@ def test_a_failing_task_logs_no_argument_the_caller_passed(
             with pytest.raises(RuntimeError):
                 enqueued.get(timeout=RESULT_TIMEOUT_SECONDS)
     finally:
-        dispose_result(enqueued)
+        dispose_result(enqueued, worker_result_backends)
         enqueued = None
         gc.collect()
         for logger in watched:
@@ -407,6 +460,7 @@ def test_a_terminal_failure_lands_in_one_scrubbed_dead_letter_record(
     broker_queue: str,
     monkeypatch: pytest.MonkeyPatch,
     worker_namespace: str,
+    worker_result_backends: list[celery_module.LocalForgeRedisBackend],
 ) -> None:
     """Persist one safe terminal record after a task reaches its retry bound.
 
@@ -417,6 +471,7 @@ def test_a_terminal_failure_lands_in_one_scrubbed_dead_letter_record(
         broker_queue: Queue this test owns for executable work.
         monkeypatch: Fixture assigning an isolated terminal queue.
         worker_namespace: Per-worker prefix keeping terminal records isolated.
+        worker_result_backends: Thread-local result backends requiring explicit cleanup.
 
     Returns:
         None.
@@ -484,7 +539,7 @@ def test_a_terminal_failure_lands_in_one_scrubbed_dead_letter_record(
             assert NESTED_SECRET not in str(message.payload)
             assert AUTH_SECRET not in str(message.payload)
     finally:
-        dispose_result(enqueued)
+        dispose_result(enqueued, worker_result_backends)
         enqueued = None
         gc.collect()
         with app.connection_for_write() as connection:

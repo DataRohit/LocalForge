@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, cast, override
 
 from celery import Celery, Task, signals
+from celery.backends.redis import RedisBackend
 from celery.exceptions import SoftTimeLimitExceeded, TimeLimitExceeded
 from celery.worker.request import Request as CeleryRequest
 from kombu import Exchange, Producer, Queue
@@ -31,6 +32,66 @@ RETRY_BACKOFF_MAX_SECONDS = 300
 MAX_RETRIES = 5
 BODY_ARGUMENT_COUNT = 2
 DEAD_LETTER_PUBLISH_RETRIES = 3
+RESULT_BACKEND_OVERRIDES = {"redis": "config.celery:LocalForgeRedisBackend"}
+
+
+class LocalForgeRedisBackend(RedisBackend):  # type: ignore[misc]
+    """Store task results through the supported Redis command.
+
+    Inherits from Celery's ``RedisBackend`` while preserving its retry, publication, and expiry
+    behavior, replacing only the deprecated client call used to write expiring values.
+
+    Attributes:
+        None beyond those inherited from ``RedisBackend``.
+
+    Members:
+        _set: Store and publish one encoded task result.
+        process_cleanup: Close result-consumer and Redis connection resources.
+    """
+
+    @override
+    def _set(self, key: str | bytes, value: str | bytes) -> None:
+        """Store and publish one task result.
+
+        Uses Redis ``SET`` with its expiry option when configured and ordinary ``SET`` otherwise,
+        then publishes the same value for asynchronous result consumers.
+
+        Arguments:
+            key: Backend key identifying the task result.
+            value: Encoded task-result payload.
+
+        Returns:
+            None.
+
+        Raises:
+            RedisError: If the result store or publication fails.
+        """
+        with self.client.pipeline() as pipeline:
+            if self.expires:
+                pipeline.set(key, value, ex=self.expires)
+            else:
+                pipeline.set(key, value)
+            pipeline.publish(key, value)
+            pipeline.execute()
+
+    @override
+    def process_cleanup(self) -> None:
+        """Close result backend resources at worker shutdown.
+
+        Stops the asynchronous result consumer and disconnects every pooled Redis connection so
+        thread and process workers cannot leave sockets for garbage collection.
+
+        Arguments:
+            None.
+
+        Returns:
+            None.
+
+        Raises:
+            RedisError: If Redis resource shutdown fails.
+        """
+        self.result_consumer.stop()
+        self.client.connection_pool.disconnect()
 
 
 def cleansed(value: object) -> object:
@@ -318,6 +379,7 @@ def redact_published_arguments(
 
 app = Celery("localforge", task_cls=LoggedTask)
 
+app.loader.override_backends = RESULT_BACKEND_OVERRIDES
 app.config_from_object("django.conf:settings", namespace="CELERY")
 app.autodiscover_tasks()
 

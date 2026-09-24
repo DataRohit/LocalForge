@@ -87,6 +87,7 @@ Listed so scope creep is recognisable. None exists.
 | `tests/integration/<package>/test_*.py` | One test per service integration, mirroring the package it covers |
 | `tests/conftest.py` | Per-worker namespace every externally allocated name is built from |
 | `tests/factories.py` | Valid-by-default account and credential-state factories shared by unit and integration tests |
+| `tests/websocket.py` | Daphne-free in-process ASGI WebSocket communicator shared by integration tests |
 | `tests/unit/conftest.py` | Guard refusing network access from the unit layer |
 | `tests/integration/conftest.py` | Guard requiring each integration test to declare its services |
 | `tests/integration/config/runtime_probe.py` | Host/container probe for Mailpit recreation and genuinely stopped dependency readiness |

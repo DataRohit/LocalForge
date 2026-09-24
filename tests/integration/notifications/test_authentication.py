@@ -12,7 +12,6 @@ from uuid import UUID
 
 import pytest
 from channels.db import database_sync_to_async
-from channels.testing import WebsocketCommunicator
 from django.conf import settings
 from django.db import DatabaseError, InterfaceError
 from django.utils import timezone
@@ -25,6 +24,7 @@ from config.logs import REQUEST_ID_META_KEY
 from notifications.authentication import JWTSubprotocolAuthMiddleware
 from notifications.protocol import WebSocketOutcome
 from notifications.websocket import ExactWebSocketHostValidator, ExactWebSocketOriginValidator
+from tests.websocket import WebsocketCommunicator
 
 if TYPE_CHECKING:
     from asgiref.typing import ASGIReceiveCallable, ASGISendCallable, ASGISendEvent, Scope
@@ -78,10 +78,7 @@ async def connect_with_subprotocols(
         headers=HEADERS,
         subprotocols=subprotocols,
     )
-    connected, detail = cast(
-        "tuple[bool, str | int | None]",
-        await communicator.connect(),
-    )
+    connected, detail = await communicator.connect()
 
     return communicator, connected, detail
 
@@ -226,10 +223,7 @@ async def test_host_rejection_precedes_credential_processing(
         AssertionError: If the connection reaches authentication or uses another close code.
     """
     communicator = WebsocketCommunicator(application, ROUTE, headers=headers)
-    connected, accepted = cast(
-        "tuple[bool, str | int | None]",
-        await communicator.connect(),
-    )
+    connected, accepted = await communicator.connect()
 
     assert connected
     assert accepted is None
@@ -486,10 +480,7 @@ async def test_query_string_credential_is_never_used(
         f"{ROUTE}?token={access}",
         headers=HEADERS,
     )
-    connected, accepted = cast(
-        "tuple[bool, str | int | None]",
-        await communicator.connect(),
-    )
+    connected, accepted = await communicator.connect()
 
     assert connected
     assert accepted is None

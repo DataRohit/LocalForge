@@ -17,9 +17,13 @@ matching what was actually built.
 - [Service inventory](../../docs/platform/service-inventory.md)
 - [Documentation standard](../../docs/platform/documentation-standard.md)
 
-**Status:** done
+**Status:** blocked on approved destructive clean-room rehearsal
 
-- [x] A clean-clone rehearsal is performed: from a fresh checkout, following only the written instructions,
+**Reverified 2026-09-23:** every non-destructive gate passes after repairing host failures, skipped SMTP tests,
+deprecation warnings, proxy-only drift, stale local images, and unexplained post-suite logs. The user was unavailable
+to approve deleting current LocalForge volumes and images, so upstream must perform the zero-resource rehearsal.
+
+- [ ] A clean-clone rehearsal is performed: from a fresh checkout, following only the written instructions,
       the development stack comes up healthy and the test suite passes in both modes. Every step that required
       undocumented knowledge is written down.
 - [x] Every service is healthy, correctly named, and reachable on its documented port.
