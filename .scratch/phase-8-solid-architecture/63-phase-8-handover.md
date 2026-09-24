@@ -17,20 +17,20 @@ each change improved the design, and how platform behaviour was preserved.
 - [Phase 7 handover](../../docs/handover/phase-7.md)
 - [Documentation standard](../../docs/platform/documentation-standard.md)
 
-**Status:** ready-for-agent
+**Status:** complete
 
-- [ ] `docs/handover/phase-8.md` identifies every audited module cluster and summarizes its five-principle
+- [x] `docs/handover/phase-8.md` identifies every audited module cluster and summarizes its five-principle
       disposition.
-- [ ] The report lists every confirmed finding, root cause, changed seam, behaviour-preservation test, runtime
+- [x] The report lists every confirmed finding, root cause, changed seam, behaviour-preservation test, runtime
       evidence, and final disposition.
-- [ ] The report distinguishes useful abstractions from rejected speculative abstractions and records why each
+- [x] The report distinguishes useful abstractions from rejected speculative abstractions and records why each
       observation did not justify code changes.
-- [ ] Exact final commands, test counts, coverage, warnings, skips, health, ownership, runtime exercise, log window,
+- [x] Exact final commands, test counts, coverage, warnings, skips, health, ownership, runtime exercise, log window,
       and independent audit results are recorded.
-- [ ] The report confirms no route, protocol, service, environment, dependency, or operator command was added
+- [x] The report confirms no route, protocol, service, environment, dependency, or operator command was added
       outside the documented scope.
-- [ ] Ticket statuses, ticket counts, phase summaries, build-plan file inventory, and all architecture links match
+- [x] Ticket statuses, ticket counts, phase summaries, build-plan file inventory, and all architecture links match
       the final repository.
-- [ ] A fresh written-instructions rehearsal passes from the documented precondition with no undocumented step.
-- [ ] Work stops after the handover. Any future feature or architecture change starts with a new governing document
+- [x] A fresh written-instructions rehearsal passes from the documented precondition with no undocumented step.
+- [x] Work stops after the handover. Any future feature or architecture change starts with a new governing document
       and ticket set.

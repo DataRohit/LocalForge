@@ -56,4 +56,6 @@ temp
 
 docs/_build
 docs/handover/phase-7.md
+docs/handover/phase-8.md
+docs/architecture/solid-findings.md
 docs/security/image-vulnerability-policy.json

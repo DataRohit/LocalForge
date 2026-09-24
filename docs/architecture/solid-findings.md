@@ -1,6 +1,6 @@
 # Phase 8 SOLID findings
 
-Status: Tickets 53-62 complete. Ticket 63 handover remains.
+Status: Phase 8 complete. All eleven tickets, 53-63, are closed.
 
 This ledger records evidence and dispositions under
 [the Phase 8 SOLID audit plan](./solid-audit-plan.md). File size, class count, naming preference, and hypothetical
@@ -245,14 +245,21 @@ The final local image policy binds:
   `sha256:d7479c2b34414da46e485dfccd64a71a696c11839579ba1e83365c76597d389f`, artifact
   `sha256:fd2f630db58f1366fb2e47f45c2854e93ef332e9e00844fd9b59c45c56bd8f5e`;
 - `localforge/django-test:0.1.0` image
-  `sha256:ef7923f4253f055a10a23b07b40db323c125a89beaff92b9936c6090224a92a2`, artifact
-  `sha256:9efa967dffdf6c59818d4243ee36215a6daec0630d40f5c58442734d31b704ff`;
+  `sha256:f6ff5013097e25b8eca91b0b6942b42a392b82e717bdab9657bf6d9de790e4b0`, artifact
+  `sha256:69254a3ab8dd4a230701e6430dd3f392f13a91f9640c40e34a79247123eb266b`;
 - `localforge/pgbackrest:18.6` image
   `sha256:78f396863a1c8b5e417d448d3a7c549f12d8d8ad0b24af0603ffa518739914e2`, artifact
   `sha256:a25eeb9b6eebb0efc9df90dd1a166709eb95cfe5c5ca5369afc5838bfbd10c1f`.
 
 Independent retained GPT-5.6 Terra and GPT-5.6 Sol auditors reviewed the identical complete Ticket 62 package.
 Both reported no legitimate finding.
+
+Ticket 63 excludes the Phase 8 findings ledger and handover from the test-image build context, matching the
+existing Phase 7 evidence exclusion. This keeps the reviewed image identity reproducible when only final evidence
+changes. The 164 Compose foundation tests passed, a repeated no-edit build retained the reviewed identity, and the
+complete remediated container mode passed 2,109 core plus 23 timing tests at 100% coverage. Its bounded window
+`2026-09-24T14:00:08.307542Z..2026-09-24T14:10:07.556280Z` had clean ownership, teardown, residue, and logs.
+Security, testing health, and project Docker ownership passed afterwards.
 
 ## Phase 8 disposition
 

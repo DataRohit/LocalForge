@@ -1411,6 +1411,8 @@ def test_local_images_pin_base_digests_and_installed_package_versions() -> None:
     assert "openssl=3.5.7-1~deb13u2" in django
     assert "util-linux=2.41.5-0+deb13u1" in django
     assert "docs/handover/phase-7.md" in dockerignore
+    assert "docs/handover/phase-8.md" in dockerignore
+    assert "docs/architecture/solid-findings.md" in dockerignore
     assert "docs/security/image-vulnerability-policy.json" in dockerignore
     assert "**/__pycache__/" in dockerignore
     assert "**/*.py[cod]" in dockerignore
