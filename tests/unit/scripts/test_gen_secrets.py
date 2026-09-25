@@ -2317,12 +2317,12 @@ def test_the_manifest_can_be_copied_into_place_and_generated_over(repository: Pa
 
 @pytest.mark.unit
 @pytest.mark.parametrize("environment", ["development", "testing"])
-def test_the_committed_encrypted_file_declares_the_same_variables(environment: str) -> None:
-    """Keep the committed secrets in step with the manifest.
+def test_the_committed_encrypted_file_declares_its_environment_variables(environment: str) -> None:
+    """Keep encrypted files aligned with their environment contract.
 
-    Confirms each encrypted file declares exactly the manifest's variables, because the dotenv
-    encryption format leaves names in the clear and a rename applied only to the manifest leaves a
-    fresh clone recovering a configuration the code no longer reads.
+    Confirms each encrypted file declares the manifest variables plus the documented development
+    provider settings, because the dotenv encryption format leaves names in the clear and a rename
+    applied only to the manifest leaves a fresh clone recovering an incomplete configuration.
 
     Arguments:
         environment: Environment whose encrypted file is inspected.
@@ -2333,11 +2333,13 @@ def test_the_committed_encrypted_file_declares_the_same_variables(environment: s
     Raises:
         AssertionError: If the encrypted file and the manifest declare different variables.
     """
-    manifest = set(gen_secrets.read_manifest(MANIFEST_SOURCE))
+    expected = set(gen_secrets.read_manifest(MANIFEST_SOURCE))
+    if environment == "development":
+        expected.update(gen_secrets.DEVELOPMENT_ONLY_DEFAULTS)
     encrypted = gen_secrets.REPOSITORY_ROOT / f".env.{environment}.sops"
     declared = encrypted_variable_names(encrypted)
 
-    assert declared == manifest
+    assert declared == expected
 
 
 @pytest.mark.unit
