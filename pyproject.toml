@@ -304,6 +304,10 @@ cmd = "python -m scripts.manage_platform secrets-generate"
 help = "Decrypt committed development and testing environment files"
 cmd = "python -m scripts.manage_platform secrets-decrypt"
 
+[tool.poe.tasks.developer-access-export]
+help = "Create browser bookmarks and password imports for development services"
+cmd = "python -m scripts.manage_platform developer-access-export"
+
 [tool.poe.tasks.development-build]
 help = "Build development images while preserving containers and volumes"
 cmd = "python -m scripts.manage_platform development-build"

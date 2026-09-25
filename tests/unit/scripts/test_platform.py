@@ -337,9 +337,38 @@ def test_help_publishes_the_complete_stable_command_surface(
     assert "uv run poe development-up --proxy-only" in output
     assert "uv run poe development-rebuild --proxy-only" in output
     assert "uv run poe development-reset --proxy-only" in output
+    assert "uv run poe developer-access-export" in output
     assert "rejected for every other command" in output
     assert "DESTRUCTIVE" in output
     assert "preserves volumes" in output
+
+
+def test_developer_access_export_dispatches_to_browser_import_generator(
+    tmp_path: Path,
+) -> None:
+    """Expose browser import generation through the stable operator command.
+
+    Invokes the public command name and requires the repository root to reach the dedicated export
+    script without Docker or another subprocess.
+
+    Arguments:
+        tmp_path: Temporary repository root.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the command is missing or dispatches with the wrong repository root.
+    """
+    with patch.object(
+        platform,
+        "export_developer_access_main",
+        return_value=platform.EXIT_OK,
+    ) as export_main:
+        code = platform.main(["developer-access-export"], root=tmp_path)
+
+    assert code == platform.EXIT_OK
+    export_main.assert_called_once_with(root=tmp_path)
 
 
 def test_setup_checks_prerequisites_and_tops_up_existing_environment_files(

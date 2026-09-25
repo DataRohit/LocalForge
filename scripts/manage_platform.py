@@ -22,6 +22,7 @@ from http import HTTPStatus
 from pathlib import Path
 from typing import Protocol
 
+from scripts.export_developer_access import main as export_developer_access_main
 from scripts.gen_secrets import parse_env_text
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
@@ -258,6 +259,10 @@ Testing (each safe default preserves volumes)
 Secrets
   uv run poe secrets-generate      Create or top up local environment files
   uv run poe secrets-decrypt       Recover committed encrypted environment files
+
+Developer access
+  uv run poe developer-access-export
+                                     Create browser bookmarks and password imports
 
 Options
   uv run poe environments-setup --proxy-only
@@ -3265,6 +3270,7 @@ def build_parser() -> argparse.ArgumentParser:
         "docker-clean-check",
         "secrets-generate",
         "secrets-decrypt",
+        "developer-access-export",
         *(
             f"{environment}-{action}"
             for environment in ("development", "testing")
@@ -3356,6 +3362,8 @@ def main(  # noqa: C901, PLR0911, PLR0912, PLR0913
         return generate_secrets(root, active_runner)
     if command == "secrets-decrypt":
         return decrypt_secrets(root, active_runner)
+    if command == "developer-access-export":
+        return export_developer_access_main(root=root)
     if command in HOST_TEST_TASKS:
         return testing_host_task(
             root,

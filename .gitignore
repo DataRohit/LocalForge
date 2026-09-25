@@ -94,6 +94,8 @@ temp/
 
 secrets/
 *.local
+bookmarks.html
+passwords.csv
 
 docker-compose.override.yml
 docker-compose.override.yaml
