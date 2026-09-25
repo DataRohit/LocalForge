@@ -265,7 +265,10 @@ def test_a_first_run_writes_all_three_files(repository: Path) -> None:
 
     assert code == gen_secrets.EXIT_OK
     for relative in gen_secrets.ENVIRONMENT_FILES.values():
-        assert set(values_in(repository, relative)) == set(manifest)
+        expected = set(manifest)
+        if relative == ".env.development":
+            expected.update(gen_secrets.DEVELOPMENT_ONLY_DEFAULTS)
+        assert set(values_in(repository, relative)) == expected
 
 
 @pytest.mark.unit
@@ -287,7 +290,11 @@ def test_every_generated_secret_replaces_the_placeholder(repository: Path) -> No
     gen_secrets.main([], root=repository, version_control=FakeVersionControl())
     values = values_in(repository, ".env.development")
 
-    assert gen_secrets.GENERATED_PLACEHOLDER not in values.values()
+    assert all(
+        value != gen_secrets.GENERATED_PLACEHOLDER
+        for name, value in values.items()
+        if name not in gen_secrets.DEVELOPMENT_ONLY_DEFAULTS
+    )
     for name in SECRET_VARIABLES:
         assert len(values[name]) > 1
 
@@ -1675,6 +1682,35 @@ def test_a_manifest_without_a_composed_variable_is_left_alone() -> None:
 
 
 @pytest.mark.unit
+def test_a_forced_development_run_preserves_the_provider_tunnel_token() -> None:
+    """Preserve an externally issued Tunnel credential during regeneration.
+
+    Confirms the secret workflow never replaces a usable Cloudflare provider token with a local
+    password, even when the operator regenerates the rest of the development credentials.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If force regeneration changes the provider-issued token.
+    """
+    issued_value = "provider-issued-value"
+
+    resolved, _, _ = gen_secrets.resolve_values(
+        {"COMPOSE_PROJECT_NAME": "localforge-dev"},
+        gen_secrets.NO_OVERRIDES,
+        {"TUNNEL_TOKEN": issued_value},
+        {},
+        force=True,
+    )
+
+    assert resolved["TUNNEL_TOKEN"] == issued_value
+
+
+@pytest.mark.unit
 def test_a_directory_that_is_not_a_repository_tracks_nothing(tmp_path: Path) -> None:
     """Answer an empty index only where it is provable.
 
@@ -2242,7 +2278,11 @@ def test_the_manifest_can_be_copied_into_place_and_generated_over(repository: Pa
     after = values_in(repository, ".env.development")
 
     assert code == gen_secrets.EXIT_OK
-    assert gen_secrets.GENERATED_PLACEHOLDER not in after.values()
+    assert all(
+        value != gen_secrets.GENERATED_PLACEHOLDER
+        for name, value in after.items()
+        if name not in gen_secrets.DEVELOPMENT_ONLY_DEFAULTS
+    )
 
 
 @pytest.mark.unit

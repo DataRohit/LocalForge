@@ -258,6 +258,7 @@ COMPOSE_CONFIG_FILES_LABEL = "com.docker.compose.project.config_files"
 DEVELOPMENT_CONFIG_FILES = frozenset({"compose.yaml", "compose.development.yaml"})
 PROXY_ONLY_CONFIG_FILE = "compose.proxy-only.yaml"
 DEVELOPMENT_MEMBERSHIPS = {
+    "cloudflared-cf7q2": frozenset({"edge-net-ne2vk"}),
     "traefik-tk2jp": frozenset({"edge-net-ne2vk"}),
     "django-uv5n2": frozenset(
         {

@@ -10,11 +10,12 @@ would otherwise have surfaced as a mysterious failure at build time.
 
 ## 1. Development stack
 
-22 services. Ports listed are **host** ports; the internal port is given where it differs.
+23 services. Ports listed are **host** ports; the internal port is given where it differs.
 
 | Container name | Role | Host ports | Internal | Networks |
 | --- | --- | --- | --- | --- |
 | `traefik-tk2jp` | reverse proxy, Docker label discovery | `127.0.0.1:8080` web, `127.0.0.1:8081` dashboard | 80, 8080, 8082 health internal only | `edge-net-ne2vk` |
+| `cloudflared-cf7q2` | authenticated Cloudflare Tunnel connector | none | 2000 metrics and readiness internal only | `edge-net-ne2vk` |
 | `django-uv5n2` | Django ASGI app plus observability-only metrics listener | `127.0.0.1:8000` | 8000 app, 8001 metrics on `obsv-net-nb4xt` only | `edge-net-ne2vk`, `app-net-na6hy`, `data-net-nd9pc`, `obsv-net-nb4xt`, `access-net-ha4mz` |
 | `postgres-pg3ka` | PostgreSQL 18.6 primary | `127.0.0.1:5432` | 5432 | `data-net-nd9pc`, `access-net-ha4mz` |
 | `postgres-replica-pg6vy` | PostgreSQL 18.6 hot standby | `127.0.0.1:5433` | 5432 | `data-net-nd9pc`, `access-net-ha4mz` |
@@ -480,6 +481,7 @@ Exact versions everywhere. `latest` is forbidden, including Dockerfile base imag
 | `docker.io/library/rabbitmq` | `4.3.5-management` (development) |
 | `docker.io/library/rabbitmq` | `4.3.5` (testing) |
 | `docker.io/library/traefik` | `v3.7.13` |
+| `docker.io/cloudflare/cloudflared` | `2026.9.3` |
 | `docker.io/axllent/mailpit` | `v1.31.1` |
 | `docker.io/chrislusf/seaweedfs` | `4.46` |
 | `docker.io/dpage/pgadmin4` | `9.17` |

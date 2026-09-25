@@ -1,4 +1,31 @@
 services:
+  cloudflared-cf7q2:
+    image: docker.io/cloudflare/cloudflared:2026.9.3
+    container_name: cloudflared-cf7q2
+    restart: unless-stopped
+
+    env_file:
+      - .env.development
+
+    networks:
+      - edge-net-ne2vk
+
+    command:
+      - tunnel
+      - --no-autoupdate
+      - --loglevel
+      - info
+      - --metrics
+      - 0.0.0.0:2000
+      - run
+
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "--metrics", "127.0.0.1:2000", "ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
   traefik-tk2jp:
     image: docker.io/library/traefik:v3.7.13
     container_name: traefik-tk2jp
@@ -634,7 +661,7 @@ services:
 
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.localforge.rule=Host(`localforge.localhost`)"
+      - "traefik.http.routers.localforge.rule=Host(`localforge.localhost`) || Host(`localforge.datarohit.com`)"
       - "traefik.http.routers.localforge.entrypoints=web"
       - "traefik.http.routers.localforge.service=localforge"
       - "traefik.http.services.localforge.loadbalancer.server.port=8000"

@@ -2475,12 +2475,58 @@ def test_the_proxy_routes_the_registered_application_host() -> None:
     labels = set(application["labels"])
 
     assert "traefik.enable=true" in labels
-    assert "traefik.http.routers.localforge.rule=Host(`localforge.localhost`)" in labels
+    assert (
+        "traefik.http.routers.localforge.rule=Host(`localforge.localhost`) || "
+        "Host(`localforge.datarohit.com`)"
+    ) in labels
     assert "traefik.http.routers.localforge.entrypoints=web" in labels
     assert "traefik.http.routers.localforge.service=localforge" in labels
     assert "traefik.http.services.localforge.loadbalancer.server.port=8000" in labels
     assert "traefik.http.services.localforge.loadbalancer.healthcheck.path=/health/" in labels
     assert services[PROXY_SERVICE]["depends_on"]["django-uv5n2"]["condition"] == "service_healthy"
+
+
+@pytest.mark.unit
+def test_cloudflare_tunnel_is_private_and_reaches_only_the_proxy() -> None:
+    """Constrain the public connector to the registered edge network.
+
+    Requires the pinned connector image, token environment contract, readiness probe, restart
+    policy, and absence of host ports or operator-network memberships.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the connector can publish a host port or reach a private service.
+    """
+    tunnel = merged(DEVELOPMENT_FILE)["services"]["cloudflared-cf7q2"]
+
+    assert tunnel["image"] == "docker.io/cloudflare/cloudflared:2026.9.3"
+    assert tunnel["container_name"] == "cloudflared-cf7q2"
+    assert tunnel["restart"] == "unless-stopped"
+    assert tunnel["networks"] == ["edge-net-ne2vk"]
+    assert "ports" not in tunnel
+    assert "environment" not in tunnel
+    assert tunnel["command"] == [
+        "tunnel",
+        "--no-autoupdate",
+        "--loglevel",
+        "info",
+        "--metrics",
+        "0.0.0.0:2000",
+        "run",
+    ]
+    assert tunnel["healthcheck"]["test"] == [
+        "CMD",
+        "cloudflared",
+        "tunnel",
+        "--metrics",
+        "127.0.0.1:2000",
+        "ready",
+    ]
 
 
 @pytest.mark.unit

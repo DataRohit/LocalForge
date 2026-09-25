@@ -19,8 +19,8 @@ This runbook records the intended operator sequence for the public LocalForge de
 - Add `_dmarc.datarohit.com` as one DNS-only TXT record with `v=DMARC1; p=none; rua=mailto:datarohit@outlook.com`.
   Review aggregate reports on **2026-10-25** before changing policy. Do not enforce `quarantine` or `reject` before
   that review records alignment evidence.
-- Point `localforge.datarohit.com` at the exact Tunnel hostname returned by Cloudflare after Ticket 66. Proxy the
-  application CNAME. The Tunnel hostname is provider output, not a repository-generated value.
+- Cloudflare's named Tunnel route owns `localforge.datarohit.com` and its provider-managed CNAME target. Keep the
+  provider target exact; never invent a `cfargotunnel.com` hostname or replace the Tunnel route with an origin record.
 - Create proxied originless records for `datarohit.com` and `www.datarohit.com` only when needed for Redirect Rules.
   Use Cloudflare's reserved placeholder address `192.0.2.0`; neither name may point at LocalForge's origin.
 - Redirect apex and `www` to `https://localforge.datarohit.com${uri.path}` with the original query string and a permanent
@@ -46,7 +46,18 @@ Required capture rows:
 - Run one named Tunnel from the Docker host.
 - Route only `https://localforge.datarohit.com` to Traefik's internal web entrypoint.
 - Reject unmatched hostnames and paths at the edge.
-- Store Tunnel credentials outside the repository and rotate them on compromise or host replacement.
+- The development Compose service is `cloudflared-cf7q2`, pinned to Cloudflare's `2026.9.3` release. It has no
+  published host port and joins only `edge-net-ne2vk`; its readiness endpoint is internal on port `2000`.
+- Configure the named Tunnel's single public hostname as `localforge.datarohit.com` with origin service
+  `http://traefik-tk2jp:80`, then add the provider CNAME target to Cloudflare DNS. Keep the provider target exact;
+  never invent a `cfargotunnel.com` hostname.
+- Store the provider-issued credential as the native `TUNNEL_TOKEN` variable through the development secret workflow;
+  a fresh file contains only the placeholder until the provider token is installed, and regeneration preserves a
+  usable provider token. It is passed only through `env_file` and must never be placed in Compose, a command line, a
+  log, or a committed file. Do not add a second token alias: cloudflared logs its native token name masked, while
+  arbitrary token-named variables can be echoed by diagnostics.
+- Rotate by disabling the Tunnel route, revoking the old token, replacing the development secret, recreating
+  `cloudflared-cf7q2`, and confirming the Tunnel returns healthy before re-enabling the route.
 
 ## Email
 

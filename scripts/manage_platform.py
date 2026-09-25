@@ -56,6 +56,7 @@ DEVELOPMENT_FOUNDATION = (
     "loki-lk3ny",
 )
 DEVELOPMENT_AFTER_DJANGO = (
+    "cloudflared-cf7q2",
     "celery-worker-cw8rt",
     "celery-beat-cb4hq",
     "flower-fl9zd",
@@ -125,6 +126,7 @@ CONTAINER_PROJECTS = {
 }
 REQUIRED_CONTAINERS = DEVELOPMENT_CONTAINERS | TESTING_CONTAINERS
 CONTAINER_IMAGES = {
+    "cloudflared-cf7q2": "cloudflare/cloudflared:2026.9.3",
     "traefik-tk2jp": "traefik:v3.7.13",
     "django-uv5n2": "localforge/django:0.1.0",
     "postgres-pg3ka": "localforge/pgbackrest:18.6",
@@ -591,6 +593,7 @@ LOCAL_BUILD_TARGETS = (
     ("localforge/django-test:0.1.0", TESTING, "django-test-dt5qx"),
 )
 EXTERNAL_PULL_TARGETS = (
+    ("cloudflare/cloudflared:2026.9.3", DEVELOPMENT, "cloudflared-cf7q2"),
     ("traefik:v3.7.13", DEVELOPMENT, "traefik-tk2jp"),
     ("postgres:18.6", DEVELOPMENT, "postgres-replica-pg6vy"),
     ("dpage/pgadmin4:9.17", DEVELOPMENT, "pgadmin-pa7fe"),

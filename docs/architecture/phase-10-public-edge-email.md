@@ -36,8 +36,9 @@ no-reply sender.
 DNS ownership stays with Cloudflare. Resend verified `localforge.datarohit.com` on 2026-09-25; its captured DKIM and
 SPF CNAME records remain DNS-only. The apex DMARC record is `_dmarc.datarohit.com TXT "v=DMARC1; p=none;
 rua=mailto:datarohit@outlook.com"`; enforcement waits for the dated review. Apex and `www` use proxied originless
-records only as Redirect Rule hosts, and never point to a LocalForge origin or application route. The application CNAME
-remains deferred to the Tunnel hostname returned by Ticket 66.
+records only as Redirect Rule hosts, and never point to a LocalForge origin or application route. Ticket 66 completed
+the application route as `localforge.datarohit.com` through the named `localforge-public` Tunnel; Cloudflare manages the
+provider CNAME target.
 
 ## Phase gate
 

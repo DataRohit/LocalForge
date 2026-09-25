@@ -252,6 +252,11 @@ SECRET_RECIPES: Mapping[str, Callable[[], str]] = {
     "MP_UI_AUTH": generate_plain_auth,
 }
 
+DEVELOPMENT_ONLY_DEFAULTS: Mapping[str, str] = {
+    "CLOUDFLARED_TUNNEL_NAME": "localforge-public",
+    "TUNNEL_TOKEN": GENERATED_PLACEHOLDER,
+}
+
 
 def compose_broker_url(values: Mapping[str, str]) -> str:
     """Compose the Celery broker URL.
@@ -777,6 +782,16 @@ def resolve_values(
     for name, value in existing.items():
         if name not in resolved:
             resolved[name] = value
+
+    if overrides is NO_OVERRIDES and manifest.get("COMPOSE_PROJECT_NAME") == "localforge-dev":
+        for name, default in DEVELOPMENT_ONLY_DEFAULTS.items():
+            held = existing.get(name)
+            if name == "TUNNEL_TOKEN" and held is not None and is_usable(held):
+                resolved[name] = held
+            elif force or not is_usable(held):
+                resolved[name] = default
+            else:
+                resolved[name] = held if held is not None else default
 
     apply_composed(resolved, force=force)
 
