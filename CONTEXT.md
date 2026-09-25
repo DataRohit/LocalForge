@@ -18,7 +18,8 @@ UI service. Not a staging environment and not a mirror of development.
 inside `django-test-dt5qx` against container hostnames. Host mode runs pytest on the developer's machine against
 published ports on `127.0.0.1`. Both are required; one passing is not a pass.
 
-There is no production environment, and adding one is out of scope.
+There is no separate production Compose environment. A **public deployment** may expose the development Compose stack
+through the controlled Phase 10 edge; it remains the `development` environment and must not expose operator services.
 
 ## Naming
 
@@ -46,6 +47,12 @@ Weakening a gate to make it pass is the one move that is never available.
 for PostgreSQL; Flower is a companion for Celery. A tool with a native UI never gets one.
 
 **headless** — running with no UI service at all. The property that defines the `testing` environment.
+
+**public deployment** — the development Docker stack reached through Cloudflare Tunnel at
+`localforge.datarohit.com`. It is not a third Compose environment.
+
+**public edge** — Cloudflare Tunnel plus Traefik routing that accepts the public hostname and rejects unmatched hosts
+and operator paths.
 
 ## Decisions and evidence
 
@@ -88,3 +95,11 @@ most semantically precise status code, resistance wins, and the schema documents
 declaring the tickets that block it.
 
 **frontier** — the set of tickets whose blockers are all done, and therefore the set that can be picked up now.
+
+## External identities
+
+**transactional sender** — `no-reply@localforge.datarohit.com`, the Resend-verified address used for development
+account mail. It has no mailbox or inbound forwarding rule.
+
+**support address** — the monitored human contact address routed by Cloudflare Email Routing. It is separate from the
+transactional sender and receives replies.

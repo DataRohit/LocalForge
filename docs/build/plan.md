@@ -33,8 +33,8 @@ Two constraints that are easy to trip over:
 
 ## 2. Files this plan creates
 
-Listed so scope creep is recognisable. Rows from the completed build now exist; Phase 8 planning adds only the
-architecture audit and handover evidence named below.
+Listed so scope creep is recognisable. Rows from the completed build now exist; Phase 10 planning adds only the
+public edge, email, and handover evidence named below.
 
 | Path | Purpose |
 | --- | --- |
@@ -65,6 +65,10 @@ architecture audit and handover evidence named below.
 | `docs/architecture/solid-audit-plan.md` | Phase 8 interpretation, scope, evidence rules, and gates for the SOLID architecture audit |
 | `docs/architecture/solid-findings.md` | Phase 8 module inventory and evidence-backed finding ledger, completed by ticket 53 |
 | `docs/handover/phase-8.md` | Final SOLID findings, changes, verification, runtime evidence, and deferred work, created by ticket 63 |
+| `docs/adr/0022-public-edge-and-resend.md` | Accepted public deployment and Resend boundary for Phase 10 |
+| `docs/architecture/phase-10-public-edge-email.md` | Phase 10 scope, security boundary, email contract, and gate |
+| `docs/architecture/phase-10-public-edge-email-spec.md` | Phase 10 problem statement, user stories, decisions, and test contract |
+| `docs/runbooks/phase-10-public-edge-email.md` | Phase 10 DNS, Tunnel, email, and rollback runbook |
 | `docs/platform/documentation-standard.md` | The worked reference for the docstring standard the checker enforces |
 | `.env.example` | Committed variable manifest, placeholders only |
 | `.env.development.sops`, `.env.testing.sops` | Committed encrypted env files |
@@ -107,7 +111,7 @@ architecture audit and handover evidence named below.
 
 ## 3. Phases
 
-Nine phases. **A phase may not begin until the previous gate passes.** If a gate fails, stop and fix it. Never
+Ten phases. **A phase may not begin until the previous gate passes.** If a gate fails, stop and fix it. Never
 weaken a gate to make it pass.
 
 Every phase gate that starts or changes a runtime service also applies the
@@ -371,6 +375,19 @@ or claim that retention is operationally bounded before that schedule exists.
 Report before handing over: every file created, grouped by Section 2; how each release-lag gate resolved; any
 pinned version that had moved since 2026-09-13, with its new release date; the phase 8 audit output; and anything
 in `docs/` that turned out to be wrong.
+
+### Phase 10 — Public edge and transactional email
+
+Phase 10 publishes the existing Docker deployment through Cloudflare Tunnel and adds Resend for development email.
+The authoritative scope, security boundary, email contract, and rollback sequence live in
+[phase-10-public-edge-email.md](../architecture/phase-10-public-edge-email.md) and
+[the runbook](../runbooks/phase-10-public-edge-email.md). Work the Phase 10 tickets in `.scratch/` only after the
+Phase 8 handover is complete.
+
+Gate: external DNS and TLS reach only `localforge.datarohit.com`; `/health/`, authenticated REST, and authenticated
+WebSocket flows work through the Tunnel; development email sends through Resend from
+`no-reply@localforge.datarohit.com`; testing still uses Mailpit; operator surfaces and secrets remain private; and
+the affected runtime log window is clean.
 
 ## 4. Rollback
 

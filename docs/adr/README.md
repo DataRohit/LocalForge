@@ -9,7 +9,7 @@ Format follows `.agents/skills/domain-modeling/ADR-FORMAT.md`: sequential number
 ## Decision summary
 
 | ADR | Area | Decision | Version | Status |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | [0001](./0001-uvicorn-asgi-server.md) | ASGI app server | Uvicorn | 0.52.4 | accepted |
 | [0002](./0002-drf-spectacular-openapi.md) | REST layer, OpenAPI, Swagger UI, ReDoc | DRF + drf-spectacular + sidecar | 3.18.0 / 0.30.0 / 2026.9.1 | accepted |
 | [0003](./0003-channels-dedicated-valkey.md) | WebSockets + message layer | Channels + channels-redis on a dedicated Valkey | 4.3.2 / 4.3.0 | accepted |
@@ -31,6 +31,7 @@ Format follows `.agents/skills/domain-modeling/ADR-FORMAT.md`: sequential number
 | [0019](./0019-websocket-authentication.md) | WebSocket auth | JWT over the subprotocol header, custom ASGI middleware | — | accepted |
 | [0020](./0020-no-comments-structured-docstrings.md) | Code standards | No comments; structured docstrings, mechanically enforced | — | accepted |
 | [0021](./0021-access-zone-for-published-ports.md) | Network topology | A dedicated access zone, because internal networks cannot publish host ports | — | accepted |
+| [0022](./0022-public-edge-and-resend.md) | Public deployment and transactional email | Cloudflare Tunnel plus Resend on the existing Docker deployment | Cloudflare / Resend | accepted |
 
 ## Evidence standard
 
@@ -57,7 +58,7 @@ make this project the QA for the combination.
 ## Where the rest lives
 
 | Question | File |
-|---|---|
+| --- | --- |
 | What are the services called, on which ports, in what order | [platform/service-inventory.md](../platform/service-inventory.md) |
 | What is the naming registry and the variable inventory | [platform/conventions.md](../platform/conventions.md) |
 | How does this map to Kubernetes later | [platform/kubernetes-mapping.md](../platform/kubernetes-mapping.md) |

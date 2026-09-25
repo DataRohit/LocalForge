@@ -1,6 +1,6 @@
 # LocalForge build tickets
 
-63 tracer-bullet tickets across 8 phases, numbered globally in dependency order. Each ticket is sized to fit one
+70 tracer-bullet tickets across 9 ticket phases, numbered globally in dependency order. Each ticket is sized to fit one
 fresh context window and is verifiable on its own.
 
 Format follows [the ticket-writing skill](../.agents/skills/to-tickets/SKILL.md). Ticket files avoid implementation
@@ -32,6 +32,7 @@ the application surface is built on top.
 | 6 | [phase-6-async-services](./phase-6-async-services) | 42–46 | Celery worker, scheduler, Flower, async email, event fan-out |
 | 7 | [phase-7-testing-and-audit](./phase-7-testing-and-audit) | 47–52 | Full suites in both modes, convention and security audits |
 | 8 | [phase-8-solid-architecture](./phase-8-solid-architecture) | 53–63 | Evidence-led SOLID audit, focused improvements, final verification |
+| 10 | [phase-10-public-edge-email](./phase-10-public-edge-email) | 64–70 | Cloudflare Tunnel edge, Resend development email, DNS security, public runtime verification |
 
 ## Ticket index
 
@@ -103,6 +104,13 @@ search; its title is never used to predict its filename.
 | 61 | [61: Cross-module dependency audit](./phase-8-solid-architecture/61-cross-module-dependency-audit.md) |
 | 62 | [62: Complete SOLID verification](./phase-8-solid-architecture/62-complete-solid-verification.md) |
 | 63 | [63: Phase 8 handover](./phase-8-solid-architecture/63-phase-8-handover.md) |
+| 64 | [64: Public deployment scope and configuration contract](./phase-10-public-edge-email/64-public-deployment-scope.md) |
+| 65 | [65: Cloudflare DNS and email identity](./phase-10-public-edge-email/65-cloudflare-dns-and-email-identity.md) |
+| 66 | [66: Cloudflare Tunnel edge](./phase-10-public-edge-email/66-cloudflared-public-edge.md) |
+| 67 | [67: Resend development transport](./phase-10-public-edge-email/67-resend-development-transport.md) |
+| 68 | [68: Public runtime security hardening](./phase-10-public-edge-email/68-public-runtime-security.md) |
+| 69 | [69: Public runtime truth verification](./phase-10-public-edge-email/69-public-runtime-verification.md) |
+| 70 | [70: Phase 10 handover](./phase-10-public-edge-email/70-phase-10-handover.md) |
 
 ## Dependency graph
 
@@ -148,6 +156,11 @@ Arrows point from blocker to blocked. Tickets on the same line can run in parall
             ├──> 55 ────────────────┤
             ├──> 56 ──> 59 ─────────┤
             └──> 57 ──> 58 ─────────┼──> 60 ──> 61 ──> 62 ──> 63
+
+63 ──> 64 ──┬──> 65 ──┬──> 67 ──┐
+            │         └──> 66 ──┤
+            └──────────────> 66 ─┤
+                     66,67 ──> 68 ──> 69 ──> 70
 ```
 
 ## Standards every ticket inherits
