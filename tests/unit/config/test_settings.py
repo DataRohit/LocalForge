@@ -42,6 +42,7 @@ TOMBSTONE_INTERVAL_PROBE_SECONDS = 61
 JWT_CLEANUP_HOUR_PROBE = 2
 JWT_CLEANUP_MINUTE_PROBE = 30
 JWT_CLEANUP_EXPIRY_PROBE_SECONDS = 600
+PUBLIC_HSTS_SECONDS = 31536000
 
 REQUIRED_ENVIRONMENT = {
     "DJANGO_SECRET_KEY": secrets.token_urlsafe(32),
@@ -656,6 +657,8 @@ def test_request_and_database_instrumentation_wrap_the_application() -> None:
     assert middleware[2] == "config.security.browser_security_middleware"
     assert middleware[3] == "config.api.api_request_body_limit_middleware"
     assert middleware[4] == "config.api.api_error_envelope_middleware"
+    assert middleware[5] == "config.security.trusted_proxy_headers_middleware"
+    assert middleware[7] == "config.security.public_cookie_security_middleware"
     assert "config.api.api_boundary_throttle_middleware" not in middleware
     assert "config.api.ApiCommonMiddleware" in middleware
     assert "django.middleware.common.CommonMiddleware" not in middleware
@@ -916,6 +919,30 @@ def test_browser_security_policy_is_explicit_for_local_plaintext_transport() -> 
     assert configured_settings.SESSION_COOKIE_SECURE is False
     assert configured_settings.CSRF_COOKIE_SECURE is False
     assert configured_settings.SECURE_PROXY_SSL_HEADER is None
+
+
+@pytest.mark.unit
+def test_development_settings_enforce_public_https_transport() -> None:
+    """Enable HTTPS-aware browser controls for the canonical public development edge.
+
+    Development receives HTTPS from the Cloudflare and Traefik edge, while testing retains local
+    plaintext transport.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If development settings stop trusting the explicit Traefik edge contract.
+    """
+    development = _execute_module_in_isolation("development", REQUIRED_ENVIRONMENT)
+
+    assert development.SECURE_PROXY_SSL_HEADER == ("HTTP_X_FORWARDED_PROTO", "https")
+    assert development.SECURE_HSTS_SECONDS == PUBLIC_HSTS_SECONDS
+    assert development.SESSION_COOKIE_SECURE is False
+    assert development.CSRF_COOKIE_SECURE is False
 
 
 @pytest.mark.unit

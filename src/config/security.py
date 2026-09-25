@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from http import HTTPStatus
+from ipaddress import ip_address
 from typing import TYPE_CHECKING, cast
 
 from django.conf import settings
@@ -35,6 +36,85 @@ CORS_EXPOSED_HEADERS = (
     "Retry-After",
     "X-Request-ID",
 )
+
+
+@async_only_middleware
+def trusted_proxy_headers_middleware(
+    get_response: Callable[[HttpRequest], Awaitable[HttpResponseBase]],
+) -> Callable[[HttpRequest], Awaitable[HttpResponseBase]]:
+    """Accept forwarded transport headers only from configured proxy networks.
+
+    Removes spoofable forwarded protocol metadata before Django evaluates secure-request settings,
+    preserving the edge contract for direct loopback and other untrusted peers.
+
+    Arguments:
+        get_response: Asynchronous inner middleware chain.
+
+    Returns:
+        Middleware that sanitizes forwarded protocol metadata.
+    """
+
+    async def sanitize(request: HttpRequest) -> HttpResponseBase:
+        """Sanitize one request's forwarded protocol metadata.
+
+        Removes protocol claims from untrusted peers before downstream middleware sees the request.
+        Preserves protocol claims from the configured Traefik network.
+
+        Arguments:
+            request: Incoming Django request.
+
+        Returns:
+            Response from the inner middleware chain.
+        """
+        peer = request.META.get("REMOTE_ADDR")
+        try:
+            peer_address = ip_address(peer) if isinstance(peer, str) else None
+        except ValueError:
+            peer_address = None
+        if peer_address is None or not any(
+            peer_address in network for network in settings.TRUSTED_PROXY_NETWORKS
+        ):
+            request.META.pop("HTTP_X_FORWARDED_PROTO", None)
+        return await get_response(request)
+
+    return sanitize
+
+
+@async_only_middleware
+def public_cookie_security_middleware(
+    get_response: Callable[[HttpRequest], Awaitable[HttpResponseBase]],
+) -> Callable[[HttpRequest], Awaitable[HttpResponseBase]]:
+    """Mark browser cookies secure only on the canonical HTTPS edge.
+
+    Keeps the local development hostname usable over HTTP while applying secure cookies to public
+    responses whose host and trusted proxy transport both match the canonical edge.
+
+    Arguments:
+        get_response: Asynchronous inner middleware chain.
+
+    Returns:
+        Middleware that applies the public cookie transport policy.
+    """
+
+    async def secure_cookies(request: HttpRequest) -> HttpResponseBase:
+        """Apply secure attributes to cookies on one public HTTPS response.
+
+        Limits secure attributes to the canonical host and trusted HTTPS transport.
+        This preserves local HTTP administration while protecting public browser credentials.
+
+        Arguments:
+            request: Incoming Django request.
+
+        Returns:
+            Response with secure cookie attributes when the canonical public transport applies.
+        """
+        response = await get_response(request)
+        if request.get_host() == "localforge.datarohit.com" and request.is_secure():
+            for cookie in response.cookies.values():
+                cookie["secure"] = True
+        return response
+
+    return secure_cookies
 
 
 @dataclass(frozen=True, slots=True)

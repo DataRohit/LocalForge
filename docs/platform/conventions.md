@@ -368,11 +368,12 @@ HEAD shares the authenticated-read scope with GET. OPTIONS and unsupported safe 
 authentication or recovery account budgets; the broad address boundary remains available for source protection.
 Every OpenAPI 429 response declares integer `Retry-After` and UUID `X-Request-ID` response headers centrally.
 
-Transport controls match the deployed plaintext shape rather than suggesting TLS exists:
-`SECURE_SSL_REDIRECT=false`, `SECURE_HSTS_SECONDS=0`, secure cookie flags are false, and
-`SECURE_PROXY_SSL_HEADER` is unset. They are inert on purpose because Traefik exposes local HTTP only. If TLS is
-introduced later, changing these values and the proxy contract is one documented deployment decision, not an
-independent hardening toggle.
+Testing keeps local plaintext transport: `SECURE_SSL_REDIRECT=false`, `SECURE_HSTS_SECONDS=0`, secure cookie flags
+are false, and `SECURE_PROXY_SSL_HEADER` is unset. Development has one exception: Traefik's exact
+`localforge.datarohit.com` router overwrites `X-Forwarded-Proto` with `https`, and development settings trust that
+known edge contract, emit one-year HSTS, and mark session and CSRF cookies secure. A middleware removes forwarded
+protocol headers from peers outside `10.89.2.0/24` before Django evaluates transport. The local development hostname
+uses a separate router and remains HTTP. No application code trusts arbitrary forwarded headers from direct clients.
 
 Token login applies both throttle rates to every attempt, successful or failed. The address dimension limits one
 source across usernames. It uses `REMOTE_ADDR` unless the immediate peer is in

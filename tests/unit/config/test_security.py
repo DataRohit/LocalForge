@@ -5,6 +5,7 @@ variance without dispatching the application.
 """
 
 from http import HTTPStatus
+from ipaddress import ip_network
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
@@ -17,8 +18,10 @@ from config.security import (
     allowed_cors_origin,
     apply_response_security,
     browser_security_middleware,
+    public_cookie_security_middleware,
     request_origin_from_django,
     request_origin_from_scope,
+    trusted_proxy_headers_middleware,
 )
 
 if TYPE_CHECKING:
@@ -136,7 +139,7 @@ async def test_security_middleware_short_circuits_only_resolvable_api_preflight(
         The path records whether preflight short-circuited.
 
         Arguments:
-            request: Incoming request object.
+                request: Incoming request object.
 
         Returns:
             Successful response.
@@ -169,3 +172,116 @@ async def test_security_middleware_short_circuits_only_resolvable_api_preflight(
     assert delegated == ["/health/"]
     assert non_api_response.status_code == HTTPStatus.OK
     assert non_api_response.headers["Content-Security-Policy"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@override_settings(
+    ALLOWED_HOSTS=("localforge.datarohit.com", "localforge.localhost"),
+    SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO", "https"),
+)
+async def test_public_cookie_security_is_host_and_transport_scoped() -> None:
+    """Secure cookies on the public edge without breaking local HTTP administration.
+
+    Sends equivalent cookie responses through the canonical public host and local host to prove
+    only the trusted HTTPS edge receives the secure attribute.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If local cookies become secure or public cookies remain transportable.
+    """
+
+    async def inner(_request: HttpRequest) -> HttpResponse:
+        """Return one response carrying a session cookie.
+
+        Uses identical cookies for public and local requests to isolate transport policy.
+        The response is deliberately minimal so only the cookie security attribute differs.
+
+        Arguments:
+            _request: Incoming request object.
+
+        Returns:
+            Response with a session cookie.
+        """
+        response = HttpResponse(status=200)
+        response.set_cookie("sessionid", "value")
+        return response
+
+    middleware = public_cookie_security_middleware(inner)
+    factory = RequestFactory()
+    public_response = await middleware(
+        factory.get(
+            "/admin/",
+            HTTP_HOST="localforge.datarohit.com",
+            HTTP_X_FORWARDED_PROTO="https",
+        )
+    )
+    local_response = await middleware(factory.get("/admin/", HTTP_HOST="localforge.localhost"))
+
+    assert public_response.cookies["sessionid"]["secure"] is True
+    assert not local_response.cookies["sessionid"]["secure"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@override_settings(
+    ALLOWED_HOSTS=("localforge.datarohit.com",),
+    SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO", "https"),
+    TRUSTED_PROXY_NETWORKS=(ip_network("10.89.2.0/24"),),
+)
+async def test_forwarded_protocol_requires_trusted_proxy_peer() -> None:
+    """Strip forwarded protocol claims from direct peers.
+
+    Compares a Traefik edge address with a loopback direct address to prove only the configured
+    proxy network can make Django treat the canonical request as secure.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If an untrusted peer can spoof HTTPS with a forwarded header.
+    """
+
+    async def inner(request: HttpRequest) -> HttpResponse:
+        """Report Django's secure-request decision.
+
+        Returns a small body so trusted and untrusted peer outcomes can be compared directly.
+        The request host remains canonical in both cases.
+
+        Arguments:
+            request: Incoming request object.
+
+        Returns:
+            Response containing the secure-request decision.
+        """
+        return HttpResponse("secure" if request.is_secure() else "plain")
+
+    middleware = trusted_proxy_headers_middleware(inner)
+    factory = RequestFactory()
+    trusted = await middleware(
+        factory.get(
+            "/health/",
+            HTTP_HOST="localforge.datarohit.com",
+            HTTP_X_FORWARDED_PROTO="https",
+            REMOTE_ADDR="10.89.2.9",
+        )
+    )
+    direct = await middleware(
+        factory.get(
+            "/health/",
+            HTTP_HOST="localforge.datarohit.com",
+            HTTP_X_FORWARDED_PROTO="https",
+            REMOTE_ADDR="127.0.0.1",
+        )
+    )
+
+    assert cast("HttpResponse", trusted).content == b"secure"
+    assert cast("HttpResponse", direct).content == b"plain"

@@ -58,6 +58,10 @@ Required capture rows:
   arbitrary token-named variables can be echoed by diagnostics.
 - Rotate by disabling the Tunnel route, revoking the old token, replacing the development secret, recreating
   `cloudflared-cf7q2`, and confirming the Tunnel returns healthy before re-enabling the route.
+- The public Traefik router matches only `localforge.datarohit.com` and overwrites `X-Forwarded-Proto` with `https`.
+  Django trusts this header only in development settings; the separate `localforge.localhost` router stays HTTP.
+- The public router rewrites `/admin/` to an unroutable path; Django admin remains available only through the local
+  development hostname and private direct port.
 
 ## Email
 
@@ -67,6 +71,10 @@ Required capture rows:
 - Testing uses Mailpit and never requires Resend credentials.
 - Send a controlled activation or password-reset message to a recipient owned by the operator.
 - Confirm Resend delivery logs and application logs contain no key material.
+- Rotate the Resend key by creating a replacement domain-scoped key, installing it through the development secret
+  workflow, recreating the Django and worker services, and verifying controlled delivery before revoking the old key.
+- If the new key fails verification, restore the previous secret before revoking it, then repeat the replacement
+  flow. Treat any exposed key as compromised: revoke it immediately, replace it, and inspect delivery and logs.
 
 ## Rollback
 

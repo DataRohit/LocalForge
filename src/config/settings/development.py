@@ -31,3 +31,10 @@ LOGGING["loggers"]["django.db.backends"] = {
     "level": LOG_LEVEL,
     "propagate": False,
 }
+
+globals().update(
+    {
+        "SECURE_PROXY_SSL_HEADER": ("HTTP_X_FORWARDED_PROTO", "https"),
+        "SECURE_HSTS_SECONDS": 31536000,
+    }
+)

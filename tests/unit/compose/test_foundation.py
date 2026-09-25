@@ -2475,12 +2475,28 @@ def test_the_proxy_routes_the_registered_application_host() -> None:
     labels = set(application["labels"])
 
     assert "traefik.enable=true" in labels
+    assert "traefik.http.routers.localforge-local.rule=Host(`localforge.localhost`)" in labels
+    assert "traefik.http.routers.localforge-local.entrypoints=web" in labels
+    assert "traefik.http.routers.localforge-local.service=localforge" in labels
+    assert "traefik.http.routers.localforge-public.rule=Host(`localforge.datarohit.com`)" in labels
+    assert "traefik.http.routers.localforge-public.entrypoints=web" in labels
+    assert "traefik.http.routers.localforge-public.service=localforge" in labels
     assert (
-        "traefik.http.routers.localforge.rule=Host(`localforge.localhost`) || "
-        "Host(`localforge.datarohit.com`)"
+        "traefik.http.routers.localforge-public.middlewares="
+        "localforge-public-forwarded-https,localforge-public-hide-admin"
     ) in labels
-    assert "traefik.http.routers.localforge.entrypoints=web" in labels
-    assert "traefik.http.routers.localforge.service=localforge" in labels
+    assert (
+        "traefik.http.middlewares.localforge-public-forwarded-https.headers."
+        "customrequestheaders.X-Forwarded-Proto=https"
+    ) in labels
+    assert (
+        "traefik.http.middlewares.localforge-public-hide-admin.replacepathregex.regex="
+        "^/admin(?:/|$)"
+    ) in labels
+    assert (
+        "traefik.http.middlewares.localforge-public-hide-admin.replacepathregex.replacement="
+        "/__public_admin_blocked__"
+    ) in labels
     assert "traefik.http.services.localforge.loadbalancer.server.port=8000" in labels
     assert "traefik.http.services.localforge.loadbalancer.healthcheck.path=/health/" in labels
     assert services[PROXY_SERVICE]["depends_on"]["django-uv5n2"]["condition"] == "service_healthy"
