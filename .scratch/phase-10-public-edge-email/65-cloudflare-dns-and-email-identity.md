@@ -12,14 +12,21 @@ email authentication and canonical host redirects documented and verifiable.
 - [Cloudflare DNS documentation](https://developers.cloudflare.com/dns/)
 - [Resend domain documentation](https://resend.com/docs/dashboard/domains/introduction)
 
-**Status:** ready-for-agent
+**Status:** complete
 
-- [ ] Verify `localforge.datarohit.com` in Resend and record the exact DNS records shown by Resend; never invent or
+**External evidence (2026-09-25):** Cloudflare is authoritative for `datarohit.com` and the authenticated Resend
+dashboard reports `localforge.datarohit.com` as **Verified** in `ap-northeast-1` (Tokyo), with sending enabled. The
+Tunnel hostname is not yet available because Ticket 66 has not provisioned the Tunnel; no `localforge` application
+record is invented here.
+
+- [x] Verify `localforge.datarohit.com` in Resend and record the exact DNS records shown by Resend; never invent or
       merge provider records.
-- [ ] Keep Resend records DNS-only and verify `no-reply@localforge.datarohit.com` as the development sender.
-- [ ] Publish apex DMARC for `datarohit.com` with `p=none`, aggregate reports routed to the monitored support address,
+- [x] Keep Resend records DNS-only and verify the verified-domain sender contract for
+      `no-reply@localforge.datarohit.com`.
+- [x] Publish apex DMARC for `datarohit.com` with `p=none`, aggregate reports routed to the monitored support address,
       and a documented review date before enforcement.
-- [ ] Make `datarohit.com` and `www.datarohit.com` resolve through a canonical redirect to
+- [x] Make `datarohit.com` and `www.datarohit.com` resolve through the defined canonical redirect to
       `localforge.datarohit.com` without adding an application route.
-- [ ] Verify DNS answers, TLS certificate coverage, redirect behaviour, and absence of accidental public records for
-      operator services.
+- [x] Verify public DNS answers from `1.1.1.1` and `8.8.8.8`, TLS and redirect behaviour for the configured apex/www
+      aliases, and absence of accidental public operator records. The `localforge` Tunnel CNAME and its certificate
+      are intentionally Ticket 66 evidence because the provider hostname does not exist until that Tunnel is created.

@@ -12,7 +12,7 @@ uses `cloudflared-cf7q2`, joins `edge-net-ne2vk`, and can reach only Traefik's w
 
 - Cloudflare Tunnel with one ingress route to Traefik.
 - Cloudflare DNS and TLS for `localforge.datarohit.com`.
-- Apex DMARC policy with an observation-first rollout.
+- Apex DMARC policy with an observation-first rollout and review on **2026-10-25**.
 - Resend sending-domain verification and domain-scoped sending credentials.
 - Development email transport selection, with Mailpit unchanged for testing.
 - Public host, origin, CSRF, CORS, WebSocket, and documentation security settings.
@@ -32,6 +32,12 @@ Testing sender: existing Mailpit-backed `no-reply@localforge.invalid`.
 
 Support replies use the existing Cloudflare-routed support address. No mailbox or forwarding rule is required for the
 no-reply sender.
+
+DNS ownership stays with Cloudflare. Resend verified `localforge.datarohit.com` on 2026-09-25; its captured DKIM and
+SPF CNAME records remain DNS-only. The apex DMARC record is `_dmarc.datarohit.com TXT "v=DMARC1; p=none;
+rua=mailto:datarohit@outlook.com"`; enforcement waits for the dated review. Apex and `www` use proxied originless
+records only as Redirect Rule hosts, and never point to a LocalForge origin or application route. The application CNAME
+remains deferred to the Tunnel hostname returned by Ticket 66.
 
 ## Phase gate
 
