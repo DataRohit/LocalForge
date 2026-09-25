@@ -14,12 +14,12 @@
 - [Platform conventions](../../docs/platform/conventions.md)
 - [Documentation standard](../../docs/platform/documentation-standard.md)
 
-**Status:** ready-for-agent
+**Status:** complete
 
-- [ ] Reconcile the glossary and governing instructions with the accepted public deployment: development remains the
+- [x] Reconcile the glossary and governing instructions with the accepted public deployment: development remains the
       existing Compose project, testing remains Mailpit-backed, and no separate production Compose environment exists.
-- [ ] Add the Cloudflared service, secret, network, and environment entries to the frozen registry before any Compose
+- [x] Add the Cloudflared service, secret, network, and environment entries to the frozen registry before any Compose
       mutation uses them.
-- [ ] Define public host, origin, CSRF, CORS, WebSocket, email, and documentation settings without hardcoded secrets.
-- [ ] Define rollback, credential rotation, DNS ownership, and external dependency boundaries.
-- [ ] Update the phase and ticket indexes so Phase 10 is discoverable from the canonical paths.
+- [x] Define public host, origin, CSRF, CORS, WebSocket, email, and documentation settings without hardcoded secrets.
+- [x] Define rollback, credential rotation, DNS ownership, and external dependency boundaries.
+- [x] Update the phase and ticket indexes so Phase 10 is discoverable from the canonical paths.

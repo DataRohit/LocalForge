@@ -4,6 +4,10 @@ Phase 10 turns the verified LocalForge Docker stack into a controlled public dep
 HTTPS traffic for `localforge.datarohit.com` to the existing Traefik edge. Resend sends development transactional mail
 from `no-reply@localforge.datarohit.com`; Mailpit remains the testing transport.
 
+The public deployment is the existing `development` Compose project (`localforge-dev`). It is not a production
+environment and does not add a second application stack. The Cloudflare client is the only new development service,
+uses `cloudflared-cf7q2`, joins `edge-net-ne2vk`, and can reach only Traefik's web entrypoint.
+
 ## Scope
 
 - Cloudflare Tunnel with one ingress route to Traefik.

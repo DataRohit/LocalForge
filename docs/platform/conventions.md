@@ -59,14 +59,16 @@ Character set: lowercase `a–z` plus digits `2–9`. Digits `0` and `1` are exc
 unambiguous. The matching validation pattern, used by `scripts/audit_naming.py` and by the audits in
 [service-inventory.md](./service-inventory.md) Section 6, is `^[a-z][a-z-]*-[a-z2-9]{5}$`.
 
-Every ID is exactly five characters and unique across both environments: **29 containers and 8 networks, 37 IDs, no
-duplicates.**
+Every ID is exactly five characters and unique across both environments: **30 containers and 8 networks, 38 IDs, no
+duplicates.** The additional development container is the Phase 10 Cloudflare Tunnel client; it reuses the existing
+public edge network and does not create a third environment.
 
 ### 2.2 Development
 
 | Container name | ID | Role | Image |
 | --- | --- | --- | --- |
 | `traefik-tk2jp` | `tk2jp` | reverse proxy | `docker.io/library/traefik:v3.7.13` |
+| `cloudflared-cf7q2` | `cf7q2` | Cloudflare Tunnel public edge client | pinned Cloudflare cloudflared release, selected by Ticket 66 |
 | `django-uv5n2` | `uv5n2` | Django ASGI app | built, `docker/django/Dockerfile` |
 | `postgres-pg3ka` | `pg3ka` | PostgreSQL primary | built, `docker/pgbackrest/Dockerfile` |
 | `postgres-replica-pg6vy` | `pg6vy` | PostgreSQL hot standby | `docker.io/library/postgres:18.6` |
@@ -124,8 +126,10 @@ networks are all internal can reach the internet even if a dependency tries. It 
 between members of that network.
 
 `edge-net-ne2vk` has the fixed `10.89.2.0/24` subnet so Django can trust forwarded client addresses only from an
-immediate peer on the proxy network. No private-address wildcard is accepted. The direct application publication
-is `127.0.0.1:8000:8000`, so host diagnostics remain available without exposing a remotely reachable proxy bypass.
+immediate peer on the proxy network. The Cloudflare Tunnel client joins this network and reaches only Traefik's web
+entrypoint; it has no access-zone, application, data, or observability membership. No private-address wildcard is
+accepted. The direct application publication is `127.0.0.1:8000:8000`, so host diagnostics remain available without
+exposing a remotely reachable proxy bypass.
 
 **A published host port does not work on an internal network.** Docker drops the publication silently — no warning,
 no error, no non-zero exit — so the container runs healthily while the port is unreachable. Every service the
@@ -415,7 +419,9 @@ admission; PostgreSQL case-insensitive availability runs after bearer authentica
 or pre-admission-invalid bodies record nothing. The limits are `30/hour` per route-specific address dimension and
 `3/hour` per recipient or account dimension. PostgreSQL loss fails closed with the shared correlated `503`.
 
-Testing overrides, present only in `.env.testing`:
+### 3.3 Testing overrides
+
+Testing overrides are present only in `.env.testing`:
 
 | Variable | Value | Reason |
 | --- | --- | --- |
@@ -445,6 +451,32 @@ containers, so a host left naming a development container would resolve to nothi
 port from [service-inventory.md](./service-inventory.md) Section 4. That includes `MAILPIT_WEB_PORT`, which the
 dependency gate probes: left at the development value it would reach the **development** Mailpit on `8025` and
 report the testing one ready while it was dead.
+
+### 3.4 Public deployment profile
+
+The public deployment uses the existing `development` environment and its generated `.env.development` file. It does
+not create a production file or Compose project. These values define the Phase 10 contract before runtime hardening:
+
+| Variable or boundary | Public value | Contract |
+| --- | --- | --- |
+| `DJANGO_ALLOWED_HOSTS` | `localforge.datarohit.com` plus existing local and container names | Accept canonical public Host and preserve local diagnostics. |
+| `DJANGO_CSRF_TRUSTED_ORIGINS` | `https://localforge.datarohit.com` | Trust only canonical HTTPS browser origin for state-changing requests. |
+| `DJANGO_CORS_ALLOWED_ORIGINS` | `https://localforge.datarohit.com` | Reflect one exact credentialed browser origin; never `*`. |
+| `DJANGO_SITE_URL` | `https://localforge.datarohit.com` | Generate activation and recovery links on canonical origin. |
+| `DEFAULT_FROM_EMAIL` | `no-reply@localforge.datarohit.com` | Use Resend-verified development sender. |
+| `EMAIL_BACKEND` | Resend backend selected by Ticket 67 | Send development mail through Resend; testing remains Mailpit-backed. |
+| `DJANGO_API_DOCUMENTATION_ENABLED` | `true` | Keep schema, Swagger UI, and ReDoc available on application router. |
+| WebSocket `Origin` | `https://localforge.datarohit.com` | Reuse exact CORS origin allowlist for socket admission. |
+
+Public-only credentials are not part of the shared environment manifest and are never generated for testing:
+`CLOUDFLARED_TUNNEL_TOKEN=<GENERATED>` and `RESEND_API_KEY=<GENERATED>` belong only in the development secret file;
+`CLOUDFLARED_TUNNEL_NAME=localforge-public` is a non-secret development setting. The testing environment therefore
+needs no Tunnel or Resend credential and continues using Mailpit.
+
+Cloudflare Tunnel is the only public ingress. It routes one hostname to Traefik's web entrypoint. Traefik rejects
+unmatched hosts; no dashboard, data service, direct Django port, or testing service is published. `CLOUDFLARED_TUNNEL_TOKEN`
+and `RESEND_API_KEY` are generated by the secret workflow, mounted through `env_file`, and never appear in Compose
+literals, images, logs, browser responses, or documentation.
 
 ## 4. Planned scripts
 

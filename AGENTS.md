@@ -81,8 +81,9 @@ Exactly two, and there is no third.
 1. All runtime is Docker; Compose drives both environments.
 2. The stack runs with no internet access. Only image pulls, image builds, and dependency resolution touch the
    network, once.
-3. Application and agent traffic stays local. Use no hosted gateways, telemetry, dashboards, or external SaaS
-   integrations; use repository-local tools and services.
+3. Application and agent traffic stays local by default. The only approved external boundaries are the documented
+   Phase 10 Cloudflare Tunnel public edge and Resend development email; use no other hosted gateways, telemetry,
+   dashboards, or external SaaS integrations.
 4. Every service is integrated with Django and verified end to end before the next one starts.
 5. Kubernetes is reasoning-only. Create no cluster, write no manifests, apply nothing.
 6. Pinned versions only. `latest` is forbidden, including Dockerfile base images.
