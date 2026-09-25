@@ -717,6 +717,7 @@ services:
     networks:
       - app-net-na6hy
       - data-net-nd9pc
+      - edge-net-ne2vk
 
     command:
       - celery

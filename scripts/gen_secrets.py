@@ -255,7 +255,19 @@ SECRET_RECIPES: Mapping[str, Callable[[], str]] = {
 DEVELOPMENT_ONLY_DEFAULTS: Mapping[str, str] = {
     "CLOUDFLARED_TUNNEL_NAME": "localforge-public",
     "TUNNEL_TOKEN": GENERATED_PLACEHOLDER,
+    "RESEND_API_KEY": GENERATED_PLACEHOLDER,
+    "EMAIL_HOST": "smtp.resend.com",
+    "EMAIL_PORT": "587",
+    "EMAIL_HOST_USER": "resend",
+    "EMAIL_HOST_PASSWORD": GENERATED_PLACEHOLDER,
+    "EMAIL_USE_TLS": "true",
+    "DEFAULT_FROM_EMAIL": "no-reply@localforge.datarohit.com",
+    "DEFAULT_REPLY_TO_EMAIL": "datarohit@outlook.com",
+    "LOCALFORGE_WAIT_SERVICES": (
+        "postgres postgres-replica valkey-cache valkey-channels rabbitmq seaweedfs"
+    ),
 }
+PRESERVED_DEVELOPMENT_SECRETS = frozenset({"TUNNEL_TOKEN", "RESEND_API_KEY"})
 
 
 def compose_broker_url(values: Mapping[str, str]) -> str:
@@ -734,6 +746,32 @@ def apply_composed(resolved: dict[str, str], *, force: bool) -> None:
         resolved[name] = derived
 
 
+def apply_development_only_defaults(
+    existing: Mapping[str, str],
+    resolved: dict[str, str],
+) -> None:
+    """Apply development-only public provider settings.
+
+    Preserves usable external credentials, derives the SMTP password from Resend's key, and fills
+    non-secret defaults without adding public-edge settings to testing environments.
+
+    Arguments:
+        existing: Values already present in the environment file.
+        resolved: Values being assembled, updated in place.
+
+    Returns:
+        None.
+    """
+    for name, default in DEVELOPMENT_ONLY_DEFAULTS.items():
+        held = existing.get(name)
+        if name in PRESERVED_DEVELOPMENT_SECRETS and held is not None and is_usable(held):
+            resolved[name] = held
+        elif name == "EMAIL_HOST_PASSWORD":
+            resolved[name] = resolved["RESEND_API_KEY"]
+        else:
+            resolved[name] = default
+
+
 def resolve_values(
     manifest: Mapping[str, str],
     overrides: Mapping[str, str],
@@ -784,14 +822,7 @@ def resolve_values(
             resolved[name] = value
 
     if overrides is NO_OVERRIDES and manifest.get("COMPOSE_PROJECT_NAME") == "localforge-dev":
-        for name, default in DEVELOPMENT_ONLY_DEFAULTS.items():
-            held = existing.get(name)
-            if name == "TUNNEL_TOKEN" and held is not None and is_usable(held):
-                resolved[name] = held
-            elif force or not is_usable(held):
-                resolved[name] = default
-            else:
-                resolved[name] = held if held is not None else default
+        apply_development_only_defaults(existing, resolved)
 
     apply_composed(resolved, force=force)
 

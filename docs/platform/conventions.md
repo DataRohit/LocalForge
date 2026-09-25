@@ -119,6 +119,7 @@ Its own IDs, so it can coexist with development. Same never-regenerate rule.
 | `data-net-nt8fq` | `nt8fq` | testing | test runner to PostgreSQL | **yes** |
 
 Services attach to more than one network where needed. `django-uv5n2` is on all four development service zones;
+`celery-worker-cw8rt` also joins `edge-net-ne2vk` so its development-only Resend SMTP delivery has approved egress;
 `postgres-exporter-pe4rk` is on `data-net-nd9pc` and `obsv-net-nb4xt`.
 
 `internal: true` on a service zone is the enforcement mechanism for the offline constraint: no container whose
@@ -291,11 +292,11 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `FLOWER_BASIC_AUTH` | `flower-fl9zd` | dashboard credentials | `<GENERATED>` | **yes** | yes |
 | `FLOWER_BROKER_API` | `flower-fl9zd` | authenticated RabbitMQ management API URL for queue depth | composed | **yes** | yes |
 | `EMAIL_BACKEND` | `django-uv5n2` | Django email backend | `django.core.mail.backends.smtp.EmailBackend` | no | yes |
-| `EMAIL_HOST` | `django-uv5n2` | SMTP host | `mailpit-mp6gb` | no | yes |
-| `EMAIL_PORT` | `django-uv5n2` | SMTP port | `1025` | no | yes |
+| `EMAIL_HOST` | `django-uv5n2` | development SMTP host | `smtp.resend.com` (Mailpit in testing) | no | yes |
+| `EMAIL_PORT` | `django-uv5n2` | development SMTP port | `587` (Mailpit `1025` in testing) | no | yes |
 | `MAILPIT_WEB_PORT` | `mailpit-mp6gb` | web and readiness port the dependency gate probes | `8025` | no | no |
 | `MP_UI_AUTH` | `mailpit-mp6gb` | web UI and API Basic authentication credentials | `<GENERATED>` | **yes** | yes |
-| `DEFAULT_FROM_EMAIL` | `django-uv5n2` | envelope sender | `no-reply@localforge.invalid` | no | yes |
+| `DEFAULT_FROM_EMAIL` | `django-uv5n2` | development envelope sender | `no-reply@localforge.datarohit.com` (testing uses the local profile) | no | yes |
 | `DJANGO_SITE_NAME` | `django-uv5n2` | application name rendered in email | `LocalForge` | no | yes |
 | `DJANGO_SITE_URL` | `django-uv5n2` | absolute base URL for email links | `https://localforge.datarohit.com` | no | yes |
 | `S3_ENDPOINT_URL` | `django-uv5n2` | SeaweedFS S3 gateway | `http://seaweedfs-sw9cr:8333` | no | yes |
@@ -464,17 +465,24 @@ not create a production file or Compose project. These values define the Phase 1
 | `DJANGO_CORS_ALLOWED_ORIGINS` | `https://localforge.datarohit.com` | Reflect one exact credentialed browser origin; never `*`. |
 | `DJANGO_SITE_URL` | `https://localforge.datarohit.com` | Generate activation and recovery links on canonical origin. |
 | `DEFAULT_FROM_EMAIL` | `no-reply@localforge.datarohit.com` | Use Resend-verified development sender. |
-| `EMAIL_BACKEND` | Resend backend selected by Ticket 67 | Send development mail through Resend; testing remains Mailpit-backed. |
+| `EMAIL_BACKEND` | `django.core.mail.backends.smtp.EmailBackend` | Send development mail through Resend SMTP. |
+| `EMAIL_HOST` | `smtp.resend.com` | Resend SMTP relay. |
+| `EMAIL_PORT` | `587` | Resend submission port with TLS. |
 | `DJANGO_API_DOCUMENTATION_ENABLED` | `true` | Keep schema, Swagger UI, and ReDoc available on application router. |
 | WebSocket `Origin` | `https://localforge.datarohit.com` | Reuse exact CORS origin allowlist for socket admission. |
 
+Development Resend SMTP also sets `EMAIL_HOST_USER=resend`, `EMAIL_HOST_PASSWORD` from the domain-scoped
+`RESEND_API_KEY`, `EMAIL_USE_TLS=true`, and `DEFAULT_REPLY_TO_EMAIL=datarohit@outlook.com`. These development-only
+settings do not enter testing files.
+
 Public-only settings are reserved only in the development file: `TUNNEL_TOKEN=<GENERATED>` is replaced by the
-provider-issued Tunnel credential, while `CLOUDFLARED_TUNNEL_NAME=localforge-public` is a non-secret development
-setting. The testing environment therefore receives no Tunnel or Resend credential and continues using Mailpit.
+provider-issued Tunnel credential, `RESEND_API_KEY=<GENERATED>` is replaced by the domain-scoped Resend key, and
+`CLOUDFLARED_TUNNEL_NAME=localforge-public` is a non-secret development setting. The testing environment therefore
+receives no Tunnel or Resend credential and continues using Mailpit.
 
 Cloudflare Tunnel is the only public ingress. It routes one hostname to Traefik's web entrypoint. Traefik rejects
 unmatched hosts; no dashboard, data service, direct Django port, or testing service is published. The secret workflow
-generates `RESEND_API_KEY` and preserves the provider-issued `TUNNEL_TOKEN`. Both are mounted
+records and preserves the provider-issued `RESEND_API_KEY` and `TUNNEL_TOKEN`. Both are mounted
 through `env_file` and never appear in Compose
 literals, images, logs, browser responses, or documentation.
 

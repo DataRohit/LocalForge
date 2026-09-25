@@ -24,7 +24,7 @@ would otherwise have surfaced as a mysterious failure at build time.
 | `valkey-cache-vc5tn` | cache (DB 0) + Celery results (DB 1) | `127.0.0.1:6379` | 6379 | `app-net-na6hy`, `access-net-ha4mz` |
 | `valkey-channels-vh8dm` | Channels layer | `127.0.0.1:6380` | 6379 | `app-net-na6hy`, `access-net-ha4mz` |
 | `rabbitmq-rq4sx` | Celery broker | `127.0.0.1:5672` AMQP, `127.0.0.1:15672` management | 5672, 15672, 15692 | `app-net-na6hy`, `access-net-ha4mz` |
-| `celery-worker-cw8rt` | task worker | none | — | `app-net-na6hy`, `data-net-nd9pc` |
+| `celery-worker-cw8rt` | task worker, including Resend SMTP delivery | none | — | `app-net-na6hy`, `data-net-nd9pc`, `edge-net-ne2vk` |
 | `celery-beat-cb4hq` | periodic task scheduler, including daily credential cleanup | none | — | `app-net-na6hy`, `data-net-nd9pc` |
 | `flower-fl9zd` | Celery dashboard | `127.0.0.1:5555` | 5555 | `app-net-na6hy`, `access-net-ha4mz` |
 | `mailpit-mp6gb` | SMTP capture | `127.0.0.1:1025` SMTP, `127.0.0.1:8025` web | 1025, 8025 | `app-net-na6hy`, `access-net-ha4mz` |

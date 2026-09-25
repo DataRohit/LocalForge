@@ -62,6 +62,8 @@ Required capture rows:
 ## Email
 
 - Development uses Resend SMTP/API with `no-reply@localforge.datarohit.com`.
+- Development uses `smtp.resend.com:587`, username `resend`, TLS, and a domain-scoped `RESEND_API_KEY`; reply-to is
+  `datarohit@outlook.com`.
 - Testing uses Mailpit and never requires Resend credentials.
 - Send a controlled activation or password-reset message to a recipient owned by the operator.
 - Confirm Resend delivery logs and application logs contain no key material.

@@ -172,7 +172,7 @@ def test_development_worker_reuses_the_application_image_with_bounded_runtime_se
 
     assert worker["container_name"] == "celery-worker-cw8rt"
     assert worker["image"] == "localforge/django:0.1.0"
-    assert set(worker["networks"]) == {"app-net-na6hy", "data-net-nd9pc"}
+    assert set(worker["networks"]) == {"app-net-na6hy", "data-net-nd9pc", "edge-net-ne2vk"}
     assert "ports" not in worker
     command = " ".join(worker["command"])
     assert worker["command"][0:4] == ["celery", "-A", "config", "worker"]

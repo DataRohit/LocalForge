@@ -1711,6 +1711,36 @@ def test_a_forced_development_run_preserves_the_provider_tunnel_token() -> None:
 
 
 @pytest.mark.unit
+def test_a_forced_development_run_preserves_the_resend_key_and_derives_smtp_password() -> None:
+    """Preserve an externally issued Resend key during regeneration.
+
+    Confirms the SMTP password follows the domain-scoped API key instead of becoming a second
+    independently generated credential when development values are regenerated.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If force regeneration changes the key or SMTP password.
+    """
+    issued_value = "resend-issued-value"
+
+    resolved, _, _ = gen_secrets.resolve_values(
+        {"COMPOSE_PROJECT_NAME": "localforge-dev"},
+        gen_secrets.NO_OVERRIDES,
+        {"RESEND_API_KEY": issued_value},
+        {},
+        force=True,
+    )
+
+    assert resolved["RESEND_API_KEY"] == issued_value
+    assert resolved["EMAIL_HOST_PASSWORD"] == issued_value
+
+
+@pytest.mark.unit
 def test_a_directory_that_is_not_a_repository_tracks_nothing(tmp_path: Path) -> None:
     """Answer an empty index only where it is provable.
 

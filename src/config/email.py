@@ -68,11 +68,13 @@ def send_application_email(
     )
     text_body = render_to_string("email/message.txt", template_context).strip()
     html_body = render_to_string("email/message.html", template_context).strip()
+    reply_to = getattr(settings, "DEFAULT_REPLY_TO_EMAIL", "")
     email = EmailMultiAlternatives(
         subject=subject,
         body=text_body,
         from_email=settings.DEFAULT_FROM_EMAIL,
         to=[recipient],
+        reply_to=[reply_to] if reply_to else None,
     )
     email.attach_alternative(html_body, "text/html")
 

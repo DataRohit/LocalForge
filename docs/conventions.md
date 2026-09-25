@@ -287,11 +287,11 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `FLOWER_BASIC_AUTH` | `flower-fl9zd` | dashboard credentials | `<GENERATED>` | **yes** | yes |
 | `FLOWER_BROKER_API` | `flower-fl9zd` | authenticated RabbitMQ management API URL for queue depth | composed | **yes** | yes |
 | `EMAIL_BACKEND` | `django-uv5n2` | Django email backend | `django.core.mail.backends.smtp.EmailBackend` | no | yes |
-| `EMAIL_HOST` | `django-uv5n2` | SMTP host | `mailpit-mp6gb` | no | yes |
-| `EMAIL_PORT` | `django-uv5n2` | SMTP port | `1025` | no | yes |
+| `EMAIL_HOST` | `django-uv5n2` | development SMTP host | `smtp.resend.com` (Mailpit in testing) | no | yes |
+| `EMAIL_PORT` | `django-uv5n2` | development SMTP port | `587` (Mailpit `1025` in testing) | no | yes |
 | `MAILPIT_WEB_PORT` | `mailpit-mp6gb` | web and readiness port the dependency gate probes | `8025` | no | no |
 | `MP_UI_AUTH` | `mailpit-mp6gb` | web UI and API Basic authentication credentials | `<GENERATED>` | **yes** | yes |
-| `DEFAULT_FROM_EMAIL` | `django-uv5n2` | envelope sender | `no-reply@localforge.invalid` | no | yes |
+| `DEFAULT_FROM_EMAIL` | `django-uv5n2` | development envelope sender | `no-reply@localforge.datarohit.com` (testing uses the local profile) | no | yes |
 | `DJANGO_SITE_NAME` | `django-uv5n2` | application name rendered in email | `LocalForge` | no | yes |
 | `DJANGO_SITE_URL` | `django-uv5n2` | absolute base URL for email links | `http://localforge.localhost:8080` | no | yes |
 | `S3_ENDPOINT_URL` | `django-uv5n2` | SeaweedFS S3 gateway | `http://seaweedfs-sw9cr:8333` | no | yes |

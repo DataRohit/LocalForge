@@ -66,6 +66,7 @@ def test_site_paths_become_absolute_urls() -> None:
 @pytest.mark.unit
 @override_settings(
     DEFAULT_FROM_EMAIL=SENDER,
+    DEFAULT_REPLY_TO_EMAIL="support@localforge.invalid",
     EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
     SITE_NAME="LocalForge Test",
     SITE_URL="http://localhost:8000",
@@ -98,6 +99,7 @@ def test_application_email_contains_text_html_and_site_identity() -> None:
 
     message = cast("EmailMultiAlternatives", mail.outbox[0])
     assert message.from_email == SENDER
+    assert message.reply_to == ["support@localforge.invalid"]
     assert message.to == [RECIPIENT]
     assert message.subject == SUBJECT
     assert message.body.strip()
