@@ -282,6 +282,15 @@ async def test_forwarded_protocol_requires_trusted_proxy_peer() -> None:
             REMOTE_ADDR="127.0.0.1",
         )
     )
+    malformed = await middleware(
+        factory.get(
+            "/health/",
+            HTTP_HOST="localforge.datarohit.com",
+            HTTP_X_FORWARDED_PROTO="https",
+            REMOTE_ADDR="not-an-ip",
+        )
+    )
 
     assert cast("HttpResponse", trusted).content == b"secure"
     assert cast("HttpResponse", direct).content == b"plain"
+    assert cast("HttpResponse", malformed).content == b"plain"
