@@ -390,8 +390,9 @@ WebSocket flows work through the Tunnel; development email sends through Resend 
 `no-reply@localforge.datarohit.com`; testing still uses Mailpit; operator surfaces and secrets remain private; and
 the affected runtime log window is clean.
 
-The completed operator record is [docs/handover/phase-10.md](../handover/phase-10.md). Phase 10 stops after that
-handover until a new governing document and ticket set exists.
+The prepared operator record is [docs/handover/phase-10.md](../handover/phase-10.md). Phase 10 remains open for the
+manual timing-suite and rollback closeout recorded there; no new scope starts until that closeout or a new governing
+document and ticket set exists.
 
 ## 4. Rollback
 

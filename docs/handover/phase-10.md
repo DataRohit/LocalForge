@@ -16,8 +16,9 @@ development deployment; testing remains the separate `localforge-test` Mailpit-b
 | DMARC | `_dmarc.datarohit.com`, `p=none`, aggregate review **2026-10-25** |
 | Testing sender | `no-reply@localforge.invalid` through Mailpit |
 
-The exact provider DNS rows are preserved in the [Phase 10 runbook](../runbooks/phase-10-public-edge-email.md).
-No Tunnel token or Resend key is copied into this report.
+The exact Resend provider rows are preserved in the [Phase 10 runbook](../runbooks/phase-10-public-edge-email.md).
+The Tunnel CNAME target is intentionally provider-managed and is not duplicated here; Ticket 66 records the named
+route and provider ownership. No Tunnel token or Resend key is copied into this report.
 
 ## Verification evidence
 
