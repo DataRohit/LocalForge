@@ -13,10 +13,12 @@ and roll back the Cloudflare Tunnel and Resend setup.
 - [Build plan](../../docs/build/plan.md)
 - [Ticket index](../README.md)
 
-**Status:** ready-for-agent
+**Status:** ready-for-manual-verification
 
-- [ ] Record exact Cloudflare DNS, Tunnel, Resend, TLS, health, external behaviour, and bounded log evidence.
-- [ ] Record secret ownership, rotation dates, review dates, and the no-secret-in-repository check.
-- [ ] Record rollback results for DNS, Tunnel, email transport, and application configuration.
-- [ ] Reconcile all documentation and governing instructions with the shipped public deployment.
-- [ ] Confirm Phase 10 gate passes and stop work until a new governing document and ticket set exists.
+- [x] Record exact Cloudflare DNS, Tunnel, Resend, TLS, health, external behaviour, and bounded log evidence.
+- [x] Record secret ownership, rotation dates, review dates, and the no-secret-in-repository check.
+- [ ] Run and record the reversible rollback rehearsal for DNS, Tunnel, email transport, and application configuration.
+- [x] Reconcile all documentation and governing instructions with the shipped public deployment.
+- [ ] Confirm Phase 10 gate passes after the operator runs the deferred full timing suite and rollback rehearsal.
+
+Durable evidence: [Phase 10 handover](../../docs/handover/phase-10.md).

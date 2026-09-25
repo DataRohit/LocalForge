@@ -69,6 +69,7 @@ public edge, email, and handover evidence named below.
 | `docs/architecture/phase-10-public-edge-email.md` | Phase 10 scope, security boundary, email contract, and gate |
 | `docs/architecture/phase-10-public-edge-email-spec.md` | Phase 10 problem statement, user stories, decisions, and test contract |
 | `docs/runbooks/phase-10-public-edge-email.md` | Phase 10 DNS, Tunnel, email, and rollback runbook |
+| `docs/handover/phase-10.md` | Phase 10 public deployment evidence, secret ownership, rollback procedure, and manual closeout state |
 | `docs/platform/documentation-standard.md` | The worked reference for the docstring standard the checker enforces |
 | `.env.example` | Committed variable manifest, placeholders only |
 | `.env.development.sops`, `.env.testing.sops` | Committed encrypted env files |
@@ -388,6 +389,9 @@ Gate: external DNS and TLS reach only `localforge.datarohit.com`; `/health/`, au
 WebSocket flows work through the Tunnel; development email sends through Resend from
 `no-reply@localforge.datarohit.com`; testing still uses Mailpit; operator surfaces and secrets remain private; and
 the affected runtime log window is clean.
+
+The completed operator record is [docs/handover/phase-10.md](../handover/phase-10.md). Phase 10 stops after that
+handover until a new governing document and ticket set exists.
 
 ## 4. Rollback
 
