@@ -335,10 +335,36 @@ def test_openapi_contract_is_complete_and_bound_to_observed_evidence() -> None:
         "title": "LocalForge API",
         "version": "1.0.0",
         "description": (
-            "The fixed LocalForge health and versioned REST API contract. "
+            "LocalForge is a local-first Django backend platform. This document defines its "
+            "authenticated REST API, health endpoint, and account lifecycle operations. "
             "WebSocket protocol details are published separately."
         ),
+        "contact": {
+            "name": "Rohit Vilas Ingole",
+            "email": "datarohit@outlook.com",
+            "url": "https://github.com/DataRohit/LocalForge",
+        },
+        "license": {
+            "name": "MIT License",
+            "url": "https://opensource.org/license/mit",
+        },
     }
+    assert schema["tags"] == [
+        {
+            "name": "Authentication",
+            "description": "Token and JSON Web Token authentication operations.",
+        },
+        {
+            "name": "Accounts",
+            "description": (
+                "Account registration, profile, activation, password, and username operations."
+            ),
+        },
+        {
+            "name": "Health",
+            "description": "Application readiness and dependency health operations.",
+        },
+    ]
     security_schemes = cast(
         "dict[str, Any]",
         cast("dict[str, Any]", schema["components"])["securitySchemes"],

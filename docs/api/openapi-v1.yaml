@@ -2,8 +2,16 @@ openapi: 3.1.0
 info:
   title: LocalForge API
   version: 1.0.0
-  description: The fixed LocalForge health and versioned REST API contract. WebSocket
-    protocol details are published separately.
+  description: LocalForge is a local-first Django backend platform. This document
+    defines its authenticated REST API, health endpoint, and account lifecycle operations.
+    WebSocket protocol details are published separately.
+  contact:
+    name: Rohit Vilas Ingole
+    email: datarohit@outlook.com
+    url: https://github.com/DataRohit/LocalForge
+  license:
+    name: MIT License
+    url: https://opensource.org/license/mit
 paths:
   /api/v1/jwt/create/:
     post:
@@ -13,7 +21,7 @@ paths:
         a longer-lived refresh token.
       summary: Exchange credentials for JSON web tokens
       tags:
-      - api
+      - Authentication
       requestBody:
         content:
           application/json:
@@ -227,7 +235,7 @@ paths:
         token is blacklisted atomically before its replacement is persisted.
       summary: Rotate a JSON web refresh token
       tags:
-      - api
+      - Authentication
       requestBody:
         content:
           application/json:
@@ -440,7 +448,7 @@ paths:
         returning its identity or protocol claims.
       summary: Verify a JSON web token
       tags:
-      - api
+      - Authentication
       requestBody:
         content:
           application/json:
@@ -656,7 +664,7 @@ paths:
         the secondary scheme is appropriate.
       summary: Exchange credentials for a token
       tags:
-      - api
+      - Authentication
       requestBody:
         content:
           application/json:
@@ -869,7 +877,7 @@ paths:
         non-expiring until this operation revokes it.
       summary: Destroy the caller's token
       tags:
-      - api
+      - Authentication
       security:
       - tokenAuth: []
       responses:
@@ -1043,7 +1051,7 @@ paths:
         the environment-configured monotonic minimum duration.
       summary: Register or activate an account
       tags:
-      - api
+      - Accounts
       requestBody:
         content:
           application/json:
@@ -1302,7 +1310,7 @@ paths:
         another account.
       summary: Return the caller's profile
       tags:
-      - api
+      - Accounts
       security:
       - jwtAuth: []
       - tokenAuth: []
@@ -1479,7 +1487,7 @@ paths:
         as undeclared fields.
       summary: Update the caller's mutable profile
       tags:
-      - api
+      - Accounts
       requestBody:
         content:
           application/json:
@@ -1707,7 +1715,7 @@ paths:
         account. No identifier can select another account.
       summary: Delete the caller's account
       tags:
-      - api
+      - Accounts
       security:
       - jwtAuth: []
       - tokenAuth: []
@@ -1933,7 +1941,7 @@ paths:
         body.
       summary: Check availability of the caller's profile
       tags:
-      - api
+      - Accounts
       security:
       - jwtAuth: []
       - tokenAuth: []
@@ -2033,7 +2041,7 @@ paths:
         a fresh activation link.
       summary: Resend account activation
       tags:
-      - api
+      - Accounts
       requestBody:
         content:
           application/json:
@@ -2234,7 +2242,7 @@ paths:
         path.
       summary: Request a password-reset email
       tags:
-      - api
+      - Accounts
       requestBody:
         content:
           application/json:
@@ -2433,7 +2441,7 @@ paths:
         runs only after the bearer and locked account authenticate.
       summary: Confirm a password reset
       tags:
-      - api
+      - Accounts
       requestBody:
         content:
           application/json:
@@ -2656,7 +2664,7 @@ paths:
         path.
       summary: Request a username-reset email
       tags:
-      - api
+      - Accounts
       requestBody:
         content:
           application/json:
@@ -2854,7 +2862,7 @@ paths:
         issued before the change.
       summary: Confirm a username reset
       tags:
-      - api
+      - Accounts
       requestBody:
         content:
           application/json:
@@ -3086,7 +3094,7 @@ paths:
         for this request; the client must authenticate again.
       summary: Change the caller's password
       tags:
-      - api
+      - Accounts
       requestBody:
         content:
           application/json:
@@ -3321,7 +3329,7 @@ paths:
         DRF token, JSON web token, or Django session issued before the change.
       summary: Change the caller's username
       tags:
-      - api
+      - Accounts
       requestBody:
         content:
           application/json:
@@ -3558,7 +3566,7 @@ paths:
         staff.
       summary: Check application readiness
       tags:
-      - health
+      - Health
       security:
       - cookieAuth: []
       - {}
@@ -3680,7 +3688,7 @@ paths:
         as GET while returning status and headers only.
       summary: Check application readiness without a body
       tags:
-      - health
+      - Health
       security:
       - cookieAuth: []
       - {}
@@ -4996,6 +5004,13 @@ components:
       in: header
       name: Authorization
       description: 'Send `Authorization: Token <key>`.'
+tags:
+- name: Authentication
+  description: Token and JSON Web Token authentication operations.
+- name: Accounts
+  description: Account registration, profile, activation, password, and username operations.
+- name: Health
+  description: Application readiness and dependency health operations.
 x-localforge-boundary-responses:
   '204':
     description: Allowed CORS preflight for a resolvable versioned API route returns

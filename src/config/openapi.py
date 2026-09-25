@@ -126,6 +126,33 @@ OPENAPI_OPERATION_EVIDENCE = {
     ),
 }
 
+OPENAPI_OPERATION_TAGS = {
+    "health_readiness": "Health",
+    "health_readiness_head": "Health",
+    "jwt_create": "Authentication",
+    "jwt_refresh": "Authentication",
+    "jwt_verify": "Authentication",
+    "token_login": "Authentication",
+    "token_logout": "Authentication",
+}
+
+OPENAPI_TAGS = [
+    {
+        "name": "Authentication",
+        "description": "Token and JSON Web Token authentication operations.",
+    },
+    {
+        "name": "Accounts",
+        "description": (
+            "Account registration, profile, activation, password, and username operations."
+        ),
+    },
+    {
+        "name": "Health",
+        "description": "Application readiness and dependency health operations.",
+    },
+]
+
 
 def add_throttle_response_headers(
     result: dict[str, Any],
@@ -320,6 +347,7 @@ def _complete_operation_metadata(paths: dict[str, dict[str, Any]]) -> None:
             operation.setdefault("security", [])
             operation_id = cast("str", operation["operationId"])
             operation_evidence = OPENAPI_OPERATION_EVIDENCE[operation_id]
+            operation["tags"] = [OPENAPI_OPERATION_TAGS.get(operation_id, "Accounts")]
             operation["x-localforge-observed-by"] = operation_evidence
             responses = cast("dict[str, dict[str, Any]]", operation["responses"])
             for status, response in responses.items():
@@ -809,6 +837,7 @@ def finalize_openapi_contract(
     _add_profile_deletion_schema(components)
     _close_strict_request_schemas(components)
     _add_health_schemas(paths, components)
+    result["tags"] = deepcopy(OPENAPI_TAGS)
     result["x-localforge-boundary-responses"] = _boundary_response_contract()
 
     return result

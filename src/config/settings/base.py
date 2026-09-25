@@ -367,11 +367,21 @@ SECURE_PROXY_SSL_HEADER = None
 SPECTACULAR_SETTINGS = {
     "TITLE": "LocalForge API",
     "DESCRIPTION": (
-        "The fixed LocalForge health and versioned REST API contract. "
+        "LocalForge is a local-first Django backend platform. This document defines its "
+        "authenticated REST API, health endpoint, and account lifecycle operations. "
         "WebSocket protocol details are published separately."
     ),
     "VERSION": "1.0.0",
     "OAS_VERSION": "3.1.0",
+    "CONTACT": {
+        "name": "Rohit Vilas Ingole",
+        "email": "datarohit@outlook.com",
+        "url": "https://github.com/DataRohit/LocalForge",
+    },
+    "LICENSE": {
+        "name": "MIT License",
+        "url": "https://opensource.org/license/mit",
+    },
     "POSTPROCESSING_HOOKS": [
         "config.openapi.add_throttle_response_headers",
         "config.openapi.finalize_openapi_contract",
