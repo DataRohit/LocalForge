@@ -43,8 +43,10 @@ route and provider ownership. No Tunnel token or Resend key is copied into this 
   localforge-dev logs --since 2s --no-color` window after the final exercise was clean; affected containers had no
   unexplained warning-or-higher records, restarts, unhealthy state, public operator access, or credential disclosure.
 - Final verification after source-matched development and testing rebuilds passed the 33-test security-audit module.
-  The rebuilt container and host suites each completed 2,163 collections (2,140 core plus 23 timing), with 100% core
-  coverage and status 0. Mailpit remained isolated from Resend.
+  The clean-start rebuilt container and host suites each completed 2,170 collections (2,147 core plus 23 timing),
+  with 100% core coverage and status 0. After the complete host suite, five additional independent
+  production-shaped registration timing processes passed through isolated RabbitMQ queues. Mailpit remained isolated
+  from Resend and outside the measured registration response.
 
 ## Secret ownership and rotation
 

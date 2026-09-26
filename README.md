@@ -154,6 +154,7 @@ Environment setup and rebuild commands never execute tests. Test execution is ex
 ```console
 uv run poe testing-test-container
 uv run poe testing-test-host
+uv run poe testing-registration-timing-stability
 uv run poe testing-integration-audit
 ```
 
@@ -161,13 +162,19 @@ The testing environment keeps `django-test-dt5qx` running as a Compose service. 
 command starts the profile-gated Mailpit service before collection, runs all five real SMTP cases as part of the
 same complete suite, then clears and removes Mailpit on success or failure. All other tests retain the in-memory
 mail backend. Container-mode tests use `docker compose exec`, so Docker Desktop keeps the runner under
-`localforge-test` and no `*-run-*` container is created. `testing-verify` remains an explicit full-suite workflow
-and is not part of setup:
+`localforge-test` and no `*-run-*` container is created.
+
+The complete host command automatically runs five additional independent registration-timing processes through an
+isolated RabbitMQ queue after the full suite. The standalone stability command exposes the same gate for focused
+diagnosis. Mailpit delivery runs in separate integration cases and is never part of the measured registration
+response.
 
 `testing-integration-audit` starts and verifies the normal testing environment, starts the profile-gated Mailpit
 service, proves host and container SMTP messages survive a container recreate and can be deleted, then stops the
 real testing cache while both modes observe degraded readiness before restoring healthy state. It clears and removes
 the Mailpit container before returning, including after a failed assertion, while preserving the named volume.
+
+`testing-verify` remains an explicit full-suite workflow and is not part of setup:
 
 ```console
 uv run poe testing-verify

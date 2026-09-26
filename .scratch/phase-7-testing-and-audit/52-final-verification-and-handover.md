@@ -19,6 +19,16 @@ matching what was actually built.
 
 **Status:** done
 
+**Reopened 2026-09-26:** the transferred clean-Docker command sequence failed the host registration
+timing gate after container mode passed. The previous single-run evidence was insufficient.
+Completion now requires the production-shaped timing correction, five independent host passes, and
+a repeated zero-Docker full handover sequence.
+
+**Reverified 2026-09-26:** the operator removed every LocalForge Docker resource and reran setup
+from zero images, containers, networks, and volumes. Both complete modes passed 2,147 core plus 23
+timing cases, 100% branch coverage, exact Mailpit cleanup, and clean bounded logs. Host completion
+also required five independent production-shaped registration timing processes.
+
 **Reverified 2026-09-24:** after repairing host failures, skipped SMTP tests, deprecation warnings, proxy-only
 drift, stale local images, and unexplained post-suite logs, the operator removed LocalForge Docker resources and
 ran the complete written handover sequence from the clean precondition. Every command passed.

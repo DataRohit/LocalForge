@@ -450,6 +450,12 @@ schedule, and policy tests remain in the covered core stage. Timing cases carry 
 `--dist load` deliberately ignores the modules' load-group affinity so independent parameter cases can occupy the
 bounded four-worker pool.
 
+Registration timing disables eager Celery execution and publishes each real or dummy activation task to an isolated
+per-worker RabbitMQ quorum queue. The test consumes the single queued task outside the timed interval and never
+starts a worker, so response timing matches the public broker-publication boundary while Mailpit delivery remains a
+separate integration concern. After a successful complete host suite, the orchestrator runs the registration timing
+file in five independent host pytest processes. Any failed attempt blocks the host gate.
+
 `test`, `test-parallel`, `test-serial`, `test-fresh`, and `test-integration` enter SMTP-aware host orchestration.
 Their internal `*-stages` tasks run only after dependencies and temporary Mailpit are ready. Focused integration
 uses the same parallel load-group runner while excluding timing cases, so shared-state tests keep their required
@@ -476,8 +482,10 @@ passed but complete collection counts differed. Standalone mode commands preserv
 status.
 
 `uv run poe testing-verify` is the complete operator workflow: rebuild the source-matched test image, recreate and
-verify the dependency stack, run container mode followed by host mode, then stop the testing environment while
-preserving its named volumes. It leaves a failed stack running so status and logs remain available.
+verify the dependency stack, run container mode followed by host mode and its five-pass registration timing
+stability gate, then stop the testing environment while preserving its named volumes. It leaves a failed stack
+running so status and logs remain available. `uv run poe testing-registration-timing-stability` exposes the same
+host stability gate without rerunning the complete suite.
 
 ## 5. Image pins
 

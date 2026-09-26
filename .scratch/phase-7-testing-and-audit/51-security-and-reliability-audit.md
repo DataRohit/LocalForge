@@ -18,6 +18,15 @@ adversarial or degraded conditions, with every finding either fixed or recorded 
 
 **Status:** done
 
+**Reopened 2026-09-26:** a clean Docker rehearsal reproduced a Windows-only registration timing
+failure after the container suite. The timing test executed eager Celery delivery inside the HTTP
+measurement, unlike the public RabbitMQ publication boundary. Completion now requires an isolated
+real-broker timing path and five consecutive independent host passes.
+
+**Reverified 2026-09-26:** registration timing now publishes to isolated real RabbitMQ queues with
+eager execution disabled and no worker. The complete host timing stage passed under four workers,
+then five independent host processes passed with health, ownership, residue, and bounded-log audits.
+
 **Reverified 2026-09-23:** image setup rebuilds local tags from current source, audit failures identify the exact
 image boundary, and the refreshed immutable image snapshot passes the complete security audit.
 

@@ -246,10 +246,12 @@ because it carries no action, bearer, account field, or mutable identifier.
 
 Request paths publish these tasks through `transaction.on_commit` and contain broker publication errors, so response
 status, body, and enumeration timing do not depend on mail or queue success. Testing remains eager with the locmem
-backend by default. Every complete host and container gate temporarily starts profile-gated Mailpit and runs the
-activation, password recovery, username recovery, direct delivery, and unauthenticated-boundary SMTP cases with no
-skips. Development runtime verification observed SMTP outage retry followed by successful delivery, and permanent
-outage failure after five retries with one scrubbed dead-letter record.
+backend by default. Registration timing cases explicitly disable eager execution and publish to a per-worker RabbitMQ
+queue without a worker, matching the production HTTP boundary while keeping delivery latency outside the response.
+Every complete host and container gate temporarily starts profile-gated Mailpit and runs the activation, password
+recovery, username recovery, direct delivery, and unauthenticated-boundary SMTP cases with no skips. Development
+runtime verification observed SMTP outage retry followed by successful delivery, and permanent outage failure after
+five retries with one scrubbed dead-letter record.
 
 The after-commit dispatch boundary deliberately contains any task-execution exception and logs only its type. In
 testing, eager propagation can surface Celery's `Retry` after the first rejected attempt; in development, ordinary

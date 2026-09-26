@@ -12,7 +12,7 @@ import urllib.error
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, override
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 
@@ -36,6 +36,8 @@ LOG_FAILURE = 7
 TEST_COLLECTION_COUNT = 2031
 TEST_CORE_COUNT = 2008
 TEST_TIMING_COUNT = 23
+FAILED_STABILITY_ATTEMPTS = 2
+STABILITY_HEALTH_CHECK_COUNT = 2
 
 
 @dataclass
@@ -332,6 +334,7 @@ def test_help_publishes_the_complete_stable_command_surface(
     assert "uv run poe testing-rebuild" in output
     assert "uv run poe testing-test-container" in output
     assert "uv run poe testing-test-host" in output
+    assert "uv run poe testing-registration-timing-stability" in output
     assert "uv run poe testing-verify" in output
     assert "uv run poe environments-setup --proxy-only" in output
     assert "uv run poe development-up --proxy-only" in output
@@ -602,6 +605,49 @@ def test_testing_verify_leaves_the_stack_running_after_a_test_failure(tmp_path: 
     assert all("down" not in call[0] for call in runner.calls)
 
 
+def test_registration_timing_stability_command_starts_dependencies(
+    tmp_path: Path,
+) -> None:
+    """Dispatch the standalone timing stability command through its supported lifecycle.
+
+    Keeps the user-facing Poe command bound to the shared implementation with environment startup
+    enabled and no temporary Mailpit expectation.
+
+    Arguments:
+        tmp_path: Temporary repository root.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If command dispatch changes lifecycle arguments.
+    """
+    environment_files(tmp_path)
+    runner = FakeRunner()
+    probe = MagicMock(return_value=True)
+
+    with patch.object(
+        platform,
+        "registration_timing_stability",
+        return_value=0,
+    ) as stability:
+        code = platform.main(
+            ["testing-registration-timing-stability"],
+            root=tmp_path,
+            runner=runner,
+            http_probe=probe,
+        )
+
+    assert code == platform.EXIT_OK
+    stability.assert_called_once_with(
+        tmp_path,
+        runner,
+        ensure_up=True,
+        include_mailpit=False,
+        http_probe=probe,
+    )
+
+
 def test_both_test_modes_report_equal_collection_timings_and_postchecks(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -640,6 +686,11 @@ def test_both_test_modes_report_equal_collection_timings_and_postchecks(
         patch.object(platform, "docker_environment_audit", return_value=0) as ownership,
         patch.object(platform, "audit_testing_container_set", return_value=0) as residue,
         patch.object(platform, "audit_testing_logs", return_value=0) as logs,
+        patch.object(
+            platform,
+            "registration_timing_stability",
+            return_value=0,
+        ) as timing_stability,
     ):
         code = platform.testing_test(
             tmp_path,
@@ -660,6 +711,13 @@ def test_both_test_modes_report_equal_collection_timings_and_postchecks(
     )
     start_mailpit.assert_called_once()
     stop_mailpit.assert_called_once()
+    timing_stability.assert_called_once_with(
+        tmp_path,
+        runner,
+        ensure_up=False,
+        include_mailpit=True,
+        http_probe=ANY,
+    )
     assert health.call_count == ENVIRONMENT_COUNT
     assert ownership.call_count == ENVIRONMENT_COUNT
     assert residue.call_count == ENVIRONMENT_COUNT
@@ -672,6 +730,149 @@ def test_both_test_modes_report_equal_collection_timings_and_postchecks(
     assert "TIMING phase=test-both seconds=10.000 status=0" in output
     assert "RESULT mode=container status=0" in output
     assert "RESULT mode=host status=0" in output
+
+
+def test_registration_timing_stability_runs_five_independent_processes(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Require five successful host processes plus complete runtime post-checks.
+
+    Runs the supported stability seam without environment startup, proving every attempt is a
+    separate pytest command and no successful sample can hide a later failure.
+
+    Arguments:
+        tmp_path: Temporary repository root.
+        capsys: Fixture capturing stable operator evidence.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any attempt, post-check, or result line is omitted.
+    """
+    runner = FakeRunner()
+
+    with (
+        patch.object(platform, "up", return_value=0) as up,
+        patch.object(platform, "health", return_value=0) as health,
+        patch.object(platform, "docker_environment_audit", return_value=0) as ownership,
+        patch.object(platform, "audit_testing_container_set", return_value=0) as residue,
+        patch.object(platform, "audit_testing_logs", return_value=0) as logs,
+    ):
+        code = platform.registration_timing_stability(
+            tmp_path,
+            runner,
+            ensure_up=True,
+            include_mailpit=True,
+            http_probe=lambda _url, _host: True,
+        )
+
+    commands = [call[0] for call in runner.calls]
+    output = capsys.readouterr().out
+    assert code == platform.EXIT_OK
+    assert len(commands) == platform.REGISTRATION_TIMING_STABILITY_ATTEMPTS
+    assert all(platform.REGISTRATION_TIMING_TEST in command for command in commands)
+    assert all("--no-cov" in command and "-m" in command for command in commands)
+    up.assert_called_once()
+    assert health.call_count == STABILITY_HEALTH_CHECK_COUNT
+    ownership.assert_called_once()
+    residue.assert_called_once_with(runner, include_mailpit=True)
+    logs.assert_called_once()
+    assert "attempt=5/5 status=0" in output
+    assert "RESULT registration-timing-stability status=0" in output
+
+
+@pytest.mark.parametrize(
+    ("up_code", "health_code", "expected"),
+    [
+        (IMAGE_FAILURE, 0, IMAGE_FAILURE),
+        (0, LOG_FAILURE, LOG_FAILURE),
+    ],
+)
+def test_registration_timing_stability_propagates_startup_failures(
+    tmp_path: Path,
+    up_code: int,
+    health_code: int,
+    expected: int,
+) -> None:
+    """Stop before timing measurement when startup or readiness fails.
+
+    Covers both environment lifecycle boundaries without allowing a failed dependency check to
+    produce success-shaped timing evidence.
+
+    Arguments:
+        tmp_path: Temporary repository root.
+        up_code: Environment startup result.
+        health_code: Dependency readiness result after successful startup.
+        expected: Failure expected from the stability command.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If timing begins after either startup boundary fails.
+    """
+    runner = FakeRunner()
+
+    with (
+        patch.object(platform, "up", return_value=up_code),
+        patch.object(platform, "health", return_value=health_code) as health,
+    ):
+        code = platform.registration_timing_stability(
+            tmp_path,
+            runner,
+            ensure_up=True,
+            include_mailpit=False,
+            http_probe=lambda _url, _host: True,
+        )
+
+    assert code == expected
+    assert not runner.calls
+    assert health.call_count == int(up_code == 0)
+
+
+def test_registration_timing_stability_stops_on_first_failed_process(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Stop repeated timing evidence at the first failed independent process.
+
+    Lets one process pass and the next fail, while still requiring every runtime post-check before
+    the failure reaches the operator.
+
+    Arguments:
+        tmp_path: Temporary repository root.
+        capsys: Fixture capturing stable operator evidence.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If failure is retried, hidden, or allowed to skip post-checks.
+    """
+    runner = FakeRunner(results=[0, LOG_FAILURE])
+
+    with (
+        patch.object(platform, "health", return_value=0),
+        patch.object(platform, "docker_environment_audit", return_value=0),
+        patch.object(platform, "audit_testing_container_set", return_value=0),
+        patch.object(platform, "audit_testing_logs", return_value=0),
+    ):
+        code = platform.registration_timing_stability(
+            tmp_path,
+            runner,
+            ensure_up=False,
+            include_mailpit=False,
+            http_probe=lambda _url, _host: True,
+        )
+
+    output = capsys.readouterr().out
+    assert code == LOG_FAILURE
+    assert len(runner.calls) == FAILED_STABILITY_ATTEMPTS
+    assert "attempt=2/5 status=7" in output
+    assert "attempt=3/5" not in output
+    assert "RESULT registration-timing-stability status=7" in output
 
 
 def test_both_test_modes_run_independently_and_return_distinct_failures(
@@ -2180,6 +2381,7 @@ def test_compose_command_rejects_testing_proxy_override() -> None:
         "testing-test-container",
         "testing-test-host",
         "testing-test-both",
+        "testing-registration-timing-stability",
         "testing-verify",
         "development-build",
     ],

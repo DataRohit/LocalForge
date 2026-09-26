@@ -129,10 +129,17 @@ registration-admission outages remain `503` because they cannot safely establish
 Every completed registration outcome returning that indistinguishable `201` also observes the environment's
 `DJANGO_USER_REGISTRATION_MINIMUM_RESPONSE_DURATION_SECONDS` monotonic response floor. Timing starts at the earliest
 DRF view boundary and sleeps only the remaining duration after validation, password hashing, persistence, and real
-or dummy activation work. Validation failures, throttles, activation confirmation, and infrastructure `503`
-responses do not wait on the floor. The `0.200`-second default was set on 2026-09-17 from a 30-sample host baseline:
-the slowest existing accepted-path median was `0.131551` seconds, so the floor retains approximately 52 percent
-margin without imposing a multi-second public delay.
+RabbitMQ publication of the real or dummy activation task. Worker execution and mail delivery happen after the
+public boundary and are verified separately. Validation failures, throttles, activation confirmation, and
+infrastructure `503` responses do not wait on the floor. The `0.200`-second default was set on 2026-09-17 from a
+30-sample host baseline: the slowest existing accepted-path median was `0.131551` seconds, so the floor retains
+approximately 52 percent margin without imposing a multi-second public delay.
+
+The complete host gate repeats the registration timing file in five independent pytest processes after the full
+suite. One warmed interpreter or one favourable scheduler interval therefore cannot establish enumeration
+resistance. Each timing request publishes to an isolated per-worker quorum queue with eager execution disabled,
+then consumes the single queued task outside the measured interval. Existing Mailpit cases continue to prove worker
+delivery separately.
 
 This is a deliberate divergence from "return the most semantically precise code", and it is recorded here so a
 future reviewer does not "fix" it.

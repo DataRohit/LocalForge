@@ -327,14 +327,17 @@ commands:
 ```console
 uv run poe testing-test-container
 uv run poe testing-test-host
+uv run poe testing-registration-timing-stability
 uv run poe testing-down
 ```
 
 The testing startup tasks retain the original storage step:
 `uv run python scripts/seed_storage.py --environment testing --endpoint http://127.0.0.1:28333`.
 
-`uv run poe testing-verify` remains an explicit full-suite workflow. A failure leaves the testing services running
-for diagnosis.
+The complete host workflow includes five independent production-shaped registration timing passes after the full
+suite. Each pass publishes to an isolated RabbitMQ queue without eager task execution or a worker, while separate
+Mailpit cases prove delivery. `uv run poe testing-verify` remains an explicit full-suite workflow. A failure leaves
+the testing services running for diagnosis.
 
 Gate:
 

@@ -9,22 +9,27 @@ from __future__ import annotations
 import logging
 import secrets
 import statistics
+import sys
 import time
 import uuid
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Literal, cast
 
 import pytest
+from amqp.exceptions import AMQPError
 from django.core import mail
 from django.db import DatabaseError, connections
 from django.db.models import Q
 from django.test import override_settings
+from kombu import Exchange, Queue
+from kombu.exceptions import KombuError
 
 from accounts.models import ActivationToken, User
+from config.celery import app
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
     from contextlib import AbstractContextManager
 
     from django.test import Client
@@ -45,6 +50,184 @@ CANDIDATE_STATES: tuple[CandidateState, ...] = (
 )
 timing_logger = logging.getLogger("localforge.tests.registration_timing")
 pytestmark = pytest.mark.api_runtime
+
+
+@contextmanager
+def _isolated_activation_publication_queue(
+    monkeypatch: pytest.MonkeyPatch,
+    queue_name: str,
+) -> Iterator[str]:
+    """Publish activation tasks to one isolated real broker queue.
+
+    Disables eager execution only for the timing case, matching the public request boundary where
+    transaction commit publishes to RabbitMQ and a separate worker handles delivery later.
+
+    Arguments:
+        monkeypatch: Fixture restoring Celery configuration after the timing case.
+        queue_name: Unique broker queue and exchange name.
+
+    Yields:
+        Queue name receiving activation publications.
+
+    Raises:
+        OSError: If the broker cannot declare or remove the queue.
+    """
+    queue = Queue(
+        queue_name,
+        Exchange(queue_name, type="topic", durable=True),
+        routing_key=queue_name,
+        durable=True,
+        queue_arguments={"x-queue-type": "quorum"},
+    )
+    eager = False
+    monkeypatch.setitem(app.conf, "CELERY_TASK_ALWAYS_EAGER", eager)
+    monkeypatch.setitem(app.conf, "CELERY_TASK_DEFAULT_QUEUE", queue_name)
+    monkeypatch.setitem(app.conf, "CELERY_TASK_DEFAULT_EXCHANGE", queue_name)
+    monkeypatch.setitem(app.conf, "CELERY_TASK_DEFAULT_ROUTING_KEY", queue_name)
+    app.amqp.queues.add(queue)
+
+    try:
+        with app.connection_for_write() as connection:
+            queue(connection.channel()).declare()
+        yield queue_name
+    finally:
+        active_error = sys.exception()
+        cleanup_errors: list[Exception] = []
+        try:
+            with app.connection_for_write() as connection:
+                channel = connection.channel()
+                queue(channel).delete()
+        except (AMQPError, KombuError, OSError) as queue_cleanup_error:
+            cleanup_errors.append(queue_cleanup_error)
+        try:
+            with app.connection_for_write() as connection:
+                channel = connection.channel()
+                assert queue.exchange is not None
+                queue.exchange(channel).delete()
+        except (AMQPError, KombuError, OSError) as exchange_cleanup_error:
+            cleanup_errors.append(exchange_cleanup_error)
+        finally:
+            app.amqp.queues.pop(queue_name, None)
+        if active_error is not None:
+            for cleanup_error in cleanup_errors:
+                active_error.add_note(
+                    f"activation publication cleanup failed: {type(cleanup_error).__name__}"
+                )
+        elif cleanup_errors:
+            raise cleanup_errors[0]
+
+
+@pytest.fixture
+def activation_publication_queue(
+    monkeypatch: pytest.MonkeyPatch,
+    worker_namespace: str,
+) -> Iterator[str]:
+    """Provide one isolated real broker queue for activation timing.
+
+    Names the shared context manager per parallel worker and delegates complete Celery and RabbitMQ
+    lifecycle ownership to it.
+
+    Arguments:
+        monkeypatch: Fixture restoring Celery configuration after the timing case.
+        worker_namespace: Per-worker prefix isolating parallel broker resources.
+
+    Yields:
+        Queue name receiving activation publications.
+
+    Raises:
+        OSError: If broker resource setup or cleanup fails.
+    """
+    queue_name = f"{worker_namespace}-registration-timing-{uuid.uuid4().hex}"
+    with _isolated_activation_publication_queue(monkeypatch, queue_name) as isolated:
+        yield isolated
+
+
+@pytest.mark.integration
+@pytest.mark.services("rabbitmq", "valkey-cache")
+def test_activation_publication_queue_cleans_partial_declaration(
+    monkeypatch: pytest.MonkeyPatch,
+    worker_namespace: str,
+) -> None:
+    """Remove broker and process state after declaration fails midway.
+
+    Declares only the durable exchange before raising, proving the cleanup boundary deletes partial
+    broker state and removes Celery's queue registration while preserving the setup failure.
+
+    Arguments:
+        monkeypatch: Fixture replacing queue declaration after exchange creation.
+        worker_namespace: Per-worker prefix isolating the broker resource.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If partial exchange or Celery queue state survives.
+    """
+    queue_name = f"{worker_namespace}-registration-partial-{uuid.uuid4().hex}"
+
+    def fail_after_exchange(queue: Queue) -> None:
+        """Declare only the exchange before simulating queue setup failure.
+
+        Leaves queue creation and binding incomplete so the outer lifecycle must remove the partial
+        durable broker resource while preserving the original setup exception.
+
+        Arguments:
+            queue: Bound Kombu queue being declared.
+
+        Returns:
+            None.
+
+        Raises:
+            OSError: Always, after durable exchange declaration.
+        """
+        assert queue.exchange is not None
+        queue.exchange(queue.channel).declare()
+        message = "simulated queue declaration failure"
+        raise OSError(message)
+
+    monkeypatch.setattr(Queue, "declare", fail_after_exchange)
+
+    with (
+        pytest.raises(OSError, match="simulated queue declaration failure"),
+        _isolated_activation_publication_queue(monkeypatch, queue_name),
+    ):
+        pass
+
+    assert queue_name not in app.amqp.queues
+    with app.connection_for_write() as connection:
+        channel = connection.channel()
+        channel.exchange_declare(
+            exchange=queue_name,
+            type="fanout",
+            durable=False,
+            auto_delete=True,
+        )
+        channel.exchange_delete(exchange=queue_name)
+
+
+def _assert_activation_publication(queue_name: str) -> None:
+    """Consume exactly one activation task from the isolated broker queue.
+
+    Reads outside the measured interval, proving each accepted request completed real RabbitMQ
+    publication without allowing a worker or Mailpit delivery to distort response timing.
+
+    Arguments:
+        queue_name: Isolated queue receiving one request's publication.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If publication is absent, duplicated, or routed to another task.
+    """
+    with app.connection_for_read() as connection:
+        queue = app.amqp.queues[queue_name](connection.channel())
+        message = queue.get(no_ack=False)
+
+        assert message is not None
+        assert message.headers.get("task") == "accounts.send_activation_email"
+        message.ack()
+        assert queue.get(no_ack=False) is None
 
 
 def _registration_payload(username: str, email: str) -> dict[str, str]:
@@ -155,13 +338,13 @@ def _assert_candidate_state(
         AssertionError: If account, token, or mail state differs from the contract.
     """
     expected_accounts = 0 if token_store_failure and state == "new" else 1
-    expects_delivery = not token_store_failure and state in {"new", "inactive-email"}
+    expects_token = not token_store_failure and state in {"new", "inactive-email"}
 
     assert User.objects.using("default").filter(_candidate_scope(username, email)).count() == (
         expected_accounts
     )
-    assert ActivationToken.objects.using("default").count() == int(expects_delivery)
-    assert len(mail.outbox) == int(expects_delivery)
+    assert ActivationToken.objects.using("default").count() == int(expects_token)
+    assert not mail.outbox
 
 
 def _clear_candidate_state(username: str, email: str) -> None:
@@ -213,7 +396,7 @@ def _fail_activation_token_insert(
 
 
 @pytest.mark.integration
-@pytest.mark.services("postgres", "valkey-cache")
+@pytest.mark.services("postgres", "valkey-cache", "rabbitmq")
 @pytest.mark.django_db(databases=["default", "replica"], transaction=True)
 @pytest.mark.timeout(360)
 @pytest.mark.security_timing
@@ -231,6 +414,7 @@ def _fail_activation_token_insert(
 def test_registration_candidate_states_meet_the_timing_criterion(
     client: Client,
     activation_store_mode: ActivationStoreMode,
+    activation_publication_queue: str,
 ) -> None:
     """Keep every accepted registration outcome within the approved timing bound.
 
@@ -240,6 +424,7 @@ def test_registration_candidate_states_meet_the_timing_criterion(
     Arguments:
         client: Django test client supplied by the framework.
         activation_store_mode: Whether activation-token persistence operates normally or fails.
+        activation_publication_queue: Isolated RabbitMQ queue receiving activation tasks.
 
     Returns:
         None.
@@ -295,6 +480,7 @@ def test_registration_candidate_states_meet_the_timing_criterion(
 
         assert response.status_code == HTTPStatus.CREATED
         assert response.json() == expected_body
+        _assert_activation_publication(activation_publication_queue)
         _assert_candidate_state(
             state,
             username=username,

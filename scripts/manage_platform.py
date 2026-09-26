@@ -77,6 +77,8 @@ TESTING_CONTAINERS = frozenset(TESTING_SERVICES)
 TESTING_OPTIONAL_CONTAINERS = frozenset({"mailpit-tm7bh"})
 TESTING_RUNTIME_PROBE_MODULE = "tests.integration.config.runtime_probe"
 SMTP_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+REGISTRATION_TIMING_STABILITY_ATTEMPTS = 5
+REGISTRATION_TIMING_TEST = "tests/integration/accounts/test_registration_timing.py"
 HOST_TEST_TASKS = {
     "testing-test-host-serial": "test-serial-stages",
     "testing-test-host-fresh": "test-fresh-stages",
@@ -252,6 +254,8 @@ Testing (each safe default preserves volumes)
   uv run poe testing-test-container Run the complete suite in the test container
   uv run poe testing-test-host      Run the complete suite from the host
   uv run poe testing-test-both      Run container mode, then host mode
+  uv run poe testing-registration-timing-stability
+                                     Run five independent host registration timing passes
   uv run poe testing-integration-audit
                                      Prove Mailpit persistence and real degraded readiness
   uv run poe testing-verify         Rebuild, run both modes, then stop on success
@@ -1667,7 +1671,7 @@ def inspect_images(
             present.add(image)
             print(f"IMAGE present {image} id={result.output.removeprefix('sha256:')[:12]}")
         else:
-            print(f"IMAGE missing {image}")
+            print(f"IMAGE absent {image} action=build")
 
     listed = runner.run(
         ("docker", "image", "ls", "--format", "{{.Repository}}:{{.Tag}}|{{.ID}}"),
@@ -1683,7 +1687,7 @@ def inspect_images(
     for image in sorted(external_images):
         external_id = observed_external.get(image)
         if external_id is None:
-            print(f"IMAGE missing {image}")
+            print(f"IMAGE absent {image} action=pull")
         else:
             present.add(image)
             print(f"IMAGE present {image} id={external_id[:12]}")
@@ -2852,8 +2856,100 @@ def testing_test(  # noqa: PLR0913
         http_probe=http_probe,
         now=now,
     )
+    if body_code == EXIT_OK and mode in {"host", "both"}:
+        body_code = registration_timing_stability(
+            root,
+            runner,
+            ensure_up=False,
+            include_mailpit=True,
+            http_probe=http_probe,
+        )
     cleanup_code = finalize_testing_mailpit(root, runner)
     return body_code if body_code != EXIT_OK else cleanup_code
+
+
+def registration_timing_stability(
+    root: Path,
+    runner: Runner,
+    *,
+    ensure_up: bool,
+    include_mailpit: bool,
+    http_probe: Callable[[str, str], bool],
+) -> int:
+    """Run five independent host registration timing processes.
+
+    Uses separate pytest processes so one lucky sample or warmed interpreter cannot satisfy the
+    release gate, then applies the same health, ownership, residue, and bounded-log checks as the
+    complete host suite.
+
+    Arguments:
+        root: Repository root.
+        runner: External command adapter.
+        ensure_up: Whether to start and verify testing dependencies before measurement.
+        include_mailpit: Whether the caller already started the profile-gated Mailpit service.
+        http_probe: HTTP readiness adapter.
+
+    Returns:
+        Zero only when every timing process and post-check succeeds.
+    """
+    if ensure_up:
+        code = up(
+            root,
+            runner,
+            TESTING,
+            recreate=False,
+            proxy_only=False,
+        )
+        if code != EXIT_OK:
+            return code
+        code = health(root, runner, TESTING, http_probe=http_probe)
+        if code != EXIT_OK:
+            return code
+
+    started_at = utc_timestamp()
+    test_code = EXIT_OK
+    for attempt in range(1, REGISTRATION_TIMING_STABILITY_ATTEMPTS + 1):
+        test_code = runner.run(
+            (
+                "uv",
+                "run",
+                "pytest",
+                REGISTRATION_TIMING_TEST,
+                "-m",
+                "security_timing",
+                "--no-cov",
+                "-q",
+                "--log-level=INFO",
+            )
+        ).code
+        print(
+            "STABILITY registration-timing "
+            f"attempt={attempt}/{REGISTRATION_TIMING_STABILITY_ATTEMPTS} status={test_code}"
+        )
+        if test_code != EXIT_OK:
+            break
+
+    health_code = health(root, runner, TESTING, http_probe=http_probe)
+    ownership_code = docker_environment_audit(runner, TESTING)
+    residue_code = audit_testing_container_set(runner, include_mailpit=include_mailpit)
+    ended_at = utc_timestamp()
+    log_code = audit_testing_logs(runner, started_at, ended_at)
+    code = next(
+        (
+            failure
+            for failure in (
+                test_code,
+                health_code,
+                ownership_code,
+                residue_code,
+                log_code,
+            )
+            if failure != EXIT_OK
+        ),
+        EXIT_OK,
+    )
+    print(f"RESULT registration-timing-stability status={code}")
+    return code
 
 
 def testing_host_task(
@@ -3282,6 +3378,7 @@ def build_parser() -> argparse.ArgumentParser:
         "testing-test-container",
         "testing-test-host",
         "testing-test-both",
+        "testing-registration-timing-stability",
         *HOST_TEST_TASKS,
         "testing-integration-audit",
         "testing-verify",
@@ -3372,6 +3469,14 @@ def main(  # noqa: C901, PLR0911, PLR0912, PLR0913
             root,
             active_runner,
             HOST_TEST_TASKS[command],
+            http_probe=http_probe,
+        )
+    if command == "testing-registration-timing-stability":
+        return registration_timing_stability(
+            root,
+            active_runner,
+            ensure_up=True,
+            include_mailpit=False,
             http_probe=http_probe,
         )
     if command.startswith("testing-test-"):
