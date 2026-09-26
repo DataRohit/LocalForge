@@ -85,7 +85,7 @@ Add one access zone per environment. A service joins it **only** if the inventor
 port for it; everything else keeps its internal zones alone.
 
 | Zone | Environment | `internal` |
-|---|---|---|
+| --- | --- | --- |
 | `access-net-ha4mz` | development | no |
 | `access-net-ht6pn` | testing | no |
 

@@ -14,7 +14,7 @@ callable has one — application code and tests alike.
 ## 2. Required sections
 
 | Level | Must contain |
-|---|---|
+| --- | --- |
 | File | One-line title, a blank line, then a description of 2–3 lines |
 | Class | Title, 2–3 line description saying what it inherits, then `Attributes:` and `Members:` |
 | Function / method | Title, 2–3 line description, then `Arguments:`, `Returns:`, and `Raises:` |
@@ -96,7 +96,7 @@ Only machine instructions, named individually rather than matched by pattern, so
 ordinary commentary:
 
 | Prefix | Purpose |
-|---|---|
+| --- | --- |
 | `# noqa`, `# noqa: E501` | Ruff suppression |
 | `# type: ignore[...]` | Type-checker directive |
 | `# pragma: no cover` | Coverage directive |
@@ -110,7 +110,7 @@ violation, including a commented-out line of code.
 ## 5. Enforcement
 
 | Check | What it covers |
-|---|---|
+| --- | --- |
 | Ruff `D` rules, google convention | Presence of docstrings, summary formatting, and that every named parameter appears under `Arguments:` |
 | `scripts/check_docstrings.py` | The comment ban and the section structure Ruff cannot express |
 

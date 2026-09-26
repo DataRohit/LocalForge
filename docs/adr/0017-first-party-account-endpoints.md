@@ -82,8 +82,9 @@ more specific project contract.
 
 LocalForge therefore preserves the POST method and request shape while folding confirmation into `POST /users/`.
 Registration bodies still contain `username`, `email`, `password`, and `password_confirm`; activation bodies contain
-only `account` and `token`. The email link is built on `DJANGO_SITE_URL` at `/users/?account=...&token=...`, for a
-frontend to submit those values to the versioned `/users/` POST. No `/users/activation/` route exists.
+only `account` and `token`. The email carries a credential handoff URL on `DJANGO_SITE_URL`; it is not a browser
+endpoint and does not claim that `GET` completes activation. A LocalForge client extracts the query values and
+submits them to the versioned `/users/` POST. No `/users/activation/` route exists.
 
 Ticket 36 names the combined OpenAPI operation `user_registration_or_activation`. Its summary and description state
 both exact body branches and distinguish the enumeration-resistant registration `201` representation from the

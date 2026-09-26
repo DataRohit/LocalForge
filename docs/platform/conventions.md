@@ -252,13 +252,13 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `PGBACKREST_REPO1_RETENTION_FULL` | `pgbackrest-pb2wj` | full backups retained | `2` | no | yes |
 | `PGBACKREST_REPO1_RETENTION_DIFF` | `pgbackrest-pb2wj` | differential backups retained | `6` | no | yes |
 | `PGBACKREST_ARCHIVE_TIMEOUT` | `pgbackrest-pb2wj`, `postgres-pg3ka` | seconds a WAL segment may take to reach the repository | `120` | no | yes |
-| `PGADMIN_DEFAULT_EMAIL` | `pgadmin-pa7fe` | dashboard login | `dev@localforge.invalid` | no | yes |
+| `PGADMIN_DEFAULT_EMAIL` | `pgadmin-pa7fe` | dashboard login | `support@datarohit.com` | no | yes |
 | `PGADMIN_DEFAULT_PASSWORD` | `pgadmin-pa7fe` | dashboard password | `<GENERATED>` | **yes** | yes |
 | `PGADMIN_LISTEN_ADDRESS` | `pgadmin-pa7fe` | bind address | `0.0.0.0` | no | yes |
 | `PGADMIN_DISABLE_POSTFIX` | `pgadmin-pa7fe` | skip the bundled mail server | `True` | no | yes |
 | `PGADMIN_REPLACE_SERVERS_ON_STARTUP` | `pgadmin-pa7fe` | declarative server list | `True` | no | yes |
 | `PGADMIN_SERVER_JSON_FILE` | `pgadmin-pa7fe` | mounted server definitions | `/pgadmin4/servers.json` | no | no |
-| `PGADMIN_CONFIG_ALLOW_SPECIAL_EMAIL_DOMAINS` | `pgadmin-pa7fe` | permit the reserved login domain | `["invalid"]` | no | yes |
+| `PGADMIN_CONFIG_ALLOW_SPECIAL_EMAIL_DOMAINS` | `pgadmin-pa7fe` | extra accepted login domains | `[]` | no | yes |
 | `PGADMIN_CONFIG_UPGRADE_CHECK_ENABLED` | `pgadmin-pa7fe` | stop the upgrade check reaching the vendor | `False` | no | no |
 | `VALKEY_CACHE_HOST` | `django-uv5n2` | cache host | `valkey-cache-vc5tn` | no | yes |
 | `VALKEY_CACHE_PORT` | `django-uv5n2` | cache port | `6379` | no | yes |
@@ -296,7 +296,7 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `EMAIL_PORT` | `django-uv5n2` | development SMTP port | `587` (Mailpit `1025` in testing) | no | yes |
 | `MAILPIT_WEB_PORT` | `mailpit-mp6gb` | web and readiness port the dependency gate probes | `8025` | no | no |
 | `MP_UI_AUTH` | `mailpit-mp6gb` | web UI and API Basic authentication credentials | `<GENERATED>` | **yes** | yes |
-| `DEFAULT_FROM_EMAIL` | `django-uv5n2` | development envelope sender | `no-reply@localforge.datarohit.com` (testing uses the local profile) | no | yes |
+| `DEFAULT_FROM_EMAIL` | `django-uv5n2` | development sender identity | `LocalForge <no-reply@localforge.datarohit.com>` (testing uses the local profile) | no | yes |
 | `DJANGO_SITE_NAME` | `django-uv5n2` | application name rendered in email | `LocalForge` | no | yes |
 | `DJANGO_SITE_URL` | `django-uv5n2` | absolute base URL for email links | `https://localforge.datarohit.com` | no | yes |
 | `S3_ENDPOINT_URL` | `django-uv5n2` | SeaweedFS S3 gateway | `http://seaweedfs-sw9cr:8333` | no | yes |
@@ -307,7 +307,7 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `WEED_S3_SSE_KEK_PASSPHRASE` | `seaweedfs-sw9cr` | persistent SSE-S3 key-encryption-key passphrase; changing it requires the environment's SeaweedFS data volume to be recreated | `<GENERATED>` | **yes** | yes |
 | `S3_BUCKET_NAME` | `django-uv5n2` | media bucket | `localforge-media` | no | yes |
 | `S3_REGION_NAME` | `django-uv5n2` | region string the SDK requires | `us-east-1` | no | yes |
-| `GRAFANA_ADMIN_USER` | `grafana-gf7qv` | dashboard login | `admin` | no | yes |
+| `GRAFANA_ADMIN_USER` | `grafana-gf7qv` | dashboard login | `support@datarohit.com` | no | yes |
 | `GRAFANA_ADMIN_PASSWORD` | `grafana-gf7qv` | dashboard password | `<GENERATED>` | **yes** | yes |
 | `PROMETHEUS_RETENTION_TIME` | `prometheus-pm5db` | TSDB retention | `7d` | no | no |
 | `LOKI_RETENTION_PERIOD` | `loki-lk3ny` | log retention | `168h` | no | no |
@@ -465,7 +465,7 @@ not create a production file or Compose project. These values define the Phase 1
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | `https://localforge.datarohit.com` | Trust only canonical HTTPS browser origin for state-changing requests. |
 | `DJANGO_CORS_ALLOWED_ORIGINS` | `https://localforge.datarohit.com` | Reflect one exact credentialed browser origin; never `*`. |
 | `DJANGO_SITE_URL` | `https://localforge.datarohit.com` | Generate activation and recovery links on canonical origin. |
-| `DEFAULT_FROM_EMAIL` | `no-reply@localforge.datarohit.com` | Use Resend-verified development sender. |
+| `DEFAULT_FROM_EMAIL` | `LocalForge <no-reply@localforge.datarohit.com>` | Use Resend-verified development sender with a stable display identity. |
 | `EMAIL_BACKEND` | `django.core.mail.backends.smtp.EmailBackend` | Send development mail through Resend SMTP. |
 | `EMAIL_HOST` | `smtp.resend.com` | Resend SMTP relay. |
 | `EMAIL_PORT` | `587` | Resend submission port with TLS. |
@@ -473,7 +473,7 @@ not create a production file or Compose project. These values define the Phase 1
 | WebSocket `Origin` | `https://localforge.datarohit.com` | Reuse exact CORS origin allowlist for socket admission. |
 
 Development Resend SMTP also sets `EMAIL_HOST_USER=resend`, `EMAIL_HOST_PASSWORD` from the domain-scoped
-`RESEND_API_KEY`, `EMAIL_USE_TLS=true`, and `DEFAULT_REPLY_TO_EMAIL=datarohit@outlook.com`. These development-only
+`RESEND_API_KEY`, `EMAIL_USE_TLS=true`, and `DEFAULT_REPLY_TO_EMAIL=support@datarohit.com`. These development-only
 settings do not enter testing files.
 
 Public-only settings are reserved only in the development file: `TUNNEL_TOKEN=<GENERATED>` is replaced by the

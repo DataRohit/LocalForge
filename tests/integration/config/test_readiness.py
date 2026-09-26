@@ -312,6 +312,7 @@ def test_health_route_contains_mail_cleanup_failure(
     """
     connection = Mock()
     connection.close.side_effect = smtplib.SMTPException("cleanup diagnostic")
+    mocker.patch("config.health.mail_readiness_state.success_at", None)
     mocker.patch("config.health.get_connection", return_value=connection)
 
     response = client.get("/health/", headers={"accept": "application/json"})

@@ -387,12 +387,22 @@ def _send_claimed_activation(
             return False
 
         recipient = account.email
-        action_path = f"/users/?{urlencode({'account': account_id, 'token': token})}"
+        action_path = f"/api/v1/users/?{urlencode({'account': account_id, 'token': token})}"
         delivered = send_application_email(
             recipient,
             "Activate your LocalForge account",
-            "Confirm your email address to activate your account.",
+            (
+                "Give this credential handoff URL to your LocalForge client. The client must "
+                "extract the account and token values and submit them with POST; opening the URL "
+                "in a browser does not activate the account."
+            ),
             action_path=action_path,
+            context={
+                "action_label": "Account activation credential handoff URL",
+                "security_notice": (
+                    "If you did not create this account, you can ignore this email."
+                ),
+            },
         )
         if delivered:
             record.delivered_at = timezone.now()
@@ -563,13 +573,25 @@ def _send_claimed_password_reset(
             return False
 
         action_path = (
-            f"/users/reset_password_confirm/?{urlencode({'account': account_id, 'token': token})}"
+            "/api/v1/users/reset_password_confirm/"
+            f"?{urlencode({'account': account_id, 'token': token})}"
         )
         delivered = send_application_email(
             account.email,
             "Reset your LocalForge password",
-            "Use this link to choose a new password.",
+            (
+                "Give this credential handoff URL to your LocalForge client. The client must "
+                "extract the account and token values, collect your new password, and submit the "
+                "complete POST body; opening the URL in a browser does not reset the password."
+            ),
             action_path=action_path,
+            context={
+                "action_label": "Password reset credential handoff URL",
+                "security_notice": (
+                    "If you did not request a password reset, ignore this email and keep your "
+                    "current password."
+                ),
+            },
         )
         if delivered:
             record.delivered_at = timezone.now()
@@ -735,13 +757,22 @@ def _send_claimed_username_reset(
             return False
 
         action_path = (
-            f"/users/reset_username_confirm/?{urlencode({'account': account_id, 'token': token})}"
+            "/api/v1/users/reset_username_confirm/"
+            f"?{urlencode({'account': account_id, 'token': token})}"
         )
         delivered = send_application_email(
             account.email,
             "Reset your LocalForge username",
-            "Use this link to choose a new username.",
+            (
+                "Give this credential handoff URL to your LocalForge client. The client must "
+                "extract the account and token values, collect your new username, and submit the "
+                "complete POST body; opening the URL in a browser does not reset the username."
+            ),
             action_path=action_path,
+            context={
+                "action_label": "Username reset credential handoff URL",
+                "security_notice": ("If you did not request a username reset, ignore this email."),
+            },
         )
         if delivered:
             record.delivered_at = timezone.now()
@@ -852,6 +883,9 @@ def deliver_password_changed_email(account_id: object) -> bool:
         recipient,
         "Your LocalForge password changed",
         "Your password was changed through account recovery.",
+        context={
+            "security_notice": ("If you did not make this change, contact support immediately."),
+        },
     ):
         return True
 
@@ -881,6 +915,9 @@ def deliver_username_changed_email(account_id: object) -> bool:
         recipient,
         "Your LocalForge username changed",
         "Your username was changed.",
+        context={
+            "security_notice": ("If you did not make this change, contact support immediately."),
+        },
     ):
         try:
             publish_notification(

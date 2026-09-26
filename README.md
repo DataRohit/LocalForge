@@ -44,6 +44,37 @@ timings and never runs application tests, coverage, security tests, or the proje
 configuration is absent and an age key is available, then uses the idempotent secret generator to top up all three
 local environment files. It never prints a secret or replaces an existing value.
 
+### Copied-machine setup
+
+Restore the existing encrypted environment only when the original age private key is available:
+
+```powershell
+$env:SOPS_AGE_KEY_FILE = 'C:\secure\localforge-age-key.txt'
+uv sync --all-groups --frozen
+uv run poe secrets-decrypt
+uv run poe environments-setup
+```
+
+Generate fresh local credentials only on a machine with no LocalForge Docker data to preserve:
+
+```powershell
+uv sync --all-groups --frozen
+uv run poe docker-clean-check
+Remove-Item -LiteralPath .env.development,.env.testing,.env.testing.host -Force -ErrorAction SilentlyContinue
+uv run python scripts/gen_secrets.py --environment all
+notepad .env.development
+uv run poe secrets-generate
+uv run poe environments-setup
+uv run poe developer-access-export
+```
+
+In the editor, replace only the `TUNNEL_TOKEN` and `RESEND_API_KEY` placeholders with newly issued provider values.
+Do not place either value in a command, terminal history, document, or commit. The follow-up generator derives
+`EMAIL_HOST_PASSWORD` from `RESEND_API_KEY` and preserves distinct generated passwords. Keep `localforge_app`,
+`localforge_repl`, and `localforge_broker` as machine principals. Existing pgAdmin and Grafana volumes retain their
+initialized login identities; use fresh volumes for this copied-machine workflow instead of changing only the env
+file. Never use generator `--force` against existing LocalForge volumes.
+
 Start and verify the complete development environment:
 
 ```console

@@ -1596,7 +1596,7 @@ def test_the_task_dashboard_credential_is_plaintext(repository: Path) -> None:
         ":"
     )
 
-    assert user == "admin"
+    assert user == "support@datarohit.com"
     assert not password.startswith("$")
     assert len(password) > 1
 
@@ -1622,7 +1622,7 @@ def test_the_mail_dashboard_credential_is_plaintext(repository: Path) -> None:
         ":"
     )
 
-    assert user == "admin"
+    assert user == "support@datarohit.com"
     assert separator == ":"
     assert not password.startswith("$")
     assert len(password) > 1
@@ -1738,6 +1738,8 @@ def test_a_forced_development_run_preserves_the_resend_key_and_derives_smtp_pass
 
     assert resolved["RESEND_API_KEY"] == issued_value
     assert resolved["EMAIL_HOST_PASSWORD"] == issued_value
+    assert resolved["DEFAULT_FROM_EMAIL"] == ("LocalForge <no-reply@localforge.datarohit.com>")
+    assert resolved["DEFAULT_REPLY_TO_EMAIL"] == "support@datarohit.com"
 
 
 @pytest.mark.unit
@@ -2405,8 +2407,11 @@ def test_the_script_guard_runs_the_generator(
     ("values", "current"),
     [
         ({"TRAEFIK_DASHBOARD_PASSWORD": "secret"}, "no-colon-here"),
-        ({}, "admin:$2b$12$abcdefghijklmnopqrstuv"),
-        ({"TRAEFIK_DASHBOARD_PASSWORD": "secret"}, "admin:not-a-bcrypt-digest"),
+        ({}, f"{gen_secrets.BASIC_AUTH_USER}:$2b$12$abcdefghijklmnopqrstuv"),
+        (
+            {"TRAEFIK_DASHBOARD_PASSWORD": "secret"},
+            f"{gen_secrets.BASIC_AUTH_USER}:not-a-bcrypt-digest",
+        ),
     ],
 )
 def test_an_unreadable_dashboard_entry_is_treated_as_absent(
@@ -2478,30 +2483,58 @@ def test_a_password_too_long_to_hash_is_refused() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("user", ["not-admin", ""])
-def test_an_entry_naming_another_user_is_rejected(user: str) -> None:
-    """Rebuild an entry that names someone else.
+def test_an_entry_with_an_existing_custom_user_is_preserved() -> None:
+    """Keep an existing valid dashboard username.
 
-    Confirms only the registered user is accepted, so a hand-edited entry granting another account
-    is replaced rather than preserved. The digest is correct for the password, so the user is the
-    only thing that can decide the outcome.
+    Confirms changing the fresh-generation username does not invalidate an existing account whose
+    digest still matches the stored password, so ordinary setup does not block older deployments.
 
     Arguments:
-        user: Account name carried by the entry.
+        None.
 
     Returns:
         None.
 
     Raises:
-        AssertionError: If an entry for another user is accepted.
+        AssertionError: If a valid existing username is rejected.
     """
     sample = "correct-horse"
     salt = bcrypt.gensalt(rounds=gen_secrets.BCRYPT_ROUNDS)
     digest = bcrypt.hashpw(sample.encode(), salt).decode()
     values = {"TRAEFIK_DASHBOARD_PASSWORD": sample}
 
-    assert gen_secrets.verify_dashboard_auth(values, f"{user}:{digest}") is False
-    assert gen_secrets.verify_dashboard_auth(values, f"admin:{digest}") is True
+    assert gen_secrets.verify_dashboard_auth(values, f"legacy-user:{digest}") is True
+
+
+@pytest.mark.unit
+def test_an_entry_with_an_empty_user_is_rejected() -> None:
+    """Reject a dashboard entry without an account name.
+
+    Confirms preserving custom identities does not accept a malformed entry whose password digest
+    has no associated login.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If an empty username is accepted.
+    """
+    sample = "correct-horse"
+    digest = bcrypt.hashpw(
+        sample.encode(),
+        bcrypt.gensalt(rounds=gen_secrets.BCRYPT_ROUNDS),
+    ).decode()
+
+    assert (
+        gen_secrets.verify_dashboard_auth(
+            {"TRAEFIK_DASHBOARD_PASSWORD": sample},
+            f":{digest}",
+        )
+        is False
+    )
 
 
 @pytest.mark.unit
@@ -2526,7 +2559,13 @@ def test_an_entry_hashed_at_a_weaker_cost_is_rejected() -> None:
     ).decode()
     values = {"TRAEFIK_DASHBOARD_PASSWORD": sample}
 
-    assert gen_secrets.verify_dashboard_auth(values, f"admin:{other}") is False
+    assert (
+        gen_secrets.verify_dashboard_auth(
+            values,
+            f"{gen_secrets.BASIC_AUTH_USER}:{other}",
+        )
+        is False
+    )
 
 
 @pytest.mark.unit
@@ -2562,7 +2601,7 @@ def test_siblings_holding_different_dashboard_entries_are_refused() -> None:
         """
         salt = bcrypt.gensalt(rounds=gen_secrets.BCRYPT_ROUNDS)
 
-        return f"admin:{bcrypt.hashpw(value.encode(), salt).decode()}"
+        return f"{gen_secrets.BASIC_AUTH_USER}:{bcrypt.hashpw(value.encode(), salt).decode()}"
 
     entries = {
         name: {"TRAEFIK_DASHBOARD_AUTH": entry_for(sample)} for name in ("testing", "testing-host")
@@ -2590,7 +2629,7 @@ def test_a_surviving_sibling_entry_is_adopted_rather_than_rebuilt() -> None:
     """
     sample = "shared-password"
     digest = bcrypt.hashpw(sample.encode(), bcrypt.gensalt(rounds=gen_secrets.BCRYPT_ROUNDS))
-    entry = f"admin:{digest.decode()}"
+    entry = f"{gen_secrets.BASIC_AUTH_USER}:{digest.decode()}"
     shared = {"TRAEFIK_DASHBOARD_PASSWORD": sample}
     gen_secrets.share_composed(shared, {"testing": {"TRAEFIK_DASHBOARD_AUTH": entry}})
 
@@ -2615,7 +2654,7 @@ def test_an_entry_already_shared_is_left_untouched() -> None:
     """
     sample = "shared-password"
     salt = bcrypt.gensalt(rounds=gen_secrets.BCRYPT_ROUNDS)
-    entry = f"admin:{bcrypt.hashpw(sample.encode(), salt).decode()}"
+    entry = f"{gen_secrets.BASIC_AUTH_USER}:{bcrypt.hashpw(sample.encode(), salt).decode()}"
     shared = {"TRAEFIK_DASHBOARD_PASSWORD": sample, "TRAEFIK_DASHBOARD_AUTH": entry}
     gen_secrets.share_composed(shared, {})
 
@@ -2638,7 +2677,7 @@ def test_a_digest_the_library_cannot_parse_is_treated_as_absent() -> None:
     Raises:
         AssertionError: If the malformed digest is not handled.
     """
-    entry = f"admin:$2b${gen_secrets.BCRYPT_ROUNDS:02d}$short"
+    entry = f"{gen_secrets.BASIC_AUTH_USER}:$2b${gen_secrets.BCRYPT_ROUNDS:02d}$short"
 
     assert (
         gen_secrets.verify_dashboard_auth({"TRAEFIK_DASHBOARD_PASSWORD": "secret"}, entry) is False

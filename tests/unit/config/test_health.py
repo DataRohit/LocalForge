@@ -16,6 +16,7 @@ import pytest
 from health_check.exceptions import ServiceUnavailable
 from psycopg import Error as PsycopgError
 
+import config.health as health_module
 from config.health import (
     HEALTH_CHECK_STATEMENT_TIMEOUT_MILLISECONDS,
     BrokerReadinessCheck,
@@ -42,6 +43,7 @@ if TYPE_CHECKING:
 BLOCKING_CHECK_SECONDS = 0.5
 CANCELLATION_SETTLE_SECONDS = 0.05
 MAXIMUM_CANCELLATION_SECONDS = 0.2
+REFRESHED_MAIL_READINESS_TIME = 162.0
 PROBE_TIMEOUT_SECONDS = 0.01
 READINESS_SETTLE_TURNS = 100
 
@@ -519,14 +521,236 @@ def test_mail_readiness_contains_transport_failure(
     Raises:
         AssertionError: If SMTP failure escapes or the connection remains open.
     """
-    connection = Mock()
-    connection.open.side_effect = smtplib.SMTPException("mail unavailable")
-    connection.close.side_effect = smtplib.SMTPException("mail cleanup unavailable")
-    get_connection = mocker.patch("config.health.get_connection", return_value=connection)
+    connections = (Mock(), Mock())
+    for connection in connections:
+        connection.open.side_effect = smtplib.SMTPException("mail unavailable")
+        connection.close.side_effect = smtplib.SMTPException("mail cleanup unavailable")
+    mocker.patch.object(health_module.mail_readiness_state, "success_at", None)
+    get_connection = mocker.patch("config.health.get_connection", side_effect=connections)
     check = MailReadinessCheck(backend="django.core.mail.backends.smtp.EmailBackend")
 
     with pytest.raises(ServiceUnavailable, match="Mail readiness check"):
         check.run()
+
+    assert get_connection.call_count == health_module.HEALTH_CHECK_MAIL_ATTEMPTS
+    for connection in connections:
+        connection.close.assert_called_once_with()
+
+
+@pytest.mark.unit
+def test_mail_readiness_retries_one_transient_transport_failure(
+    mocker: MockerFixture,
+) -> None:
+    """Recover from one transient SMTP connection failure.
+
+    Fails the first connection and accepts the second, proving a brief external relay error does not
+    remove an otherwise healthy application from the load balancer.
+
+    Arguments:
+        mocker: Fixture replacing the Django mail connection factory.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the transient failure escapes or either connection remains open.
+    """
+    failed = Mock()
+    failed.open.side_effect = smtplib.SMTPException("mail unavailable")
+    recovered = Mock()
+    recovered.open.return_value = True
+    mocker.patch.object(health_module.mail_readiness_state, "success_at", None)
+    get_connection = mocker.patch(
+        "config.health.get_connection",
+        side_effect=(failed, recovered),
+    )
+    check = MailReadinessCheck(backend="django.core.mail.backends.smtp.EmailBackend")
+
+    check.run()
+
+    assert get_connection.call_count == health_module.HEALTH_CHECK_MAIL_ATTEMPTS
+    failed.close.assert_called_once_with()
+    recovered.close.assert_called_once_with()
+
+
+@pytest.mark.unit
+def test_mail_readiness_retries_one_transient_cleanup_failure(
+    mocker: MockerFixture,
+) -> None:
+    """Recover from one transient SMTP cleanup failure.
+
+    Opens both connections successfully while the first close fails, proving cleanup errors receive
+    the same bounded retry as connection errors before readiness fails.
+
+    Arguments:
+        mocker: Fixture replacing the Django mail connection factory.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the cleanup failure escapes or the retry does not close.
+    """
+    failed = Mock()
+    failed.open.return_value = True
+    failed.close.side_effect = smtplib.SMTPException("mail cleanup unavailable")
+    recovered = Mock()
+    recovered.open.return_value = True
+    mocker.patch.object(health_module.mail_readiness_state, "success_at", None)
+    get_connection = mocker.patch(
+        "config.health.get_connection",
+        side_effect=(failed, recovered),
+    )
+    check = MailReadinessCheck(backend="django.core.mail.backends.smtp.EmailBackend")
+
+    check.run()
+
+    assert get_connection.call_count == health_module.HEALTH_CHECK_MAIL_ATTEMPTS
+    failed.close.assert_called_once_with()
+    recovered.close.assert_called_once_with()
+
+
+@pytest.mark.unit
+def test_mail_readiness_reuses_one_recent_success(
+    mocker: MockerFixture,
+) -> None:
+    """Reuse a successful SMTP probe within its bounded lifetime.
+
+    Keeps frequent Docker and Traefik polling from opening a new external SMTP connection while
+    still requiring periodic live transport verification.
+
+    Arguments:
+        mocker: Fixture controlling the monotonic clock and mail factory.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a cached success still reaches SMTP.
+    """
+    mocker.patch.object(health_module.mail_readiness_state, "success_at", 100.0)
+    mocker.patch("config.health.time.monotonic", return_value=120.0)
+    get_connection = mocker.patch("config.health.get_connection")
+    check = MailReadinessCheck(backend="django.core.mail.backends.smtp.EmailBackend")
+
+    check.run()
+
+    get_connection.assert_not_called()
+
+
+@pytest.mark.unit
+def test_mail_readiness_reuses_success_completed_before_lock_acquisition(
+    mocker: MockerFixture,
+) -> None:
+    """Reuse SMTP evidence completed between the optimistic check and lock acquisition.
+
+    Updates cached state while the lock is acquired and requires the waiting check to return without
+    opening a duplicate connection.
+
+    Arguments:
+        mocker: Fixture controlling cached state, locking, time, and the mail factory.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the second cache check reaches SMTP or leaves the lock held.
+    """
+    lock = Mock()
+
+    def acquire(*, blocking: bool) -> bool:
+        """Record completed SMTP evidence while granting the lock.
+
+        Simulates another probe finishing after the optimistic cache read but before this caller
+        owns the lock.
+
+        Arguments:
+            blocking: Whether lock acquisition may wait.
+
+        Returns:
+            True after recording recent evidence.
+
+        Raises:
+            AssertionError: If production requests blocking acquisition.
+        """
+        assert not blocking
+        health_module.mail_readiness_state.success_at = 90.0
+        return True
+
+    lock.acquire.side_effect = acquire
+    mocker.patch.object(health_module.mail_readiness_state, "lock", lock)
+    mocker.patch.object(health_module.mail_readiness_state, "success_at", None)
+    mocker.patch("config.health.time.monotonic", return_value=100.0)
+    get_connection = mocker.patch("config.health.get_connection")
+    check = MailReadinessCheck(backend="django.core.mail.backends.smtp.EmailBackend")
+
+    check.run()
+
+    get_connection.assert_not_called()
+    lock.release.assert_called_once_with()
+
+
+@pytest.mark.unit
+def test_mail_readiness_rejects_overlapping_uncached_probe(
+    mocker: MockerFixture,
+) -> None:
+    """Reject an overlapping SMTP probe without retaining another executor worker.
+
+    Holds the process-wide probe lock without a cached success and requires the second check to
+    fail before opening a connection.
+
+    Arguments:
+        mocker: Fixture controlling cached state and the mail factory.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the overlapping check waits or reaches SMTP.
+    """
+    mocker.patch.object(health_module.mail_readiness_state, "success_at", None)
+    get_connection = mocker.patch("config.health.get_connection")
+    check = MailReadinessCheck(backend="django.core.mail.backends.smtp.EmailBackend")
+    health_module.mail_readiness_state.lock.acquire()
+
+    try:
+        with pytest.raises(ServiceUnavailable, match="already running"):
+            check.run()
+    finally:
+        health_module.mail_readiness_state.lock.release()
+
+    get_connection.assert_not_called()
+
+
+@pytest.mark.unit
+def test_mail_readiness_refreshes_an_expired_success(
+    mocker: MockerFixture,
+) -> None:
+    """Refresh SMTP readiness after the success lifetime expires.
+
+    Advances the monotonic clock beyond the cache lifetime and requires a live connection before
+    the new success timestamp is recorded.
+
+    Arguments:
+        mocker: Fixture controlling the monotonic clock and mail factory.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If stale success bypasses SMTP or the refreshed time is not retained.
+    """
+    connection = Mock()
+    connection.open.return_value = True
+    mocker.patch.object(health_module.mail_readiness_state, "success_at", 100.0)
+    mocker.patch(
+        "config.health.time.monotonic",
+        side_effect=(161.0, 161.0, REFRESHED_MAIL_READINESS_TIME),
+    )
+    get_connection = mocker.patch("config.health.get_connection", return_value=connection)
+    check = MailReadinessCheck(backend="django.core.mail.backends.smtp.EmailBackend")
+
+    check.run()
 
     get_connection.assert_called_once_with(
         check.backend,
@@ -534,6 +758,7 @@ def test_mail_readiness_contains_transport_failure(
         timeout=2.0,
     )
     connection.close.assert_called_once_with()
+    assert health_module.mail_readiness_state.success_at == REFRESHED_MAIL_READINESS_TIME
 
 
 @pytest.mark.unit

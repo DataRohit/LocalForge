@@ -391,8 +391,8 @@ WebSocket flows work through the Tunnel; development email sends through Resend 
 the affected runtime log window is clean.
 
 The prepared operator record is [docs/handover/phase-10.md](../handover/phase-10.md). Phase 10 remains open for the
-manual timing-suite and rollback closeout recorded there; no new scope starts until that closeout or a new governing
-document and ticket set exists.
+controlled post-remediation inbox/junk placement check and rollback rehearsal recorded there; no new scope starts
+until that closeout or a new governing document and ticket set exists.
 
 ## 4. Rollback
 

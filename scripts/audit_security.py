@@ -25,7 +25,11 @@ from pathlib import Path
 from typing import Protocol, cast
 from urllib.parse import urlparse
 
-from scripts.gen_secrets import parse_env_text
+from scripts.gen_secrets import (
+    DEVELOPMENT_ONLY_DEFAULTS,
+    GENERATED_PLACEHOLDER,
+    parse_env_text,
+)
 from scripts.manage_platform import CONTAINER_IMAGES, REQUIRED_CONTAINERS
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
@@ -33,10 +37,13 @@ IMAGE_POLICY_RELATIVE_PATH = Path("docs/security/image-vulnerability-policy.json
 COMMAND_TIMEOUT_SECONDS = 1800
 HTTP_TIMEOUT_SECONDS = 15
 MIN_SECRET_LENGTH = 8
+EXECUTABLE_NOT_FOUND = 127
 TRIVY_SCHEMA_VERSION = 2
 TRIVY_IMAGE = "aquasec/trivy:0.68.2"
 GITLEAKS_IMAGE = "zricethezav/gitleaks:v8.28.0"
 PIP_AUDIT_VERSION = "2.10.1"
+LOCAL_IMAGE_PREFIX = "localforge/"
+LOCAL_IMAGE_VOLATILE_POLICY_FIELDS = frozenset({"artifact_id", "image_id"})
 HTTP_BODY_LIMIT_BYTES = 4096
 EXPECTED_DEPLOYMENT_WARNINGS = frozenset(
     {"security.W004", "security.W008", "security.W012", "security.W016"}
@@ -82,16 +89,36 @@ REFUSED_SOCKET_ERRORS = frozenset(
 class CommandResult:
     """Represent one captured command result.
 
-    Carries only the exit status and combined output needed by audit parsers.
-    Inherits nothing and exposes no behavior beyond immutable storage.
+    Keeps standard output separate from diagnostics so machine-readable JSON cannot be corrupted
+    by Docker pull progress or scanner messages written to standard error.
 
     Attributes:
         code: Process exit status.
-        output: Combined standard output and standard error.
+        output: Standard output used by machine-readable checks.
+        error: Standard error retained for diagnostics and text-only checks.
+
+    Members:
+        combined_output: Return both captured streams for text-only checks.
     """
 
     code: int
     output: str
+    error: str = ""
+
+    @property
+    def combined_output(self) -> str:
+        """Return both captured streams for text-only checks.
+
+        Keeps JSON consumers on standard output while allowing deployment warnings, image history,
+        and logs to remain visible regardless of which stream a command used.
+
+        Arguments:
+            None.
+
+        Returns:
+            Standard output followed by standard error.
+        """
+        return f"{self.output}{self.error}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,18 +197,33 @@ class HostRunner:
         Returns:
             Captured process result.
         """
-        completed = subprocess.run(
-            command,
-            cwd=REPOSITORY_ROOT,
-            env=dict(environment) if environment is not None else None,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=COMMAND_TIMEOUT_SECONDS,
-        )
+        executable = shutil.which(command[0], path=(environment or os.environ).get("PATH"))
+        if executable is None:
+            return CommandResult(
+                code=EXECUTABLE_NOT_FOUND,
+                output=f"{command[0]} not found on PATH\n",
+            )
+
+        resolved = (executable, *command[1:])
+        try:
+            completed = subprocess.run(
+                resolved,
+                cwd=REPOSITORY_ROOT,
+                env=dict(environment) if environment is not None else None,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=COMMAND_TIMEOUT_SECONDS,
+            )
+        except FileNotFoundError:
+            return CommandResult(
+                code=EXECUTABLE_NOT_FOUND,
+                output=f"{command[0]} could not be started\n",
+            )
         return CommandResult(
             code=completed.returncode,
-            output=f"{completed.stdout}{completed.stderr}",
+            output=completed.stdout,
+            error=completed.stderr,
         )
 
 
@@ -223,7 +265,7 @@ def deployment_check(runner: AuditRunner, root: Path = REPOSITORY_ROOT) -> bool:
         (sys.executable, "src/manage.py", "check", "--deploy"),
         environment=load_testing_environment(root),
     )
-    warnings = frozenset(DEPLOYMENT_WARNING_PATTERN.findall(result.output))
+    warnings = frozenset(DEPLOYMENT_WARNING_PATTERN.findall(result.combined_output))
     return result.code == 0 and warnings == EXPECTED_DEPLOYMENT_WARNINGS
 
 
@@ -669,31 +711,34 @@ def scanned_image_policy_entry(
     Returns:
         Normalized policy entry, or None on scanner or schema failure.
     """
-    result = runner.run(
-        (
-            "docker",
-            "run",
-            "--rm",
-            "-v",
-            "/var/run/docker.sock:/var/run/docker.sock",
-            "-v",
-            f"{cache}:/root/.cache/trivy",
-            TRIVY_IMAGE,
-            "image",
-            "--scanners",
-            "vuln,secret",
-            "--severity",
-            "HIGH,CRITICAL",
-            "--ignore-unfixed",
-            "--format",
-            "json",
-            "--quiet",
-            "--skip-version-check",
-            "--skip-files",
-            "**/__pycache__/**",
-            image_id,
-        )
+    command = (
+        "docker",
+        "run",
+        "--rm",
+        "-v",
+        "/var/run/docker.sock:/var/run/docker.sock",
+        "-v",
+        f"{cache}:/root/.cache/trivy",
+        TRIVY_IMAGE,
+        "image",
+        "--parallel",
+        "1",
+        "--scanners",
+        "vuln,secret",
+        "--severity",
+        "HIGH,CRITICAL",
+        "--ignore-unfixed",
+        "--format",
+        "json",
+        "--quiet",
+        "--skip-version-check",
+        "--skip-files",
+        "**/__pycache__/**",
+        image_id,
     )
+    result = runner.run(command)
+    if result.code != 0:
+        result = runner.run(command)
     try:
         document = trivy_document(result.output)
         entry = vulnerability_policy_entry(result.output, image_id=image_id)
@@ -726,6 +771,31 @@ def accepted_image_policy(root: Path = REPOSITORY_ROOT) -> dict[str, object] | N
     return cast("dict[str, object]", accepted)
 
 
+def image_policy_drift_fields(
+    image: str,
+    expected: Mapping[str, object],
+    scanned: Mapping[str, object],
+) -> list[str]:
+    """Return reviewed image-policy fields that changed.
+
+    External images retain exact image and scanner artifact identifiers. Local build identifiers
+    may change with reviewed source, but vulnerability and secret evidence must match while live
+    containers use the inspected rebuilt identity.
+
+    Arguments:
+        image: Registered image tag.
+        expected: Reviewed policy entry.
+        scanned: Current normalized scanner entry.
+
+    Returns:
+        Sorted changed field names after applying the local-build identity rule.
+    """
+    fields = {key for key in set(expected) | set(scanned) if expected.get(key) != scanned.get(key)}
+    if image.startswith(LOCAL_IMAGE_PREFIX):
+        fields -= LOCAL_IMAGE_VOLATILE_POLICY_FIELDS
+    return sorted(fields)
+
+
 def image_matches_policy(
     runner: AuditRunner,
     image: str,
@@ -748,11 +818,12 @@ def image_matches_policy(
     """
     image_id = inspected_image_id(runner, image)
     failure = ""
+    fields: list[str] = []
     if image_id is None:
         failure = f"image-tag unavailable-or-malformed image={image}"
     elif not isinstance(expected, dict):
         failure = f"image-policy entry-not-object image={image}"
-    elif expected.get("image_id") != image_id:
+    elif not image.startswith(LOCAL_IMAGE_PREFIX) and expected.get("image_id") != image_id:
         failure = (
             f"image-policy identity image={image} "
             f"expected={expected.get('image_id')} actual={image_id}"
@@ -763,10 +834,9 @@ def image_matches_policy(
         scanned = scanned_image_policy_entry(runner, image_id, cache)
         if scanned is None:
             failure = f"image-scan unavailable-or-invalid image={image} id={image_id}"
-        elif scanned != expected:
-            fields = sorted(
-                key for key in set(expected) | set(scanned) if expected.get(key) != scanned.get(key)
-            )
+        else:
+            fields = image_policy_drift_fields(image, expected, scanned)
+        if not failure and fields:
             failure = f"image-policy drift image={image} fields={fields}"
 
     if failure:
@@ -992,7 +1062,7 @@ def runtime_exposure_check(runner: AuditRunner, root: Path = REPOSITORY_ROOT) ->
 def generated_sensitive_values(root: Path = REPOSITORY_ROOT) -> set[str]:
     """Load every generated credential and composed secret-bearing value.
 
-    Derives variable names from `<GENERATED>` manifest entries rather than a hand-maintained list.
+    Derives shared names from the manifest and development-only names from the secret generator.
     Reads both environments and returns values only when long enough for exact leak matching.
 
     Arguments:
@@ -1002,7 +1072,9 @@ def generated_sensitive_values(root: Path = REPOSITORY_ROOT) -> set[str]:
         Distinct generated values that must never appear in runtime evidence.
     """
     manifest = parse_env_text((root / ".env.example").read_text(encoding="utf-8"))
-    variables = {name for name, value in manifest.items() if value == "<GENERATED>"}
+    variables = {name for name, value in manifest.items() if value == GENERATED_PLACEHOLDER} | {
+        name for name, value in DEVELOPMENT_ONLY_DEFAULTS.items() if value == GENERATED_PLACEHOLDER
+    }
     values: set[str] = set()
     for name in (".env.development", ".env.testing"):
         environment = parse_env_text((root / name).read_text(encoding="utf-8"))
@@ -1036,7 +1108,7 @@ def runtime_secret_check(runner: AuditRunner, root: Path = REPOSITORY_ROOT) -> b
     commands.extend(("docker", "logs", container) for container in sorted(REQUIRED_CONTAINERS))
     for command in commands:
         result = runner.run(command)
-        if result.code != 0 or any(value in result.output for value in values):
+        if result.code != 0 or any(value in result.combined_output for value in values):
             return False
     return True
 

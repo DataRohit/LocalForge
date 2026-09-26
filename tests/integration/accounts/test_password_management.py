@@ -87,6 +87,26 @@ MAILPIT_POLL_SECONDS = 0.1
 RACE_WAIT_SECONDS = 45
 
 
+def _credential_handoff_url(text: object) -> str:
+    """Extract one credential handoff URL from email text.
+
+    Finds the sole absolute URL without depending on presentation copy, keeping recovery tests
+    aligned with the machine-readable account and token handoff contract.
+
+    Arguments:
+        text: Plain-text email body or lazy string representation.
+
+    Returns:
+        The sole absolute credential handoff URL.
+
+    Raises:
+        AssertionError: If the email does not contain exactly one absolute URL.
+    """
+    links = [word for word in str(text).split() if word.startswith(("http://", "https://"))]
+    assert len(links) == 1
+    return links[0]
+
+
 def _mailpit_request(method: str, path: str) -> object | None:
     """Call one testing Mailpit API path.
 
@@ -156,7 +176,9 @@ def _request_reset_link(
     )
     assert response.status_code == HTTPStatus.ACCEPTED
     message = cast("EmailMultiAlternatives", mail.outbox[-1])
-    query = parse_qs(urlparse(message.body.split("Continue at ", maxsplit=1)[1].strip()).query)
+    parsed = urlparse(_credential_handoff_url(message.body))
+    assert parsed.path == "/api/v1/users/reset_password_confirm/"
+    query = parse_qs(parsed.query)
     assert set(query) == {"account", "token"}
     return {"account": query["account"][0], "token": query["token"][0]}
 
@@ -561,7 +583,7 @@ def test_password_reset_request_is_indistinguishable_and_delivers_account_bound_
     payload = cast("dict[str, Any]", existing.json())
     message = cast("EmailMultiAlternatives", mail.outbox[0])
     text = message.body
-    query = parse_qs(urlparse(text.split("Continue at ", maxsplit=1)[1].strip()).query)
+    query = parse_qs(urlparse(_credential_handoff_url(text)).query)
 
     assert existing.status_code == HTTPStatus.ACCEPTED
     assert inactive_response.status_code == HTTPStatus.ACCEPTED
@@ -614,9 +636,7 @@ def test_password_reset_confirm_changes_password_notifies_revokes_and_rejects_re
         content_type="application/json",
         REMOTE_ADDR="192.0.2.35",
     )
-    query = parse_qs(
-        urlparse(mail.outbox[0].body.split("Continue at ", maxsplit=1)[1].strip()).query
-    )
+    query = parse_qs(urlparse(_credential_handoff_url(mail.outbox[0].body)).query)
     request = {
         "account": query["account"][0],
         "token": query["token"][0],
@@ -1618,7 +1638,7 @@ def test_invalid_reset_bodies_do_not_consume_authoritative_quota(
         REMOTE_ADDR=address,
     )
     message = cast("EmailMultiAlternatives", mail.outbox[-1])
-    query = parse_qs(urlparse(message.body.split("Continue at ", maxsplit=1)[1].strip()).query)
+    query = parse_qs(urlparse(_credential_handoff_url(message.body)).query)
     link = {"account": query["account"][0], "token": query["token"][0]}
     confirm_address = "192.0.2.52"
     invalid_confirms = [
@@ -4202,7 +4222,7 @@ def test_password_recovery_round_trips_through_smtp_and_mailpit(
             break
         time.sleep(MAILPIT_POLL_SECONDS)
     assert reset_text
-    query = parse_qs(urlparse(reset_text.split("Continue at ", maxsplit=1)[1].strip()).query)
+    query = parse_qs(urlparse(_credential_handoff_url(reset_text)).query)
 
     confirmed = client.post(
         "/api/v1/users/reset_password_confirm/",

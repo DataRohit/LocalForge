@@ -41,6 +41,7 @@ consequence of our topology, and the distinction matters because Django's own `P
 Point a migration at a real standby and the DDL fails against a read-only server. Handling that is ours.
 
 The gotchas Django *does* document, and which apply here:
+
 - If `allow_migrate()` returns `False`, migration operations are **silently skipped** — and changing its behaviour
   for models that already have migrations can leave broken foreign keys, extra tables, or missing tables.
 - `makemigrations` is the exception to the one-database-at-a-time rule and consults `allow_migrate` across routers.

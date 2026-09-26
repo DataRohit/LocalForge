@@ -101,5 +101,5 @@ declaring the tickets that block it.
 **transactional sender** — `no-reply@localforge.datarohit.com`, the Resend-verified address used for development
 account mail. It has no mailbox or inbound forwarding rule.
 
-**support address** — the monitored human contact address routed by Cloudflare Email Routing. It is separate from the
-transactional sender and receives replies.
+**support address** — `support@datarohit.com`, the monitored human contact address routed by Cloudflare Email
+Routing. It is separate from the transactional sender and receives replies.

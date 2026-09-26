@@ -17,7 +17,7 @@ not a staleness signal.
 ## The model
 
 | Artifact | Committed | Contents |
-|---|---|---|
+| --- | --- | --- |
 | `.env.development`, `.env.testing`, `.env.testing.host` | **no** | real values, generated locally |
 | `.env.development.sops`, `.env.testing.sops` | yes | the same files, age-encrypted |
 | `.env.example` | yes | every variable name, placeholder values only |

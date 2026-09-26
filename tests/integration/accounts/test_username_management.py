@@ -82,6 +82,26 @@ pytestmark = [
 ]
 
 
+def _credential_handoff_url(text: object) -> str:
+    """Extract one credential handoff URL from email text.
+
+    Finds the sole absolute URL without depending on presentation copy, keeping recovery tests
+    aligned with the machine-readable account and token handoff contract.
+
+    Arguments:
+        text: Plain-text email body or lazy string representation.
+
+    Returns:
+        The sole absolute credential handoff URL.
+
+    Raises:
+        AssertionError: If the email does not contain exactly one absolute URL.
+    """
+    links = [word for word in str(text).split() if word.startswith(("http://", "https://"))]
+    assert len(links) == 1
+    return links[0]
+
+
 def _request_reset_link(
     client: DjangoClient,
     account: User,
@@ -112,7 +132,9 @@ def _request_reset_link(
     )
     assert response.status_code == HTTPStatus.ACCEPTED
     message = cast("EmailMultiAlternatives", mail.outbox[-1])
-    query = parse_qs(urlparse(message.body.split("Continue at ", maxsplit=1)[1].strip()).query)
+    parsed = urlparse(_credential_handoff_url(message.body))
+    assert parsed.path == "/api/v1/users/reset_username_confirm/"
+    query = parse_qs(parsed.query)
     assert set(query) == {"account", "token"}
     return {"account": query["account"][0], "token": query["token"][0]}
 
@@ -424,7 +446,7 @@ def test_username_reset_full_loop_is_single_use_and_preserves_credentials(
         REMOTE_ADDR="192.0.2.201",
     )
     message = cast("EmailMultiAlternatives", mail.outbox[0])
-    query = parse_qs(urlparse(message.body.split("Continue at ", maxsplit=1)[1].strip()).query)
+    query = parse_qs(urlparse(_credential_handoff_url(message.body)).query)
     payload = {
         "account": query["account"][0],
         "token": query["token"][0],
@@ -1280,7 +1302,7 @@ def test_username_reset_throttles_are_exact_recoverable_and_ignore_invalid_bodie
         REMOTE_ADDR=address,
     )
     message = cast("EmailMultiAlternatives", mail.outbox[-1])
-    query = parse_qs(urlparse(message.body.split("Continue at ", maxsplit=1)[1].strip()).query)
+    query = parse_qs(urlparse(_credential_handoff_url(message.body)).query)
     link = {"account": query["account"][0], "token": query["token"][0]}
     confirm_address = "192.0.2.221"
     invalid_confirm = client.post(
@@ -2901,11 +2923,7 @@ def test_username_recovery_round_trips_through_smtp_and_mailpit(
                 "dict[str, Any]",
                 _mailpit_request("GET", f"/api/v1/message/{reset['ID']}"),
             )
-            query = parse_qs(
-                urlparse(
-                    cast("str", detail["Text"]).split("Continue at ", maxsplit=1)[1].strip()
-                ).query
-            )
+            query = parse_qs(urlparse(_credential_handoff_url(cast("str", detail["Text"]))).query)
             link = {"account": query["account"][0], "token": query["token"][0]}
             assert cast("str", detail["HTML"])
             break

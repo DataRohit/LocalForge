@@ -34,7 +34,7 @@ SECRET_KEY_BYTES = 64
 PASSWORD_BYTES = 32
 ACCESS_KEY_BYTES = 20
 BCRYPT_ROUNDS = 12
-BASIC_AUTH_USER = "admin"
+BASIC_AUTH_USER = "support@datarohit.com"
 BCRYPT_MAXIMUM_BYTES = 72
 MINIMUM_QUOTED_LENGTH = 2
 
@@ -261,8 +261,8 @@ DEVELOPMENT_ONLY_DEFAULTS: Mapping[str, str] = {
     "EMAIL_HOST_USER": "resend",
     "EMAIL_HOST_PASSWORD": GENERATED_PLACEHOLDER,
     "EMAIL_USE_TLS": "true",
-    "DEFAULT_FROM_EMAIL": "no-reply@localforge.datarohit.com",
-    "DEFAULT_REPLY_TO_EMAIL": "datarohit@outlook.com",
+    "DEFAULT_FROM_EMAIL": "LocalForge <no-reply@localforge.datarohit.com>",
+    "DEFAULT_REPLY_TO_EMAIL": "support@datarohit.com",
     "LOCALFORGE_WAIT_SERVICES": (
         "postgres postgres-replica valkey-cache valkey-channels rabbitmq seaweedfs"
     ),
@@ -363,8 +363,8 @@ def verify_dashboard_auth(values: Mapping[str, str], current: str) -> bool:
     """Check an existing basic-authentication entry against its password.
 
     Verifies rather than recomputes, because the hash carries a random salt and a fresh one never
-    equals the stored entry. Also rejects an entry naming another user or hashed at another cost,
-    so a weakened or hand-edited credential is rebuilt instead of preserved.
+    equals the stored entry. Preserves any non-empty existing username while rejecting a weakened
+    hash cost or a digest that does not match the stored password.
 
     Arguments:
         values: Variables resolved so far for this environment.
@@ -375,7 +375,7 @@ def verify_dashboard_auth(values: Mapping[str, str], current: str) -> bool:
     """
     password = values.get("TRAEFIK_DASHBOARD_PASSWORD", "")
     user, separator, digest = current.partition(":")
-    if not separator or not password or user != BASIC_AUTH_USER:
+    if not separator or not user or not password:
         return False
 
     if not digest.startswith(f"$2b${BCRYPT_ROUNDS:02d}$"):

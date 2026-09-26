@@ -14,7 +14,7 @@ All evidence checked **2026-09-13**.
 ## Rejected, and why
 
 | Tool | Ground | Detail |
-|---|---|---|
+| --- | --- | --- |
 | **MinIO** | archived | Repository **archived and read-only** with a "NO LONGER MAINTAINED" banner; the embedded Console was removed from the AGPL server in `RELEASE.2025-05-24T17-08-30Z`; `minio/console` and `minio/object-browser` now 404; `minio/mc` archived 2025-11-20; **`hub.docker.com/r/minio/minio` returns 404**; community docs redirect to the proprietary AIStor. See [0013](./0013-seaweedfs-object-storage.md) |
 | **LocalStack** (community) | phone-home | GitHub repository archived; the current unified image **requires a `LOCALSTACK_AUTH_TOKEN` to start**, and offline activation needs re-activation every 24 hours. Incompatible with an offline platform |
 | **Promtail** | EOL | **End of life 2026-03-02.** Official Loki docs state support has ended and all development moved to Alloy; `clients/cmd/promtail` no longer exists on `grafana/loki@main`; last image was `3.6.11` on 2026-05-13 while Loki is at 3.7.7. See [0010](./0010-loki-alloy-logging.md) |
@@ -33,7 +33,7 @@ Rejecting restricted licences is not the same as rejecting copyleft. These are a
 locally-run runtime dependencies, and are listed so the choice is never mistaken for permissive:
 
 | Tool | Licence |
-|---|---|
+| --- | --- |
 | Grafana OSS, Loki | AGPL-3.0 (relicensed from Apache-2.0 in 2021) |
 | SOPS, Vector | MPL-2.0 |
 | psycopg | LGPL-3.0-only |

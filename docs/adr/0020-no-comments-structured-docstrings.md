@@ -15,7 +15,7 @@ The worked reference, with one correct example per level, is
 [../platform/documentation-standard.md](../platform/documentation-standard.md).
 
 | Level | Required sections |
-|---|---|
+| --- | --- |
 | File | One-line title, then a 2–3 line description |
 | Class | One-line title, 2–3 line description, what it inherits, its attributes and members |
 | Function / method | One-line title, 2–3 line description, arguments, returns, raises |

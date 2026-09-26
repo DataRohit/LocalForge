@@ -5,7 +5,9 @@ date: 2026-09-13
 
 # Prometheus and Grafana for monitoring
 
-Metrics are collected by Prometheus v3.14.0 (2026-08-18) and visualized in Grafana OSS 13.0.2 (2026-06-02). This record first named 13.2.1, which was never published: the pull fails with `not found`, and the Docker Hub tag list shows the 13 line runs 13.0.1 to 13.0.2. Corrected 2026-09-14 when the service was built.
+Metrics are collected by Prometheus v3.14.0 (2026-08-18) and visualized in Grafana OSS 13.0.2 (2026-06-02). This
+record first named 13.2.1, which was never published: the pull fails with `not found`, and the Docker Hub tag list
+shows the 13 line runs 13.0.1 to 13.0.2. Corrected 2026-09-14 when the service was built.
 Prometheus ships roughly six-week minors plus patches and maintains an LTS line (v3.5.5); Grafana ships monthly
 minors and patches four release lines in parallel. Both repositories were pushed within two days of this decision.
 
@@ -15,7 +17,7 @@ that imposes no distribution obligation, but it is recorded so the choice is not
 ## Instrumentation
 
 | Component | Version | Scrapes |
-|---|---|---|
+| --- | --- | --- |
 | `django-prometheus` 2.5.0 | 2026-05-26 | the Django process |
 | `postgres_exporter` v0.20.1 | 2026-07-08 | PostgreSQL primary and replica |
 | `redis_exporter` v1.91.1 | 2026-09-07 | both Valkey instances |

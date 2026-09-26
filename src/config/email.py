@@ -59,11 +59,15 @@ def send_application_email(
         True when the backend accepted one message, otherwise False.
     """
     template_context = dict(context or {})
+    template_context.setdefault("action_label", f"Continue to {settings.SITE_NAME}")
+    template_context.setdefault("security_notice", None)
     template_context.update(
         {
             "action_url": build_site_url(action_path) if action_path is not None else None,
+            "heading": subject,
             "message": message,
             "site_name": settings.SITE_NAME,
+            "support_email": getattr(settings, "DEFAULT_REPLY_TO_EMAIL", ""),
         }
     )
     text_body = render_to_string("email/message.txt", template_context).strip()
@@ -75,6 +79,7 @@ def send_application_email(
         from_email=settings.DEFAULT_FROM_EMAIL,
         to=[recipient],
         reply_to=[reply_to] if reply_to else None,
+        headers={"Auto-Submitted": "auto-generated"},
     )
     email.attach_alternative(html_body, "text/html")
 

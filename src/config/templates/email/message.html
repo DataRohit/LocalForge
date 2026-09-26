@@ -1,10 +1,49 @@
 <!doctype html>
 <html lang="en">
-  <body>
-    <h1>{{ site_name }}</h1>
-    <p>{{ message }}</p>
-    {% if action_url %}
-      <p><a href="{{ action_url }}">Continue at {{ site_name }}</a></p>
-    {% endif %}
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ heading }}</title>
+  </head>
+  <body style="margin:0;background:#f3f4f6;color:#111827;font-family:Arial,sans-serif">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+      <tr>
+        <td style="padding:32px 16px">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0"
+                 style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px">
+            <tr>
+              <td style="padding:24px 32px;background:#111827;color:#ffffff;border-radius:12px 12px 0 0">
+                <strong style="font-size:20px">{{ site_name }}</strong>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px">
+                <h1 style="margin:0 0 16px;font-size:26px;line-height:1.25">{{ heading }}</h1>
+                <p style="margin:0 0 24px;font-size:16px;line-height:1.6">{{ message }}</p>
+                {% if action_url %}
+                  <p style="margin:0 0 8px;font-weight:700">{{ action_label }}</p>
+                  <p style="margin:0 0 24px;padding:16px;background:#eff6ff;border-radius:8px;color:#1e3a8a;font-family:Consolas,monospace;font-size:13px;line-height:1.5;word-break:break-all">
+                    {{ action_url }}
+                  </p>
+                {% endif %}
+                {% if security_notice %}
+                  <p style="margin:0;padding:16px;background:#f9fafb;border-radius:8px;color:#374151;font-size:14px;line-height:1.5">
+                    {{ security_notice }}
+                  </p>
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 32px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.5">
+                {% if support_email %}
+                  Need help? Contact <a href="mailto:{{ support_email }}" style="color:#2563eb">{{ support_email }}</a>.<br>
+                {% endif %}
+                This automated transactional email was sent by {{ site_name }}.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
   </body>
 </html>

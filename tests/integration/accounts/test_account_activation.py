@@ -449,7 +449,9 @@ def _activation_fields(message: EmailMultiAlternatives) -> dict[str, str]:
     """
     links = [word for word in message.body.split() if word.startswith("http")]
     assert len(links) == 1
-    query = parse_qs(urlparse(links[0]).query)
+    parsed = urlparse(links[0])
+    assert parsed.path == "/api/v1/users/"
+    query = parse_qs(parsed.query)
 
     return {
         "account": query["account"][0],

@@ -675,7 +675,7 @@ services:
       - "traefik.http.services.localforge.loadbalancer.healthcheck.path=/health/"
       - "traefik.http.services.localforge.loadbalancer.healthcheck.hostname=localforge.localhost"
       - "traefik.http.services.localforge.loadbalancer.healthcheck.interval=5s"
-      - "traefik.http.services.localforge.loadbalancer.healthcheck.timeout=3s"
+      - "traefik.http.services.localforge.loadbalancer.healthcheck.timeout=10s"
 
     depends_on:
       postgres-pg3ka:

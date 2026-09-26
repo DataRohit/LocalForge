@@ -12,6 +12,7 @@ import json
 import re
 import runpy
 import socket
+import subprocess
 import sys
 import tomllib
 from contextlib import nullcontext
@@ -31,6 +32,7 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.unit
 PAIR_COUNT = 2
+TRANSIENT_SCAN_ATTEMPTS = 2
 TEST_IMAGE_ID = f"sha256:{'1' * 64}"
 TEST_ARTIFACT_ID = f"sha256:{'2' * 64}"
 
@@ -105,6 +107,9 @@ def write_environment(root: Path) -> None:
         "RABBITMQ_DEFAULT_USER=test-user\n"
         "RABBITMQ_DEFAULT_PASS=broker-secret-value\n"
         "POSTGRES_PASSWORD=database-secret-value\n"
+        "TUNNEL_TOKEN=development-tunnel-token\n"
+        "RESEND_API_KEY=development-resend-key\n"
+        "EMAIL_HOST_PASSWORD=development-resend-key\n"
         "CELERY_BROKER_URL=amqp://user:broker-secret-value@broker/vhost\n"
     )
     (root / ".env.development").write_text(text, encoding="utf-8")
@@ -136,6 +141,7 @@ def trivy_payload(
     count: int = 0,
     *,
     artifact_name: str = "image:tag",
+    artifact_id: str = TEST_ARTIFACT_ID,
     secrets: list[dict[str, object]] | None = None,
 ) -> str:
     """Build a minimal Trivy JSON result.
@@ -146,6 +152,7 @@ def trivy_payload(
     Arguments:
         count: Number of vulnerability records to include.
         artifact_name: Image reference Trivy reports.
+        artifact_id: Immutable scanner artifact identifier.
         secrets: Optional scanner-shaped secret records.
 
     Returns:
@@ -153,7 +160,7 @@ def trivy_payload(
     """
     return json.dumps(
         {
-            "ArtifactID": TEST_ARTIFACT_ID,
+            "ArtifactID": artifact_id,
             "ArtifactName": artifact_name,
             "Results": [
                 {
@@ -232,6 +239,8 @@ def image_check_results(
                 audit.CommandResult(scan_code, payload),
             )
         )
+        if scan_code != 0:
+            results.append(audit.CommandResult(scan_code, payload))
     return results
 
 
@@ -250,9 +259,100 @@ def test_host_runner_captures_process_output() -> None:
     Raises:
         AssertionError: If output or status is lost.
     """
-    result = audit.HostRunner().run((sys.executable, "-c", "print('audit-ok')"))
+    result = audit.HostRunner().run(
+        (
+            sys.executable,
+            "-c",
+            "import sys; print('audit-ok'); print('diagnostic', file=sys.stderr)",
+        )
+    )
 
-    assert result == audit.CommandResult(0, "audit-ok\n")
+    assert result == audit.CommandResult(0, "audit-ok\n", "diagnostic\n")
+
+
+def test_host_runner_resolves_executable_before_process_start() -> None:
+    """Execute the resolved absolute command path.
+
+    Requires PATH lookup to happen explicitly before process creation, avoiding Windows command
+    resolution drift between interactive PowerShell and a non-shell Python child.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the unresolved command name reaches subprocess.
+    """
+    completed = subprocess.CompletedProcess(
+        args=[],
+        returncode=0,
+        stdout="ok\n",
+        stderr="diagnostic\n",
+    )
+
+    with (
+        patch("scripts.audit_security.shutil.which", return_value="C:/tools/tool.exe"),
+        patch("scripts.audit_security.subprocess.run", return_value=completed) as run,
+    ):
+        result = audit.HostRunner().run(("tool", "status"))
+
+    assert result == audit.CommandResult(0, "ok\n", "diagnostic\n")
+    assert run.call_args.args[0] == ("C:/tools/tool.exe", "status")
+
+
+def test_host_runner_reports_missing_executable_without_traceback() -> None:
+    """Convert an absent command into one failed audit result.
+
+    Keeps optional-tool or PATH failures inside the audit verdict rather than crashing the command
+    with an unhandled Windows process-creation exception.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a missing command starts a process or raises.
+    """
+    with (
+        patch("scripts.audit_security.shutil.which", return_value=None),
+        patch("scripts.audit_security.subprocess.run") as run,
+    ):
+        result = audit.HostRunner().run(("missing-tool", "status"))
+
+    assert result.code == audit.EXECUTABLE_NOT_FOUND
+    assert result.output == "missing-tool not found on PATH\n"
+    run.assert_not_called()
+
+
+def test_host_runner_contains_process_start_race() -> None:
+    """Contain an executable that disappears after PATH resolution.
+
+    Models an installation or managed-tool update racing process creation and requires the audit
+    to return a stable failure instead of exposing an operating-system traceback.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the process-start failure escapes.
+    """
+    failure = FileNotFoundError(errno.ENOENT, "missing")
+
+    with (
+        patch("scripts.audit_security.shutil.which", return_value="C:/tools/tool.exe"),
+        patch("scripts.audit_security.subprocess.run", side_effect=failure),
+    ):
+        result = audit.HostRunner().run(("tool", "status"))
+
+    assert result.code == audit.EXECUTABLE_NOT_FOUND
+    assert result.output == "tool could not be started\n"
 
 
 def test_testing_environment_merges_generated_values(tmp_path: Path) -> None:
@@ -704,6 +804,9 @@ def test_image_check_scans_unique_images_and_rejects_findings(tmp_path: Path) ->
     scan_calls = [call[0] for call in passed.calls if audit.TRIVY_IMAGE in call[0]]
     assert len(scan_calls) == image_count
     assert all(call[-1] == TEST_IMAGE_ID for call in scan_calls)
+    assert all(
+        "--parallel" in call and call[call.index("--parallel") + 1] == "1" for call in scan_calls
+    )
     assert all("--cache-backend" not in call for call in scan_calls)
     cache_mounts = {
         argument
@@ -723,6 +826,68 @@ def test_image_check_scans_unique_images_and_rejects_findings(tmp_path: Path) ->
     assert not audit.image_check(failed, tmp_path)
     invalid = FakeRunner(image_check_results("invalid"))
     assert not audit.image_check(invalid, tmp_path)
+
+
+def test_image_scan_retries_one_transient_scanner_failure() -> None:
+    """Retry one unavailable scanner process before failing closed.
+
+    Supplies one non-zero Trivy result followed by a complete valid report, requiring the scan
+    boundary to recover once while retaining the same immutable image and low-memory invocation.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the scanner failure is not retried or evidence changes between attempts.
+    """
+    payload = trivy_payload(artifact_name=TEST_IMAGE_ID)
+    runner = FakeRunner(
+        [
+            audit.CommandResult(1, "temporary scanner failure"),
+            audit.CommandResult(0, payload),
+        ]
+    )
+
+    entry = audit.scanned_image_policy_entry(runner, TEST_IMAGE_ID, "cache")
+
+    assert entry == audit.vulnerability_policy_entry(payload, image_id=TEST_IMAGE_ID)
+    assert len(runner.calls) == TRANSIENT_SCAN_ATTEMPTS
+    assert runner.calls[0][0] == runner.calls[1][0]
+
+
+def test_image_scan_ignores_docker_pull_progress_on_standard_error() -> None:
+    """Parse scanner JSON separately from Docker pull diagnostics.
+
+    Models the first security audit after a complete Docker image cleanup, where ``docker run``
+    pulls Trivy and writes progress to standard error while Trivy writes valid JSON to standard
+    output.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If pull progress corrupts valid scanner evidence.
+    """
+    payload = trivy_payload(artifact_name=TEST_IMAGE_ID)
+    runner = FakeRunner(
+        [
+            audit.CommandResult(
+                0,
+                payload,
+                "Unable to find image locally\nPull complete\n",
+            )
+        ]
+    )
+
+    entry = audit.scanned_image_policy_entry(runner, TEST_IMAGE_ID, "cache")
+
+    assert entry == audit.vulnerability_policy_entry(payload, image_id=TEST_IMAGE_ID)
 
 
 def test_image_check_rejects_missing_or_drifted_policy(
@@ -839,6 +1004,77 @@ def test_image_check_rejects_identity_and_live_container_drift(tmp_path: Path) -
         ),
         tmp_path,
     )
+
+
+def test_local_image_policy_accepts_new_identity_with_identical_security_evidence() -> None:
+    """Allow a rebuilt local image when reviewed security evidence is unchanged.
+
+    Uses different immutable image and artifact identifiers with the same vulnerability and secret
+    snapshot, matching the supported clean setup that rebuilds project images from current source.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If local build identity churn is treated as security-policy drift.
+    """
+    expected = audit.vulnerability_policy_entry(
+        trivy_payload(artifact_name=TEST_IMAGE_ID),
+        image_id=TEST_IMAGE_ID,
+    )
+    rebuilt_image_id = f"sha256:{'6' * 64}"
+    rebuilt_artifact_id = f"sha256:{'7' * 64}"
+    scanned = audit.vulnerability_policy_entry(
+        trivy_payload(
+            artifact_name=rebuilt_image_id,
+            artifact_id=rebuilt_artifact_id,
+        ),
+        image_id=rebuilt_image_id,
+    )
+
+    assert (
+        audit.image_policy_drift_fields(
+            "localforge/django:0.1.0",
+            expected,
+            scanned,
+        )
+        == []
+    )
+
+
+def test_local_image_policy_still_rejects_security_evidence_drift() -> None:
+    """Reject vulnerability changes in a rebuilt local image.
+
+    Changes both immutable identifiers and the normalized vulnerability snapshot, requiring the
+    local-image exception to ignore identity fields only.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a changed vulnerability snapshot is accepted.
+    """
+    expected = audit.vulnerability_policy_entry(
+        trivy_payload(artifact_name=TEST_IMAGE_ID),
+        image_id=TEST_IMAGE_ID,
+    )
+    rebuilt_image_id = f"sha256:{'6' * 64}"
+    scanned = audit.vulnerability_policy_entry(
+        trivy_payload(1, artifact_name=rebuilt_image_id),
+        image_id=rebuilt_image_id,
+    )
+
+    assert audit.image_policy_drift_fields(
+        "localforge/django:0.1.0",
+        expected,
+        scanned,
+    ) == ["digest", "finding_count", "vulnerability_ids"]
 
 
 def test_http_observation_captures_status_redirect_and_body() -> None:
@@ -1166,6 +1402,8 @@ def test_runtime_secret_check_rejects_command_and_secret_failures(tmp_path: Path
     values = audit.generated_sensitive_values(tmp_path)
     assert "database-secret-value" in values
     assert "amqp://user:broker-secret-value@broker/vhost" in values
+    assert "development-tunnel-token" in values
+    assert "development-resend-key" in values
     assert audit.runtime_secret_check(clean, tmp_path)
     log_commands = [call[0] for call in clean.calls if call[0][0:2] == ("docker", "logs")]
     assert all("--since" not in command for command in log_commands)
@@ -1176,6 +1414,14 @@ def test_runtime_secret_check_rejects_command_and_secret_failures(tmp_path: Path
     )
     assert not audit.runtime_secret_check(
         FakeRunner([audit.CommandResult(0, "database-secret-value")]),
+        tmp_path,
+    )
+    assert not audit.runtime_secret_check(
+        FakeRunner([audit.CommandResult(0, "development-tunnel-token")]),
+        tmp_path,
+    )
+    assert not audit.runtime_secret_check(
+        FakeRunner([audit.CommandResult(0, "development-resend-key")]),
         tmp_path,
     )
 

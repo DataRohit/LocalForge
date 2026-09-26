@@ -50,8 +50,9 @@ unusable until the owner proves they control the email address.
 - Activation confirmation preserves Djoser's documented `POST` method and `uid` plus token shape, represented as
   `account` plus `token`, but uses the existing `/users/` route because LocalForge's fixed route table does not
   contain `/users/activation/`.
-- The emailed `/users/?account=...&token=...` URL is the environment-hosted frontend link Djoser describes; that
-  frontend submits the values to the versioned `POST /users/` contract.
+- The emailed URL is a credential handoff for a LocalForge client, not a browser endpoint. The client extracts the
+  account and token values and submits them to the versioned `POST /users/` contract; `GET` never activates an
+  account.
 - Resend returns `202` for unknown, inactive, and active accounts. Only an exact valid `{email}` body records the
   client address, stable normalized email, and optional immutable account identity, for at most three events. Exact
   authoritative limits are `30/hour` per client address and `3/hour` for each recipient identity. All advisory locks

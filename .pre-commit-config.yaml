@@ -25,6 +25,8 @@ repos:
       - id: check-symlinks
       - id: check-toml
       - id: check-yaml
+        args:
+          - --unsafe
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-private-key

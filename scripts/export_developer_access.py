@@ -20,7 +20,6 @@ BOOKMARKS_FILE = "bookmarks.html"
 PASSWORDS_FILE = "passwords.csv"
 EXIT_OK = 0
 EXIT_FAILED = 1
-BASIC_AUTH_USER = "admin"
 
 REQUIRED_VARIABLES = (
     "PGADMIN_DEFAULT_EMAIL",
@@ -32,6 +31,7 @@ REQUIRED_VARIABLES = (
     "GRAFANA_ADMIN_USER",
     "GRAFANA_ADMIN_PASSWORD",
     "TRAEFIK_DASHBOARD_PASSWORD",
+    "TRAEFIK_DASHBOARD_AUTH",
 )
 
 
@@ -192,12 +192,13 @@ def password_records(values: dict[str, str]) -> tuple[PasswordRecord, ...]:
     """
     flower_user, flower_password = split_basic_auth(values, "FLOWER_BASIC_AUTH")
     mailpit_user, mailpit_password = split_basic_auth(values, "MP_UI_AUTH")
+    traefik_user, _ = split_basic_auth(values, "TRAEFIK_DASHBOARD_AUTH")
 
     return (
         PasswordRecord(
             "LocalForge Traefik Dashboard",
             "http://localhost:8081/dashboard/",
-            BASIC_AUTH_USER,
+            traefik_user,
             values["TRAEFIK_DASHBOARD_PASSWORD"],
         ),
         PasswordRecord(

@@ -201,6 +201,12 @@ outage, but `/health/` reports `readiness: not_ready` and returns `503`. Compose
 so an unavailable instance leaves proxy rotation without being killed or restarted merely because one dependency
 is temporarily down.
 
+**External mail readiness is bounded and stable.** Development opens Resend SMTP, retries one transient connection
+or cleanup failure, then reuses that successful result for 60 seconds inside each application process. Frequent
+Compose and Traefik polling therefore does not flood the hosted relay or remove Django for one brief transport error.
+After the bounded success expires, two failed live attempts still report mail unavailable and return `503`. Testing
+keeps its configured Mailpit or in-memory backend and never reaches Resend.
+
 **Worker health proves a current round trip.** The probe confirms PID 1 is the exact registered Celery node, then
 creates an exclusive auto-deleting direct exchange and reply queue on one context-managed Kombu connection. It
 publishes an `ignore_result` task through that queue's producer, with delivery expiry reserving the final two seconds
@@ -303,14 +309,11 @@ in IPv4-only setups. `PGADMIN_DISABLE_POSTFIX=True` avoids starting an unused ma
 definitions load **only on first launch** unless `PGADMIN_REPLACE_SERVERS_ON_STARTUP=True`, which is what makes the
 registration declarative.
 
-Two more were measured on 2026-09-14, when the dashboard was built.
-`PGADMIN_CONFIG_ALLOW_SPECIAL_EMAIL_DOMAINS=["invalid"]`, because 9.17 validates the login address and
-**rejects** the registry's
-`dev@localforge.invalid`: `.invalid` is a reserved name, the container crash-loops on
-"does not appear to be a valid email address", and the address is deliberately unroutable, so the domain is
-permitted rather than the identity weakened. `PGADMIN_CONFIG_UPGRADE_CHECK_ENABLED=False`, because the dashboard
-otherwise fetches `https://www.pgadmin.org/versions.json` from a container that ADR-0021 leaves with real egress.
-Both land in the image's generated `config_distro.py`, which is where to confirm them.
+Two more were measured on 2026-09-14, when the dashboard was built. The login now uses the monitored
+`support@datarohit.com` identity, so `PGADMIN_CONFIG_ALLOW_SPECIAL_EMAIL_DOMAINS=[]` grants no reserved-domain
+exception. `PGADMIN_CONFIG_UPGRADE_CHECK_ENABLED=False` prevents the dashboard from fetching
+`https://www.pgadmin.org/versions.json` from a container that ADR-0021 leaves with real egress. Both settings land
+in the image's generated `config_distro.py`, which is where to confirm them.
 
 Its health check reads the configuration database rather than the `/misc/ping` route, which answers unconditionally:
 the upstream entrypoint does not stop on a failed server import, so the dashboard can serve happily with neither

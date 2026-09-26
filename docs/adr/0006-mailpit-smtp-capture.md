@@ -35,7 +35,7 @@ the residue below is accepted knowingly rather than left undiscovered.
 Closed by configuration, verified 2026-09-14:
 
 | Route out | Closed by |
-|---|---|
+| --- | --- |
 | Relay: `--smtp-relay-config`, `--smtp-relay-all`, `--smtp-relay-matching` | unset, and asserted unset by test |
 | Forwarding: `--smtp-forward-config` | unset, and asserted unset by test |
 | Webhooks: `--webhook-url` | unset, and asserted unset by test |

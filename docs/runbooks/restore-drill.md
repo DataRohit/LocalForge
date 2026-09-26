@@ -50,7 +50,7 @@ docker volume rm pgbackrest-drill-scratch
 Each cost a cycle the first time and is invisible until the instance refuses to start.
 
 | Symptom | Cause | Remedy |
-|---|---|---|
+| --- | --- | --- |
 | `unable to create path '/scratch/data': [13] Permission denied` | A fresh named volume is `root:root`; pgBackRest restores as `postgres` | Create the target with `install -d -o postgres -g postgres -m 0700` first, as step 3 does |
 | `could not open configuration directory "/etc/postgresql/conf.d"` then `configuration file ... contains errors` | The backup carries the primary's `postgresql.conf`, which carries its `include_dir` | Mount a configuration directory at that path, as step 4 does |
 | Startup aborts pointing at `backup_label` and `recovery.signal` | The restored cluster replays WAL through `restore_command`, which shells out to `pgbackrest` | Mount `pgbackrest-pb2wj-repo` into the restored instance as well, as step 4 does |

@@ -14,6 +14,7 @@ from unittest.mock import patch
 import pytest
 
 from scripts import export_developer_access as export
+from scripts.gen_secrets import parse_env_text
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -34,15 +35,16 @@ def development_environment() -> str:
         Dotenv text accepted by the export command.
     """
     return """\
-PGADMIN_DEFAULT_EMAIL=dev@localforge.invalid
+PGADMIN_DEFAULT_EMAIL=support@datarohit.com
 PGADMIN_DEFAULT_PASSWORD=pgadmin-password
 RABBITMQ_DEFAULT_USER=localforge_broker
 RABBITMQ_DEFAULT_PASS=rabbitmq-password
-FLOWER_BASIC_AUTH=flower-user:flower-password
-MP_UI_AUTH=mailpit-user:mailpit-password
-GRAFANA_ADMIN_USER=admin
+FLOWER_BASIC_AUTH=support@datarohit.com:flower-password
+MP_UI_AUTH=support@datarohit.com:mailpit-password
+GRAFANA_ADMIN_USER=support@datarohit.com
 GRAFANA_ADMIN_PASSWORD=grafana-password
 TRAEFIK_DASHBOARD_PASSWORD=traefik-password
+TRAEFIK_DASHBOARD_AUTH=support@datarohit.com:$2b$12$abcdefghijklmnopqrstuv
 """
 
 
@@ -107,13 +109,13 @@ def test_export_writes_complete_browser_import_files_without_printing_secrets(
         {
             "name": "LocalForge Traefik Dashboard",
             "url": "http://localhost:8081/dashboard/",
-            "username": "admin",
+            "username": "support@datarohit.com",
             "password": "traefik-password",
         },
         {
             "name": "LocalForge pgAdmin",
             "url": "http://localhost:5050/",
-            "username": "dev@localforge.invalid",
+            "username": "support@datarohit.com",
             "password": "pgadmin-password",
         },
         {
@@ -125,22 +127,50 @@ def test_export_writes_complete_browser_import_files_without_printing_secrets(
         {
             "name": "LocalForge Flower",
             "url": "http://localhost:5555/",
-            "username": "flower-user",
+            "username": "support@datarohit.com",
             "password": "flower-password",
         },
         {
             "name": "LocalForge Mailpit",
             "url": "http://localhost:8025/",
-            "username": "mailpit-user",
+            "username": "support@datarohit.com",
             "password": "mailpit-password",
         },
         {
             "name": "LocalForge Grafana",
             "url": "http://localhost:3000/",
-            "username": "admin",
+            "username": "support@datarohit.com",
             "password": "grafana-password",
         },
     ]
+
+
+def test_export_preserves_an_existing_traefik_username() -> None:
+    """Export the username carried by the persisted Traefik credential.
+
+    Replaces the fresh-generation support identity with one legacy login and requires browser
+    export to retain it while pairing it with the stored plaintext password.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If export invents a fresh username for an existing dashboard account.
+    """
+    values = parse_env_text(
+        development_environment().replace(
+            "TRAEFIK_DASHBOARD_AUTH=support@datarohit.com:",
+            "TRAEFIK_DASHBOARD_AUTH=legacy-admin:",
+        )
+    )
+
+    traefik = export.password_records(values)[0]
+
+    assert traefik.username == "legacy-admin"
+    assert traefik.password == values["TRAEFIK_DASHBOARD_PASSWORD"]
 
 
 def test_export_refuses_missing_environment_without_writing_outputs(
@@ -246,9 +276,9 @@ def test_export_refuses_malformed_basic_authentication_pairs(
         AssertionError: If a malformed pair is accepted or its secret-shaped value is printed.
     """
     original = (
-        "flower-user:flower-password"
+        "support@datarohit.com:flower-password"
         if name == "FLOWER_BASIC_AUTH"
-        else "mailpit-user:mailpit-password"
+        else "support@datarohit.com:mailpit-password"
     )
     environment = development_environment().replace(f"{name}={original}", f"{name}={value}")
     (tmp_path / export.ENVIRONMENT_FILE).write_text(environment, encoding="utf-8")

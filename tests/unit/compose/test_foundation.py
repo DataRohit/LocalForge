@@ -3291,11 +3291,11 @@ def test_the_definition_file_names_the_nodes_and_carries_no_credential() -> None
 
 @pytest.mark.unit
 def test_the_database_dashboard_is_configured_for_this_platform() -> None:
-    """Set the three values the image needs beyond its credentials.
+    """Set the values the image needs beyond its credentials.
 
-    Confirms the bind address, the disabled mail server, and the permitted login domain are all
-    registered, because the default bind fails on an IPv4-only host and the image refuses the
-    reserved domain the registry assigns it.
+    Confirms the bind address, disabled mail server, support login, and disabled update check are
+    registered, because the default bind fails on an IPv4-only host and the dashboard must not
+    contact its vendor.
 
     Arguments:
         None.
@@ -3310,7 +3310,8 @@ def test_the_database_dashboard_is_configured_for_this_platform() -> None:
 
     assert "PGADMIN_LISTEN_ADDRESS=0.0.0.0" in manifest
     assert "PGADMIN_DISABLE_POSTFIX=True" in manifest
-    assert 'PGADMIN_CONFIG_ALLOW_SPECIAL_EMAIL_DOMAINS=["invalid"]' in manifest
+    assert "PGADMIN_DEFAULT_EMAIL=support@datarohit.com" in manifest
+    assert "PGADMIN_CONFIG_ALLOW_SPECIAL_EMAIL_DOMAINS=[]" in manifest
     assert "PGADMIN_CONFIG_UPGRADE_CHECK_ENABLED=False" in manifest
 
 

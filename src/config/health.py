@@ -16,7 +16,7 @@ from contextvars import copy_context
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from importlib import import_module
-from threading import BoundedSemaphore
+from threading import BoundedSemaphore, Lock
 from typing import TYPE_CHECKING, ParamSpec, TypeVar, cast, override
 
 import boto3
@@ -135,6 +135,8 @@ HEALTH_CHECK_WORKERS = 5
 HEALTH_CHECK_STATEMENT_TIMEOUT_MILLISECONDS = 5000
 HEALTH_CHECK_CLIENT_TIMEOUT_SECONDS = 6.0
 HEALTH_CHECK_NETWORK_TIMEOUT_SECONDS = 2.0
+HEALTH_CHECK_MAIL_ATTEMPTS = 2
+HEALTH_CHECK_MAIL_SUCCESS_TTL_SECONDS = 60.0
 HEALTH_CHECK_STORAGE_CONNECT_TIMEOUT_SECONDS = 1
 HEALTH_CHECK_STORAGE_READ_TIMEOUT_SECONDS = 2
 AMQP_EXCEPTION = cast(
@@ -232,6 +234,28 @@ class ContextPreservingThreadPoolExecutor(ThreadPoolExecutor):
 
 
 health_check_executor = ContextPreservingThreadPoolExecutor(max_workers=HEALTH_CHECK_WORKERS)
+
+
+@dataclass(slots=True)
+class MailReadinessState:
+    """Coordinate cached SMTP readiness inside one application process.
+
+    Serializes external relay probes and retains the last successful monotonic timestamp so
+    frequent load-balancer checks reuse bounded recent evidence.
+
+    Attributes:
+        lock: Mutual exclusion around cached SMTP probe state.
+        success_at: Last successful monotonic probe time, or ``None`` before success.
+
+    Members:
+        None.
+    """
+
+    lock: Lock = field(default_factory=Lock)
+    success_at: float | None = None
+
+
+mail_readiness_state = MailReadinessState()
 
 
 def context_preserving_executor(
@@ -453,8 +477,8 @@ class MailReadinessCheck:
     def run(self) -> None:
         """Open and close the configured email backend.
 
-        Performs no message delivery, keeping the check side-effect free while still validating
-        SMTP connectivity in development and backend construction in testing.
+        Reuses one recent success, rejects overlapping uncached probes, and retries one transient
+        failure without retaining multiple bounded executor workers behind the SMTP lock.
 
         Arguments:
             None.
@@ -465,26 +489,52 @@ class MailReadinessCheck:
         Raises:
             ServiceUnavailable: If the backend cannot open or close successfully.
         """
-        connection = get_connection(
-            self.backend,
-            fail_silently=False,
-            timeout=HEALTH_CHECK_NETWORK_TIMEOUT_SECONDS,
-        )
-        failure: ServiceUnavailable | None = None
-        try:
-            connection.open()
-        except (OSError, smtplib.SMTPException, ValueError) as error:
-            failure = ServiceUnavailable("Mail readiness check failed")
-            failure.__cause__ = error
-        try:
-            connection.close()
-        except (OSError, smtplib.SMTPException, ValueError) as error:
-            if failure is None:
-                failure = ServiceUnavailable("Mail readiness cleanup failed")
-                failure.__cause__ = error
+        now = time.monotonic()
+        if (
+            mail_readiness_state.success_at is not None
+            and now - mail_readiness_state.success_at < HEALTH_CHECK_MAIL_SUCCESS_TTL_SECONDS
+        ):
+            return
+        if not mail_readiness_state.lock.acquire(blocking=False):
+            message = "Mail readiness check already running"
+            raise ServiceUnavailable(message)
 
-        if failure is not None:
-            raise failure
+        try:
+            now = time.monotonic()
+            if (
+                mail_readiness_state.success_at is not None
+                and now - mail_readiness_state.success_at < HEALTH_CHECK_MAIL_SUCCESS_TTL_SECONDS
+            ):
+                return
+
+            last_failure = ServiceUnavailable("Mail readiness check failed")
+            for _attempt in range(HEALTH_CHECK_MAIL_ATTEMPTS):
+                connection = get_connection(
+                    self.backend,
+                    fail_silently=False,
+                    timeout=HEALTH_CHECK_NETWORK_TIMEOUT_SECONDS,
+                )
+                attempt_failure: ServiceUnavailable | None = None
+                try:
+                    connection.open()
+                except (OSError, smtplib.SMTPException, ValueError) as error:
+                    attempt_failure = ServiceUnavailable("Mail readiness check failed")
+                    attempt_failure.__cause__ = error
+                try:
+                    connection.close()
+                except (OSError, smtplib.SMTPException, ValueError) as error:
+                    if attempt_failure is None:
+                        attempt_failure = ServiceUnavailable("Mail readiness cleanup failed")
+                        attempt_failure.__cause__ = error
+
+                if attempt_failure is None:
+                    mail_readiness_state.success_at = time.monotonic()
+                    return
+                last_failure = attempt_failure
+
+            raise last_failure
+        finally:
+            mail_readiness_state.lock.release()
 
 
 async def _execute_database_probe(

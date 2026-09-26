@@ -91,7 +91,11 @@ def test_application_email_contains_text_html_and_site_identity() -> None:
         SUBJECT,
         MESSAGE,
         action_path="/users/me/?tab=profile&source=email",
-        context={"unused_probe": "available"},
+        context={
+            "action_label": "Review account",
+            "security_notice": "Contact support if you did not request this account action.",
+            "unused_probe": "available",
+        },
     )
 
     assert delivered is True
@@ -105,12 +109,21 @@ def test_application_email_contains_text_html_and_site_identity() -> None:
     assert message.body.strip()
     assert "LocalForge Test" in message.body
     assert MESSAGE in message.body
+    assert SUBJECT in message.body
+    assert "Review account" in message.body
+    assert "support@localforge.invalid" in message.body
+    assert "Contact support if you did not request this account action." in message.body
     assert "http://localhost:8000/users/me/?tab=profile&source=email" in message.body
+    assert message.extra_headers == {"Auto-Submitted": "auto-generated"}
     assert len(message.alternatives) == 1
     alternative_content, alternative_type = message.alternatives[0]
     rendered_html = str(alternative_content)
     assert alternative_type == "text/html"
     assert "LocalForge Test" in rendered_html
+    assert SUBJECT in rendered_html
+    assert "Review account" in rendered_html
+    assert "support@localforge.invalid" in rendered_html
+    assert "Contact support if you did not request this account action." in rendered_html
     assert "Your account is ready &amp; waiting &lt;now&gt;." in rendered_html
     assert "http://localhost:8000/users/me/?tab=profile&amp;source=email" in rendered_html
 

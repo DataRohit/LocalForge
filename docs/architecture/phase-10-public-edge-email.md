@@ -30,8 +30,8 @@ Development sender: `LocalForge <no-reply@localforge.datarohit.com>`.
 
 Testing sender: existing Mailpit-backed `no-reply@localforge.invalid`.
 
-Support replies use the existing Cloudflare-routed support address. No mailbox or forwarding rule is required for the
-no-reply sender.
+Support replies use `support@datarohit.com` through the existing Cloudflare Email Routing path. No mailbox or
+forwarding rule is required for the no-reply sender.
 
 DNS ownership stays with Cloudflare. Resend verified `localforge.datarohit.com` on 2026-09-25; its captured DKIM and
 SPF CNAME records remain DNS-only. The apex DMARC record is `_dmarc.datarohit.com TXT "v=DMARC1; p=none;

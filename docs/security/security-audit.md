@@ -77,15 +77,22 @@ the remaining clean registered images.
 `environments-setup` rebuilds every local image through cached deterministic layers on each run rather than
 trusting a pre-existing mutable tag. Consecutive no-edit builds reproduced the same three image IDs. The image
 audit reports the exact tag, live identity, scanner, artifact, or policy field boundary when evidence drifts.
+Trivy scans one target at a time and retries one non-zero scanner process result with the same cache and immutable
+image identity. Standard output remains separate from standard error because the first audit after a complete Docker
+cleanup auto-pulls the Trivy image: Docker writes pull progress to standard error while Trivy writes JSON to standard
+output. Combining those streams corrupts valid JSON and caused the image audit to fail on its first Mailpit scan.
+A second scanner failure remains fail-closed; malformed successful JSON is never retried or accepted.
 
 The exact accepted snapshot is
 [image-vulnerability-policy.json](./image-vulnerability-policy.json). It records every unique identifier, package
 finding count, and a digest over target, identifier, package, installed version, fixed version, and severity.
 It also records the immutable Docker image ID, Trivy artifact ID, and exact secret rule, category, path, and line
-coordinates. Every required live container must run the inspected immutable image ID; Trivy scans that ID and must
-report it as the requested artifact. A malformed or empty successful scanner response is rejected, and every image
-shares one isolated temporary scan cache so the vulnerability database is fetched once per audit; changing any row
-fails the audit.
+coordinates. Every required live container must run the immutable identity currently inspected for its registered
+tag, and Trivy scans that exact live ID. Pinned external images must also retain the policy's reviewed image and
+artifact identifiers. Locally built `localforge/*` images change identifiers whenever reviewed source or bundled
+documentation changes, so their identifiers remain historical evidence while vulnerability and secret fields must
+match exactly. A malformed or empty successful scanner response is rejected, and every image shares one isolated
+temporary scan cache so the vulnerability database is fetched once per audit.
 
 The refreshed live-image snapshot contains no secret findings. Recursive Docker ignore rules exclude generated
 `__pycache__` and bytecode from every local image, and Trivy retains a matching defensive skip because the

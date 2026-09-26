@@ -65,12 +65,15 @@ Required capture rows:
 
 ## Email
 
-- Development uses Resend SMTP/API with `no-reply@localforge.datarohit.com`.
+- Development uses Resend SMTP/API with `LocalForge <no-reply@localforge.datarohit.com>`.
 - Development uses `smtp.resend.com:587`, username `resend`, TLS, and a domain-scoped `RESEND_API_KEY`; reply-to is
-  `datarohit@outlook.com`.
+  `support@datarohit.com`.
 - Testing uses Mailpit and never requires Resend credentials.
 - Send a controlled activation or password-reset message to a recipient owned by the operator.
 - Confirm Resend delivery logs and application logs contain no key material.
+- Record whether each controlled activation, password-reset, and username-reset message reached inbox or junk. Save
+  the complete received headers and require SPF, DKIM, and DMARC pass results before attributing placement to content
+  or reputation. Resend `Delivered` alone is not inbox-placement evidence.
 - Rotate the Resend key by creating a replacement domain-scoped key, installing it through the development secret
   workflow, recreating the Django and worker services, and verifying controlled delivery before revoking the old key.
 - If the new key fails verification, restore the previous secret before revoking it, then repeat the replacement

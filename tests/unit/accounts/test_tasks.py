@@ -644,6 +644,9 @@ def test_password_notice_succeeds_after_backend_acceptance() -> None:
         "user@example.invalid",
         "Your LocalForge password changed",
         "Your password was changed through account recovery.",
+        context={
+            "security_notice": ("If you did not make this change, contact support immediately."),
+        },
     )
 
 
