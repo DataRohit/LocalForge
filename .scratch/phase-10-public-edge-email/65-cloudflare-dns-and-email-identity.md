@@ -16,8 +16,8 @@ email authentication and canonical host redirects documented and verifiable.
 
 **External evidence (2026-09-25):** Cloudflare is authoritative for `datarohit.com` and the authenticated Resend
 dashboard reports `localforge.datarohit.com` as **Verified** in `ap-northeast-1` (Tokyo), with sending enabled. The
-Tunnel hostname is not yet available because Ticket 66 has not provisioned the Tunnel; no `localforge` application
-record is invented here.
+named `localforge-public` Tunnel is now provisioned by Ticket 66 and routes the canonical hostname; its
+provider-managed CNAME remains the source of truth and is not duplicated here.
 
 - [x] Verify `localforge.datarohit.com` in Resend and record the exact DNS records shown by Resend; never invent or
       merge provider records.
@@ -28,5 +28,5 @@ record is invented here.
 - [x] Make `datarohit.com` and `www.datarohit.com` resolve through the defined canonical redirect to
       `localforge.datarohit.com` without adding an application route.
 - [x] Verify public DNS answers from `1.1.1.1` and `8.8.8.8`, TLS and redirect behaviour for the configured apex/www
-      aliases, and absence of accidental public operator records. The `localforge` Tunnel CNAME and its certificate
-      are intentionally Ticket 66 evidence because the provider hostname does not exist until that Tunnel is created.
+      aliases, and absence of accidental public operator records. Ticket 66 records the named Tunnel route and
+      provider-managed CNAME; this ticket records the DNS ownership and redirect contract.

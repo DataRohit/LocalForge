@@ -1,6 +1,6 @@
 # Phase 7 security and reliability audit
 
-Reviewed **2026-09-23**. Re-run the complete audit with `uv run poe security-audit`; runtime-affecting changes also
+Reviewed **2026-09-26**. Re-run the complete audit with `uv run poe security-audit`; runtime-affecting changes also
 require both health gates, `uv run poe convention-audit`, deployed behavior exercise, and bounded log review.
 
 ## Findings and disposition
@@ -83,15 +83,14 @@ The exact accepted snapshot is
 finding count, and a digest over target, identifier, package, installed version, fixed version, and severity.
 It also records the immutable Docker image ID, Trivy artifact ID, and exact secret rule, category, path, and line
 coordinates. Every required live container must run the inspected immutable image ID; Trivy scans that ID and must
-report it as the requested artifact. A malformed or empty successful scanner response is rejected, each image uses
-an isolated in-memory scan cache, and changing any row fails the audit.
+report it as the requested artifact. A malformed or empty successful scanner response is rejected, and every image
+shares one isolated temporary scan cache so the vulnerability database is fetched once per audit; changing any row
+fails the audit.
 
-One scanner finding is an accepted non-credential: PostgreSQL ships Debian's public snake-oil TLS key. Removing
-Daphne and Autobahn from the development dependency group removed the former test-image cryptographic fixture.
-Recursive Docker ignore rules exclude generated `__pycache__` and bytecode from every local image, and Trivy
-retains a matching defensive skip because the corresponding source is scanned. The remaining finding is not
-referenced by LocalForge configuration or trusted as an identity. All other registered images have zero secret
-findings.
+The refreshed live-image snapshot contains no secret findings. Recursive Docker ignore rules exclude generated
+`__pycache__` and bytecode from every local image, and Trivy retains a matching defensive skip because the
+corresponding source is scanned. Any future secret finding fails the policy unless it is explicitly reviewed and
+documented with its exact path and line coordinates.
 
 The following vulnerability findings remain only in current pinned upstream images and are accepted until the
 upstream project publishes a replacement image; review due **2026-10-06**:

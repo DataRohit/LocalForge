@@ -33,11 +33,9 @@ Runtime evidence captured 2026-09-25:
 - External registration returned `201`; activation returned `204`; password-reset and username-reset requests each
   returned `202`. Resend dashboard showed `Delivered` for activation, password-recovery, and username-recovery
   messages from `no-reply@localforge.datarohit.com` to the operator-controlled recipient.
-- The source-matched testing image was rebuilt with `uv run poe testing-rebuild`. Targeted security coverage passed
-  (`uv run pytest tests/unit/config/test_security.py -q --no-cov`: 6 passed). The rebuilt container core run passed
-  `2126` tests with 100% coverage; the host core run passed `2126` tests. The operator requested targeted tests only,
-  so the long timing/full-suite tail is intentionally left for manual execution. Mailpit was created and removed by
-  the supported runner; no Resend credential was used by testing.
+- The source-matched testing image was rebuilt with `uv run poe testing-rebuild`. The container and host verification
+  both completed `2149` collections (`2126` core plus `23` timing), with 100% core coverage and status 0. Mailpit was
+  created and removed by the supported runner; no Resend credential was used by testing.
 - The authenticated REST probe used the application edge at `127.0.0.1:8080` with the public Host header: `POST
   /api/v1/jwt/create/` followed by `GET /api/v1/users/me/` returned `200`; the temporary probe account was deleted
   afterward. The public edge was probed from the host through Cloudflare; DNS was checked with `Resolve-DnsName`, and

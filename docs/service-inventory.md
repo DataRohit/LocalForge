@@ -1,7 +1,9 @@
 # Service inventory
 
-Authoritative for: the service list, published host ports, startup order, health-check definitions, dashboards, and
-the testing service set.
+> Deprecated compatibility copy. The authoritative Phase 10 inventory is
+> [platform/service-inventory.md](platform/service-inventory.md); use it for all current services, ports, and health checks.
+
+Historical compatibility reference only; see the canonical platform service inventory linked above.
 
 Names come from the registry in [conventions.md](./conventions.md). Tool choices and their evidence are in
 [../adr/](../adr/README.md). Every port, endpoint, and command below was verified against upstream source or

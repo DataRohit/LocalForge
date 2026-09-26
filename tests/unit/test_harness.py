@@ -1108,6 +1108,7 @@ def test_django_gate_runs_a_database_aware_system_check() -> None:
     commands = [item["cmd"] for item in sequence]
 
     assert commands == [
+        "python -m scripts.manage_platform testing-health",
         "python src/manage.py check",
         "python src/manage.py check --database default",
         "python src/manage.py makemigrations --check --dry-run",

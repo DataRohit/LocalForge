@@ -704,7 +704,14 @@ def test_image_check_scans_unique_images_and_rejects_findings(tmp_path: Path) ->
     scan_calls = [call[0] for call in passed.calls if audit.TRIVY_IMAGE in call[0]]
     assert len(scan_calls) == image_count
     assert all(call[-1] == TEST_IMAGE_ID for call in scan_calls)
-    assert all("memory" in call for call in scan_calls)
+    assert all("--cache-backend" not in call for call in scan_calls)
+    cache_mounts = {
+        argument
+        for call in scan_calls
+        for argument in call
+        if argument.endswith(":/root/.cache/trivy")
+    }
+    assert len(cache_mounts) == 1
 
     vulnerable = FakeRunner(
         image_check_results(

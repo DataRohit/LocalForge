@@ -411,6 +411,7 @@ cmd = "python src/manage.py shell"
 [tool.poe.tasks.django-check]
 help = "Run Django system and migration checks"
 sequence = [
+    { cmd = "python -m scripts.manage_platform testing-health" },
     { cmd = "python src/manage.py check", env = { DJANGO_SETTINGS_MODULE = "config.settings.development" } },
     { cmd = "python src/manage.py check --database default", env = { DJANGO_SETTINGS_MODULE = "config.settings.testing" } },
     { cmd = "python src/manage.py makemigrations --check --dry-run", env = { DJANGO_SETTINGS_MODULE = "config.settings.testing" } },

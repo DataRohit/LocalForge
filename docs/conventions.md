@@ -1,7 +1,9 @@
 # Conventions
 
-Authoritative for: naming of containers, volumes, and networks; the five-character ID registry; the
-environment-variable inventory; secret handling; and the contract of every planned script.
+> Deprecated compatibility copy. The authoritative Phase 10 registry is
+> [platform/conventions.md](platform/conventions.md); use it for all current names, networks, ports, and variables.
+
+Historical compatibility reference only; see the canonical platform conventions linked above.
 
 Nothing here has been created. It defines names the executing agent reuses verbatim.
 
@@ -190,7 +192,7 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 | `DJANGO_SECRET_KEY` | `django-uv5n2` | signing key | `<GENERATED>` | **yes** | yes |
 | `DJANGO_JWT_SIGNING_KEY` | `django-uv5n2` | dedicated HS256 JSON web token signing key, distinct from `DJANGO_SECRET_KEY` | `<GENERATED>` | **yes** | yes |
 | `DJANGO_API_THROTTLE_IDENTITY_HMAC_KEY` | `django-uv5n2` | dedicated domain-separated HMAC-SHA-256 key for opaque throttle identities, encoded as unpadded URL-safe Base64 and distinct from Django and JSON web token signing keys | `<GENERATED>` | **yes** | yes |
-| `DJANGO_DEBUG` | `django-uv5n2` | debug toggle | `true` dev, `false` testing | no | yes |
+| `DJANGO_DEBUG` | `django-uv5n2` | debug toggle; generated public development profile is `false` | `false` generated default | no | yes |
 | `DJANGO_ALLOWED_HOSTS` | `django-uv5n2` | host header allowlist | `localhost,127.0.0.1,localforge.localhost,django-uv5n2,django-metrics-nb4xt` | no | yes |
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | `django-uv5n2` | CSRF origins behind Traefik | `http://localhost:8080,http://localforge.localhost:8080` | no | yes |
 | `DJANGO_CORS_ALLOWED_ORIGINS` | `django-uv5n2` | exact browser origins allowed to read credentialed cross-origin responses | `http://localhost:8080,http://localforge.localhost:8080` | no | yes |

@@ -276,7 +276,7 @@ DEVELOPMENT_MEMBERSHIPS = {
     "valkey-cache-vc5tn": frozenset({"app-net-na6hy", "access-net-ha4mz"}),
     "valkey-channels-vh8dm": frozenset({"app-net-na6hy", "access-net-ha4mz"}),
     "rabbitmq-rq4sx": frozenset({"app-net-na6hy", "access-net-ha4mz"}),
-    "celery-worker-cw8rt": frozenset({"app-net-na6hy", "data-net-nd9pc"}),
+    "celery-worker-cw8rt": frozenset({"app-net-na6hy", "data-net-nd9pc", "edge-net-ne2vk"}),
     "celery-beat-cb4hq": frozenset({"app-net-na6hy", "data-net-nd9pc"}),
     "flower-fl9zd": frozenset({"app-net-na6hy", "access-net-ha4mz"}),
     "mailpit-mp6gb": frozenset({"app-net-na6hy", "access-net-ha4mz"}),

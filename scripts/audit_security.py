@@ -680,8 +680,6 @@ def scanned_image_policy_entry(
             f"{cache}:/root/.cache/trivy",
             TRIVY_IMAGE,
             "image",
-            "--cache-backend",
-            "memory",
             "--scanners",
             "vuln,secret",
             "--severity",
