@@ -27,6 +27,10 @@ real-broker timing path and five consecutive independent host passes.
 eager execution disabled and no worker. The complete host timing stage passed under four workers,
 then five independent host processes passed with health, ownership, residue, and bounded-log audits.
 
+**Reverified 2026-09-27:** process-wide readiness coordination now coalesces overlapping Docker,
+Traefik, and operator polls before bounded worker admission. Eight simultaneous stale-cache requests
+returned one shared ready result, and both complete modes retained clean post-suite logs.
+
 **Reverified 2026-09-23:** image setup rebuilds local tags from current source, audit failures identify the exact
 image boundary, and the refreshed immutable image snapshot passes the complete security audit.
 

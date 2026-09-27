@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import time
+from http import HTTPStatus
 from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING, NoReturn, cast, override
@@ -29,6 +30,7 @@ from config.logs import (
     REPEATED_REFERENCE,
     REQUEST_ID_EXCEPTION_ATTRIBUTE,
     REQUEST_ID_META_KEY,
+    NotFoundRequestFilter,
     QueryRedactionFilter,
     RequestContextFilter,
     StructuredFormatter,
@@ -53,6 +55,7 @@ if TYPE_CHECKING:
 PROBE_LINE_NUMBER = 42
 PROBE_DURATION = 0.004
 EXPECTED_REDACTED_HEADERS = 2
+BAD_REQUEST_STATUS = 400
 ADVERSARIAL_REPEAT_COUNT = 4096
 REDACTION_TIME_LIMIT_SECONDS = 1.0
 TASK_EXCEPTION_MARKER = "task-exception-marker"
@@ -677,6 +680,46 @@ def test_request_context_recovers_an_identifier_from_an_escaped_exception() -> N
 
     assert RequestContextFilter().filter(record) is True
     assert record.__dict__["request_id"] == "escaped-request"
+
+
+@pytest.mark.parametrize(
+    ("status_code", "level", "expected_level"),
+    [
+        (HTTPStatus.NOT_FOUND, logging.WARNING, logging.INFO),
+        (BAD_REQUEST_STATUS, logging.WARNING, logging.WARNING),
+        (HTTPStatus.NOT_FOUND, logging.ERROR, logging.ERROR),
+    ],
+)
+def test_not_found_filter_normalizes_only_warning_level_404(
+    status_code: int,
+    level: int,
+    expected_level: int,
+) -> None:
+    """Keep public 404 probes observable without classifying them as service failures.
+
+    Covers the normalized Django request record plus non-404 warnings and higher-severity 404
+    records that must retain their original level.
+
+    Arguments:
+        status_code: HTTP response status carried by the Django request record.
+        level: Original logging severity.
+        expected_level: Severity required after filtering.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the filter changes the wrong record or drops observability.
+    """
+    record = _record(
+        status_code=status_code,
+        levelno=level,
+        levelname=logging.getLevelName(level),
+    )
+
+    assert NotFoundRequestFilter().filter(record) is True
+    assert record.levelno == expected_level
+    assert record.levelname == logging.getLevelName(expected_level)
 
 
 @pytest.mark.unit

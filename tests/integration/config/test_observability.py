@@ -2469,14 +2469,14 @@ def test_request_identifier_correlates_response_and_logs(
 
 @pytest.mark.integration
 @pytest.mark.services("postgres")
-def test_request_identifier_reaches_django_response_warnings(
+def test_request_identifier_reaches_django_not_found_records(
     client: Client,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Correlate framework warnings emitted after inner request middleware returns.
+    """Correlate framework not-found records after inner request middleware returns.
 
-    Requests a missing route and compares Django's response warning with the returned header,
-    proving low application log levels do not leave the retained warning untraceable.
+    Requests a missing route and compares Django's informational response record with the returned
+    header, proving public scanner normalization retains request correlation.
 
     Arguments:
         client: Django test client supplied by the framework.
@@ -2486,15 +2486,16 @@ def test_request_identifier_reaches_django_response_warnings(
         None.
 
     Raises:
-        AssertionError: If the framework warning loses the response identifier.
+        AssertionError: If the framework record loses its response identifier or safe severity.
     """
-    with caplog.at_level(logging.WARNING, logger="django.request"):
+    with caplog.at_level(logging.INFO, logger="django.request"):
         response = client.get("/missing/")
 
-    warning = next(record for record in caplog.records if record.name == "django.request")
+    not_found = next(record for record in caplog.records if record.name == "django.request")
 
     assert response.status_code == HTTPStatus.NOT_FOUND
-    assert warning.__dict__["request_id"] == response.headers[REQUEST_ID_HEADER]
+    assert not_found.levelno == logging.INFO
+    assert not_found.__dict__["request_id"] == response.headers[REQUEST_ID_HEADER]
 
 
 @pytest.mark.integration

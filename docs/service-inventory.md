@@ -200,13 +200,18 @@ therefore set `hostname:` to their registered container name.
 **Application liveness is distinct from readiness.** A running Django process remains alive during a dependency
 outage, but `/health/` reports `readiness: not_ready` and returns `503`. Compose and Traefik both use that endpoint,
 so an unavailable instance leaves proxy rotation without being killed or restarted merely because one dependency
-is temporarily down.
+is temporarily down. Overlapping Docker, Traefik, and operator polls join one process-wide aggregate dependency
+collection instead of duplicating work against the five-worker probe pool. Waiters reuse the elected result and
+retain an eight-second response deadline below the ten-second infrastructure timeout. The elected collection keeps
+single-flight ownership in its coordinator worker until it actually completes, so poll schedule alignment cannot
+create capacity-shaped false `503` responses or duplicate stalled work.
 
 **External mail readiness is bounded and stable.** Development opens Resend SMTP, retries one transient connection
 or cleanup failure, then reuses that successful result for 60 seconds inside each application process. Frequent
-Compose and Traefik polling therefore does not flood the hosted relay or remove Django for one brief transport error.
-After the bounded success expires, two failed live attempts still report mail unavailable and return `503`. Testing
-keeps its configured Mailpit or in-memory backend and never reaches Resend.
+Compose and Traefik polling therefore shares the aggregate probe and does not flood the hosted relay or remove Django
+for lock contention or one brief transport error. After the bounded success expires, two failed live attempts still
+report mail unavailable and return `503`. Testing keeps its configured Mailpit or in-memory backend and never reaches
+Resend.
 
 **Worker health proves a current round trip.** The probe confirms PID 1 is the exact registered Celery node, then
 creates an exclusive auto-deleting direct exchange and reply queue on one context-managed Kombu connection. It
@@ -237,6 +242,11 @@ successful terminal HTTP body is logged as `request completed` at info level; `r
 level is reserved for actual body-delivery interruption. Expected warnings must be listed in the owning ADR or this
 inventory with their trigger and safety argument. Absence of a test failure is never evidence that a live warning
 is acceptable.
+
+Public internet scanners routinely request paths outside the fixed application surface. A correct HTTP `404` remains
+fully structured and correlated but is normalized from Django's default `WARNING` to `INFO`, because absence of
+`/wp-admin`, `.env`, or another unknown path is the required secure outcome rather than a service fault. Other
+client failures and every server failure retain their standard warning or error severity.
 
 The following vendor startup records are expected only between process start and the service becoming ready. They
 must not recur in a post-readiness exercise window:

@@ -726,6 +726,44 @@ class RequestContextFilter(logging.Filter):
         return True
 
 
+class NotFoundRequestFilter(logging.Filter):
+    """Record ordinary HTTP not-found responses below failure severity.
+
+    Inherits from ``logging.Filter`` and keeps internet scanner paths observable at ``INFO`` while
+    preserving warning and error levels for every other client or server failure.
+
+    Attributes:
+        None beyond those inherited from ``logging.Filter``.
+
+    Members:
+        filter: Normalize only Django's warning-level HTTP 404 records.
+    """
+
+    @override
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Downgrade one warning-level HTTP 404 record to information.
+
+        Mutates only the standard Django ``status_code`` field and leaves every other record at its
+        original severity.
+
+        Arguments:
+            record: Log record about to enter the structured handler.
+
+        Returns:
+            Always ``True`` so the normalized record remains observable.
+
+        Raises:
+            None.
+        """
+        if (
+            getattr(record, "status_code", None) == HTTPStatus.NOT_FOUND
+            and record.levelno == logging.WARNING
+        ):
+            record.levelno = logging.INFO
+            record.levelname = logging.getLevelName(logging.INFO)
+        return True
+
+
 @dataclass(frozen=True, slots=True)
 class _ResponseMetadata:
     """Carry body-free fields needed for terminal request observability.

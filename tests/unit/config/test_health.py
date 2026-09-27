@@ -8,6 +8,8 @@ import asyncio
 import secrets
 import smtplib
 import threading
+import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, Mock
@@ -24,9 +26,13 @@ from config.health import (
     HealthCheckCapacityError,
     MailReadinessCheck,
     ObjectStorageReadinessCheck,
+    ReadinessCoordinatorState,
+    ReadinessResult,
     ReadinessView,
     RedisReadinessCheck,
+    _coordinated_readiness,
     _execute_database_probe,
+    _release_readiness_collection,
     _run_readiness_check,
     _validate_database_pool,
     context_preserving_executor,
@@ -36,8 +42,6 @@ from config.health import (
 from config.logs import NO_REQUEST_ID, request_identifier
 
 if TYPE_CHECKING:
-    from concurrent.futures import Future
-
     from pytest_mock import MockerFixture
 
 BLOCKING_CHECK_SECONDS = 0.5
@@ -46,6 +50,8 @@ MAXIMUM_CANCELLATION_SECONDS = 0.2
 REFRESHED_MAIL_READINESS_TIME = 162.0
 PROBE_TIMEOUT_SECONDS = 0.01
 READINESS_SETTLE_TURNS = 100
+TIMEOUT_RACE_RESULT_CALLS = 2
+TIMEOUT_RECOVERY_COLLECTION_CALLS = 2
 
 
 class SynchronousReadinessProbe:
@@ -259,6 +265,476 @@ def test_readiness_view_raises_first_unexpected_failure_in_inventory_order(
 
     with pytest.raises(RuntimeError, match="first readiness defect"):
         readiness_get(object(), request)
+
+
+@pytest.mark.unit
+def test_concurrent_readiness_callers_share_one_collection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Share one aggregate dependency collection across overlapping request threads.
+
+    Blocks the elected collector while a second caller enters, then requires both callers to
+    receive the same result from one collection invocation.
+
+    Arguments:
+        monkeypatch: Fixture replacing coordinator state and dependency collection.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If callers duplicate dependency work or receive different results.
+    """
+    started = threading.Event()
+    release = threading.Event()
+    calls = 0
+    calls_lock = threading.Lock()
+    expected = (("dependency", ReadinessResult(error=None, time_taken=0.1)),)
+    state = ReadinessCoordinatorState()
+
+    async def collect() -> tuple[tuple[str, ReadinessResult], ...]:
+        """Block one aggregate collection until both callers overlap.
+
+        Records the elected collection, signals caller startup, and waits for the test to release
+        the shared successful result.
+
+        Arguments:
+            None.
+
+        Returns:
+            Stable successful dependency result.
+
+        Raises:
+            AssertionError: If the release signal does not arrive.
+        """
+        nonlocal calls
+        with calls_lock:
+            calls += 1
+        started.set()
+        released = await asyncio.to_thread(release.wait, BLOCKING_CHECK_SECONDS)
+        assert released
+        return expected
+
+    monkeypatch.setattr(health_module, "readiness_coordinator_state", state)
+    monkeypatch.setattr(health_module, "_collect_readiness", collect)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(_coordinated_readiness)
+        assert started.wait(BLOCKING_CHECK_SECONDS)
+        second = executor.submit(_coordinated_readiness)
+        time.sleep(CANCELLATION_SETTLE_SECONDS)
+        release.set()
+        first_result = first.result()
+        second_result = second.result()
+
+    assert calls == 1
+    assert first_result is expected
+    assert second_result is expected
+
+
+@pytest.mark.unit
+def test_completed_collection_callback_does_not_deadlock_election(
+    mocker: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Register completion outside the coordinator lock for an already-done future.
+
+    Makes executor submission return completed work before callback registration and requires the
+    callback to clear ownership without blocking on the electing thread's lock.
+
+    Arguments:
+        mocker: Fixture replacing aggregate executor submission.
+        monkeypatch: Fixture replacing process-wide coordinator state.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If callback registration deadlocks or loses the completed result.
+    """
+    expected = (("dependency", ReadinessResult(error=None, time_taken=0.1)),)
+    future: Future[tuple[tuple[str, ReadinessResult], ...]] = Future()
+    future.set_result(expected)
+    state = ReadinessCoordinatorState()
+    observed: list[tuple[tuple[str, ReadinessResult], ...]] = []
+    mocker.patch.object(
+        health_module.readiness_collection_executor,
+        "submit",
+        return_value=future,
+    )
+    monkeypatch.setattr(health_module, "readiness_coordinator_state", state)
+
+    def collect() -> None:
+        """Capture coordinated readiness on a daemon regression thread.
+
+        Allows the test to detect lock re-entry without leaving a non-daemon blocked worker that
+        prevents pytest from exiting.
+
+        Arguments:
+            None.
+
+        Returns:
+            None.
+
+        Raises:
+            BaseException: If coordinated collection unexpectedly fails.
+        """
+        observed.append(_coordinated_readiness())
+
+    caller = threading.Thread(target=collect, daemon=True)
+    caller.start()
+    caller.join(timeout=BLOCKING_CHECK_SECONDS)
+
+    assert not caller.is_alive()
+    assert observed == [expected]
+    assert state.future is None
+
+
+@pytest.mark.unit
+def test_readiness_coordination_timeout_returns_stable_unavailability(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Bound elected and joining callers without duplicating stalled collection.
+
+    Stalls one background collection past the response deadline, requires both leader and joiner
+    calls to return stable unavailability, then requires the next request to start fresh work.
+
+    Arguments:
+        monkeypatch: Fixture replacing coordinator state, deadline, and dependency inventory.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If timeouts duplicate active work, omit the dependency, or reuse stale work.
+    """
+    started = threading.Event()
+    release = threading.Event()
+    calls = 0
+    expected = (("dependency", ReadinessResult(error=None, time_taken=0.1)),)
+    state = ReadinessCoordinatorState()
+
+    async def collect() -> tuple[tuple[str, ReadinessResult], ...]:
+        """Hold one elected collection until the test releases it.
+
+        Records one background invocation and keeps its shared future incomplete across both
+        response-deadline assertions.
+
+        Arguments:
+            None.
+
+        Returns:
+            Stable successful dependency result.
+
+        Raises:
+            AssertionError: If the release signal does not arrive.
+        """
+        nonlocal calls
+        calls += 1
+        started.set()
+        released = await asyncio.to_thread(release.wait, BLOCKING_CHECK_SECONDS)
+        assert released
+        return expected
+
+    monkeypatch.setattr(health_module, "readiness_coordinator_state", state)
+    monkeypatch.setattr(health_module, "_collect_readiness", collect)
+    monkeypatch.setattr(
+        health_module,
+        "HEALTH_CHECK_COORDINATION_TIMEOUT_SECONDS",
+        PROBE_TIMEOUT_SECONDS,
+    )
+    monkeypatch.setattr(
+        health_module,
+        "_readiness_checks",
+        lambda: (("dependency", SynchronousReadinessProbe()),),
+    )
+
+    try:
+        elected_timeout = _coordinated_readiness()
+        assert started.wait(BLOCKING_CHECK_SECONDS)
+        joining_timeout = _coordinated_readiness()
+        assert calls == 1
+        assert all(result.error is not None for _name, result in elected_timeout)
+        assert all(result.error is not None for _name, result in joining_timeout)
+    finally:
+        release.set()
+
+    deadline = time.monotonic() + BLOCKING_CHECK_SECONDS
+    while state.future is not None and time.monotonic() < deadline:
+        time.sleep(PROBE_TIMEOUT_SECONDS)
+    assert state.future is None
+
+    monkeypatch.setattr(
+        health_module,
+        "HEALTH_CHECK_COORDINATION_TIMEOUT_SECONDS",
+        BLOCKING_CHECK_SECONDS,
+    )
+    completed = _coordinated_readiness()
+
+    assert completed is expected
+    assert calls == TIMEOUT_RECOVERY_COLLECTION_CALLS
+    assert state.future is None
+
+
+@pytest.mark.unit
+def test_readiness_coordinator_releases_waiters_after_programming_defect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Release aggregate ownership when collection raises unexpectedly.
+
+    Replaces dependency collection with a programming defect and requires coordinator state to
+    permit a later request rather than remaining permanently occupied.
+
+    Arguments:
+        monkeypatch: Fixture replacing coordinator state and dependency collection.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the programming defect is hidden or ownership remains held.
+    """
+    state = ReadinessCoordinatorState()
+
+    async def fail() -> tuple[tuple[str, ReadinessResult], ...]:
+        """Raise one aggregate programming defect.
+
+        Supplies the unexpected collector failure needed to prove process-wide ownership releases
+        before the exception reaches the request.
+
+        Arguments:
+            None.
+
+        Returns:
+            Never returns.
+
+        Raises:
+            RuntimeError: Always.
+        """
+        message = "aggregate readiness defect"
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(health_module, "readiness_coordinator_state", state)
+    monkeypatch.setattr(health_module, "_collect_readiness", fail)
+
+    with pytest.raises(RuntimeError, match="aggregate readiness defect"):
+        _coordinated_readiness()
+
+    assert state.future is None
+
+
+@pytest.mark.unit
+def test_readiness_collector_timeout_error_clears_ownership(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Propagate collector-raised timeout instead of treating it as wait expiry.
+
+    Makes the completed aggregate future raise built-in ``TimeoutError`` and requires coordinator
+    ownership to clear so later readiness requests can elect new work.
+
+    Arguments:
+        monkeypatch: Fixture replacing coordinator state and dependency collection.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If timeout is hidden as synthetic unavailability or ownership remains held.
+    """
+    state = ReadinessCoordinatorState()
+
+    async def fail() -> tuple[tuple[str, ReadinessResult], ...]:
+        """Raise one collector-owned timeout defect.
+
+        Distinguishes an exception stored in a completed future from the response wait reaching its
+        deadline.
+
+        Arguments:
+            None.
+
+        Returns:
+            Never returns.
+
+        Raises:
+            TimeoutError: Always.
+        """
+        message = "collector timeout defect"
+        raise TimeoutError(message)
+
+    monkeypatch.setattr(health_module, "readiness_coordinator_state", state)
+    monkeypatch.setattr(health_module, "_collect_readiness", fail)
+
+    with pytest.raises(TimeoutError, match="collector timeout defect"):
+        _coordinated_readiness()
+
+    assert state.future is None
+
+
+@pytest.mark.unit
+def test_readiness_completion_at_deadline_returns_shared_result(
+    mocker: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Return a result that completes as the response wait reaches its deadline.
+
+    Simulates the timed wait reporting expiry immediately before the future becomes observably done,
+    requiring a nonblocking second read to return completion and clear ownership.
+
+    Arguments:
+        mocker: Fixture controlling future completion observations.
+        monkeypatch: Fixture replacing process-wide coordinator state.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If completed evidence becomes synthetic unavailability.
+    """
+    expected = (("dependency", ReadinessResult(error=None, time_taken=0.1)),)
+    future: Future[tuple[tuple[str, ReadinessResult], ...]] = Future()
+    state = ReadinessCoordinatorState(future=future)
+    calls = 0
+
+    def complete(*, timeout: float | None = None) -> tuple[tuple[str, ReadinessResult], ...]:
+        """Report wait expiry first and successful completion second.
+
+        Releases coordinator ownership on the completed read, matching the callback installed on
+        every production aggregate future.
+
+        Arguments:
+            timeout: Optional response deadline supplied on the first read.
+
+        Returns:
+            Stable completed dependency result on the nonblocking read.
+
+        Raises:
+            TimeoutError: On the first timed read only.
+        """
+        nonlocal calls
+        calls += 1
+        if timeout is not None:
+            raise TimeoutError
+        _release_readiness_collection(future)
+        return expected
+
+    result = mocker.patch.object(future, "result", side_effect=complete)
+    mocker.patch.object(future, "done", return_value=True)
+    monkeypatch.setattr(health_module, "readiness_coordinator_state", state)
+
+    completed = _coordinated_readiness()
+
+    assert completed is expected
+    assert state.future is None
+    assert result.call_count == TIMEOUT_RACE_RESULT_CALLS
+
+
+@pytest.mark.unit
+def test_readiness_stale_timeout_preserves_replacement_collection(
+    mocker: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep newer ownership when an old future completes with timeout failure.
+
+    Makes the timed read observe deadline expiry while installing replacement work, then makes the
+    completed future expose its own timeout defect without clearing that replacement.
+
+    Arguments:
+        mocker: Fixture controlling old future completion behavior.
+        monkeypatch: Fixture replacing process-wide coordinator state.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If timeout is hidden or replacement ownership is cleared.
+    """
+    old: Future[tuple[tuple[str, ReadinessResult], ...]] = Future()
+    replacement: Future[tuple[tuple[str, ReadinessResult], ...]] = Future()
+    state = ReadinessCoordinatorState(future=old)
+
+    def result(*, timeout: float | None = None) -> tuple[tuple[str, ReadinessResult], ...]:
+        """Expose wait expiry first and completed collector timeout second.
+
+        Installs replacement ownership during the timed read, then preserves it while the
+        nonblocking read exposes the old collector's stored exception.
+
+        Arguments:
+            timeout: Optional response deadline supplied on the first read.
+
+        Returns:
+            Never returns.
+
+        Raises:
+            TimeoutError: Always after installing replacement ownership on the timed read.
+        """
+        if timeout is not None:
+            state.future = replacement
+        message = "stale collector timeout"
+        raise TimeoutError(message)
+
+    mocker.patch.object(old, "result", side_effect=result)
+    mocker.patch.object(old, "done", return_value=True)
+    monkeypatch.setattr(health_module, "readiness_coordinator_state", state)
+
+    with pytest.raises(TimeoutError, match="stale collector timeout"):
+        _coordinated_readiness()
+
+    _release_readiness_collection(old)
+    assert state.future is replacement
+
+
+@pytest.mark.unit
+def test_readiness_old_failure_preserves_replacement_collection(
+    mocker: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep a newer collection when an older shared future fails.
+
+    Replaces coordinator ownership while the observed future reports a programming defect, proving
+    the stale caller cannot clear work elected by a later request.
+
+    Arguments:
+        mocker: Fixture replacing the old future result operation.
+        monkeypatch: Fixture replacing process-wide coordinator state.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the defect is hidden or replacement ownership is cleared.
+    """
+    old: Future[tuple[tuple[str, ReadinessResult], ...]] = Future()
+    replacement: Future[tuple[tuple[str, ReadinessResult], ...]] = Future()
+    state = ReadinessCoordinatorState(future=old)
+
+    def fail(*, timeout: float | None = None) -> tuple[tuple[str, ReadinessResult], ...]:
+        """Install replacement ownership before exposing the old failure.
+
+        Simulates another request electing new work between the stale caller observing its future
+        and handling that future's exception.
+
+        Arguments:
+            timeout: Response deadline supplied by the coordinator.
+
+        Returns:
+            Never returns.
+
+        Raises:
+            RuntimeError: Always after replacing coordinator ownership.
+        """
+        assert timeout == health_module.HEALTH_CHECK_COORDINATION_TIMEOUT_SECONDS
+        state.future = replacement
+        message = "stale readiness defect"
+        raise RuntimeError(message)
+
+    mocker.patch.object(old, "result", side_effect=fail)
+    monkeypatch.setattr(health_module, "readiness_coordinator_state", state)
+
+    with pytest.raises(RuntimeError, match="stale readiness defect"):
+        _coordinated_readiness()
+
+    _release_readiness_collection(old)
+    assert state.future is replacement
 
 
 @pytest.mark.unit
@@ -642,10 +1118,10 @@ def test_mail_readiness_reuses_one_recent_success(
 def test_mail_readiness_reuses_success_completed_before_lock_acquisition(
     mocker: MockerFixture,
 ) -> None:
-    """Reuse SMTP evidence completed between the optimistic check and lock acquisition.
+    """Reuse SMTP evidence completed while waiting for the probe lock.
 
-    Updates cached state while the lock is acquired and requires the waiting check to return without
-    opening a duplicate connection.
+    Updates cached state when blocking lock acquisition completes and requires the waiting check to
+    return without opening a duplicate connection.
 
     Arguments:
         mocker: Fixture controlling cached state, locking, time, and the mail factory.
@@ -654,70 +1130,23 @@ def test_mail_readiness_reuses_success_completed_before_lock_acquisition(
         None.
 
     Raises:
-        AssertionError: If the second cache check reaches SMTP or leaves the lock held.
+        AssertionError: If the second cache check reaches SMTP or bypasses blocking lock ownership.
     """
-    lock = Mock()
-
-    def acquire(*, blocking: bool) -> bool:
-        """Record completed SMTP evidence while granting the lock.
-
-        Simulates another probe finishing after the optimistic cache read but before this caller
-        owns the lock.
-
-        Arguments:
-            blocking: Whether lock acquisition may wait.
-
-        Returns:
-            True after recording recent evidence.
-
-        Raises:
-            AssertionError: If production requests blocking acquisition.
-        """
-        assert not blocking
-        health_module.mail_readiness_state.success_at = 90.0
-        return True
-
-    lock.acquire.side_effect = acquire
+    lock = threading.Lock()
     mocker.patch.object(health_module.mail_readiness_state, "lock", lock)
     mocker.patch.object(health_module.mail_readiness_state, "success_at", None)
     mocker.patch("config.health.time.monotonic", return_value=100.0)
     get_connection = mocker.patch("config.health.get_connection")
     check = MailReadinessCheck(backend="django.core.mail.backends.smtp.EmailBackend")
+    lock.acquire()
 
-    check.run()
-
-    get_connection.assert_not_called()
-    lock.release.assert_called_once_with()
-
-
-@pytest.mark.unit
-def test_mail_readiness_rejects_overlapping_uncached_probe(
-    mocker: MockerFixture,
-) -> None:
-    """Reject an overlapping SMTP probe without retaining another executor worker.
-
-    Holds the process-wide probe lock without a cached success and requires the second check to
-    fail before opening a connection.
-
-    Arguments:
-        mocker: Fixture controlling cached state and the mail factory.
-
-    Returns:
-        None.
-
-    Raises:
-        AssertionError: If the overlapping check waits or reaches SMTP.
-    """
-    mocker.patch.object(health_module.mail_readiness_state, "success_at", None)
-    get_connection = mocker.patch("config.health.get_connection")
-    check = MailReadinessCheck(backend="django.core.mail.backends.smtp.EmailBackend")
-    health_module.mail_readiness_state.lock.acquire()
-
-    try:
-        with pytest.raises(ServiceUnavailable, match="already running"):
-            check.run()
-    finally:
-        health_module.mail_readiness_state.lock.release()
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        waiting = executor.submit(check.run)
+        time.sleep(CANCELLATION_SETTLE_SECONDS)
+        assert not waiting.done()
+        health_module.mail_readiness_state.success_at = 90.0
+        lock.release()
+        waiting.result()
 
     get_connection.assert_not_called()
 
@@ -745,7 +1174,7 @@ def test_mail_readiness_refreshes_an_expired_success(
     mocker.patch.object(health_module.mail_readiness_state, "success_at", 100.0)
     mocker.patch(
         "config.health.time.monotonic",
-        side_effect=(161.0, 161.0, REFRESHED_MAIL_READINESS_TIME),
+        side_effect=(161.0, REFRESHED_MAIL_READINESS_TIME),
     )
     get_connection = mocker.patch("config.health.get_connection", return_value=connection)
     check = MailReadinessCheck(backend="django.core.mail.backends.smtp.EmailBackend")

@@ -6,6 +6,8 @@ balancers receive bounded machine-readable readiness without infrastructure deta
 
 import secrets
 import smtplib
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 from importlib import import_module
 from typing import TYPE_CHECKING, Any, cast
@@ -13,17 +15,18 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from django.conf import settings
-from django.test import override_settings
+from django.test import Client, override_settings
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
+import config.health as health_module
 from config.api import ErrorCode
+from config.health import ReadinessCoordinatorState
 from config.logs import REQUEST_ID_HEADER
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Protocol
 
-    from django.test import Client
     from pytest_mock import MockerFixture
 
     from accounts.models import User
@@ -69,6 +72,8 @@ EXPECTED_CHECKS = {
     "mail",
     "object_storage",
 }
+CONCURRENT_HEALTH_REQUESTS = 8
+CONCURRENT_HEALTH_TIMEOUT_SECONDS = 15
 
 
 def _documented_health_example(status: HTTPStatus) -> dict[str, object]:
@@ -138,6 +143,73 @@ def test_health_route_reports_every_required_dependency(client: Client) -> None:
         "readiness": "ready",
         "checks": dict.fromkeys(sorted(EXPECTED_CHECKS), "working"),
     }
+
+
+@pytest.mark.integration
+@pytest.mark.services(
+    "postgres",
+    "valkey-cache",
+    "valkey-channels",
+    "rabbitmq",
+    "seaweedfs",
+)
+@pytest.mark.django_db(transaction=True)
+def test_health_route_coalesces_overlapping_pollers(
+    mocker: MockerFixture,
+) -> None:
+    """Return one shared ready result to concurrent health pollers.
+
+    Starts eight requests together with stale mail evidence, reproducing Docker and Traefik overlap
+    while requiring one aggregate dependency collection and no capacity-shaped 503 response.
+
+    Arguments:
+        mocker: Fixture isolating coordinator and mail cache state while spying on collection.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If requests duplicate collection or report false dependency unavailability.
+    """
+    state = ReadinessCoordinatorState()
+    mocker.patch.object(health_module, "readiness_coordinator_state", state)
+    mocker.patch.object(health_module.mail_readiness_state, "success_at", None)
+    collect = mocker.spy(health_module, "_collect_readiness")
+    barrier = threading.Barrier(CONCURRENT_HEALTH_REQUESTS)
+
+    def request_health() -> tuple[int, dict[str, Any]]:
+        """Request readiness after every polling thread is prepared.
+
+        Uses an independent Django client per thread and returns only after the barrier creates the
+        overlapping load-balancer request pattern.
+
+        Arguments:
+            None.
+
+        Returns:
+            HTTP status and parsed readiness body.
+
+        Raises:
+            threading.BrokenBarrierError: If pollers do not become concurrent.
+        """
+        barrier.wait(timeout=CONCURRENT_HEALTH_TIMEOUT_SECONDS)
+        response = Client().get("/health/", headers={"accept": "application/json"})
+        return response.status_code, cast("dict[str, Any]", response.json())
+
+    with ThreadPoolExecutor(max_workers=CONCURRENT_HEALTH_REQUESTS) as executor:
+        results = list(
+            executor.map(
+                lambda _index: request_health(),
+                range(CONCURRENT_HEALTH_REQUESTS),
+            )
+        )
+
+    assert collect.call_count == 1
+    assert {status for status, _payload in results} == {HTTPStatus.OK}
+    assert all(
+        payload["checks"] == dict.fromkeys(sorted(EXPECTED_CHECKS), "working")
+        for _, payload in results
+    )
 
 
 @pytest.mark.integration

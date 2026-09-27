@@ -625,7 +625,7 @@ def test_logging_emits_structured_records_to_standard_output() -> None:
 
     assert handler["stream"] == "ext://sys.stdout"
     assert handler["formatter"] == "structured"
-    assert handler["filters"] == ["request_context"]
+    assert handler["filters"] == ["request_context", "not_found_request"]
     assert formatter["()"] == "config.logs.StructuredFormatter"
     assert logging_configuration["root"]["level"] == os.environ.get("DJANGO_LOG_LEVEL", "INFO")
     assert logging_configuration["loggers"]["uvicorn"]["handlers"] == ["stdout"]

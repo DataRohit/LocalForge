@@ -794,6 +794,9 @@ LOGGING: dict[str, Any] = {
         "request_context": {
             "()": "config.logs.RequestContextFilter",
         },
+        "not_found_request": {
+            "()": "config.logs.NotFoundRequestFilter",
+        },
         "task_arguments": {
             "()": "config.logs.TaskArgumentRedactionFilter",
         },
@@ -803,7 +806,7 @@ LOGGING: dict[str, Any] = {
             "class": "logging.StreamHandler",
             "stream": "ext://sys.stdout",
             "formatter": "structured",
-            "filters": ["request_context"],
+            "filters": ["request_context", "not_found_request"],
         },
         "queue": {
             "class": "logging.StreamHandler",

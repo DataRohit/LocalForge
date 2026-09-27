@@ -11,6 +11,7 @@ import inspect
 import smtplib
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from contextlib import nullcontext, suppress
 from contextvars import copy_context
 from dataclasses import dataclass, field
@@ -134,6 +135,7 @@ Result = TypeVar("Result")
 HEALTH_CHECK_WORKERS = 5
 HEALTH_CHECK_STATEMENT_TIMEOUT_MILLISECONDS = 5000
 HEALTH_CHECK_CLIENT_TIMEOUT_SECONDS = 6.0
+HEALTH_CHECK_COORDINATION_TIMEOUT_SECONDS = 8.0
 HEALTH_CHECK_NETWORK_TIMEOUT_SECONDS = 2.0
 HEALTH_CHECK_MAIL_ATTEMPTS = 2
 HEALTH_CHECK_MAIL_SUCCESS_TTL_SECONDS = 60.0
@@ -477,8 +479,8 @@ class MailReadinessCheck:
     def run(self) -> None:
         """Open and close the configured email backend.
 
-        Reuses one recent success, rejects overlapping uncached probes, and retries one transient
-        failure without retaining multiple bounded executor workers behind the SMTP lock.
+        Reuses one recent success and retries one transient failure while process-wide aggregate
+        coordination prevents multiple readiness requests from reaching the SMTP lock together.
 
         Arguments:
             None.
@@ -489,17 +491,7 @@ class MailReadinessCheck:
         Raises:
             ServiceUnavailable: If the backend cannot open or close successfully.
         """
-        now = time.monotonic()
-        if (
-            mail_readiness_state.success_at is not None
-            and now - mail_readiness_state.success_at < HEALTH_CHECK_MAIL_SUCCESS_TTL_SECONDS
-        ):
-            return
-        if not mail_readiness_state.lock.acquire(blocking=False):
-            message = "Mail readiness check already running"
-            raise ServiceUnavailable(message)
-
-        try:
+        with mail_readiness_state.lock:
             now = time.monotonic()
             if (
                 mail_readiness_state.success_at is not None
@@ -533,8 +525,6 @@ class MailReadinessCheck:
                 last_failure = attempt_failure
 
             raise last_failure
-        finally:
-            mail_readiness_state.lock.release()
 
 
 async def _execute_database_probe(
@@ -720,6 +710,29 @@ class ReadinessResult:
     time_taken: float
 
 
+@dataclass(slots=True)
+class ReadinessCoordinatorState:
+    """Coordinate one process-wide dependency probe across health pollers.
+
+    Serializes aggregate readiness collection rather than its individual worker calls, allowing
+    Docker, Traefik, and operator requests that overlap to reuse one completed result.
+
+    Attributes:
+        lock: Mutual exclusion around shared collection ownership.
+        future: Active or completed aggregate collection shared by overlapping request threads.
+
+    Members:
+        None.
+    """
+
+    lock: Lock = field(default_factory=Lock)
+    future: Future[tuple[tuple[str, ReadinessResult], ...]] | None = None
+
+
+readiness_coordinator_state = ReadinessCoordinatorState()
+readiness_collection_executor = ContextPreservingThreadPoolExecutor(max_workers=1)
+
+
 def _readiness_checks() -> tuple[tuple[str, ReadinessCheck], ...]:
     """Build the dependency checks from current settings.
 
@@ -866,6 +879,113 @@ async def _collect_readiness() -> tuple[tuple[str, ReadinessResult], ...]:
     return tuple((name, result) for (name, _check), result in zip(checks, results, strict=True))
 
 
+def _coordination_timeout_result(
+    elapsed: float,
+) -> tuple[tuple[str, ReadinessResult], ...]:
+    """Build stable unavailability when an aggregate probe exceeds its outer deadline.
+
+    Preserves bounded load under a genuinely stalled leader without starting duplicate dependency
+    work or exposing which internal operation retained ownership.
+
+    Arguments:
+        elapsed: Time already spent waiting for the active aggregate probe.
+
+    Returns:
+        One unavailable result for every configured dependency.
+
+    Raises:
+        KeyError: If required service configuration is absent.
+    """
+    unavailable = ServiceUnavailable("Readiness coordination timed out")
+    return tuple(
+        (
+            name,
+            ReadinessResult(
+                error=unavailable,
+                time_taken=elapsed,
+            ),
+        )
+        for name, _check in _readiness_checks()
+    )
+
+
+def _collect_readiness_synchronously() -> tuple[tuple[str, ReadinessResult], ...]:
+    """Run aggregate asynchronous collection inside its coordinator worker.
+
+    Gives the process-wide future one stable synchronous callable while preserving the request
+    context captured by the coordinator executor.
+
+    Arguments:
+        None.
+
+    Returns:
+        Stable dependency names paired with completed health-check results.
+
+    Raises:
+        BaseException: If dependency collection exposes an unexpected programming defect.
+    """
+    return async_to_sync(_collect_readiness)()
+
+
+def _release_readiness_collection(
+    completed: Future[tuple[tuple[str, ReadinessResult], ...]],
+) -> None:
+    """Release aggregate ownership as soon as its background future completes.
+
+    Clears only the future still owned by this completion, preventing late success or failure from
+    replacing fresher work elected after another caller observed completion.
+
+    Arguments:
+        completed: Aggregate collection future that reached a terminal state.
+
+    Returns:
+        None.
+
+    Raises:
+        None.
+    """
+    state = readiness_coordinator_state
+    with state.lock:
+        if state.future is completed:
+            state.future = None
+
+
+def _coordinated_readiness() -> tuple[tuple[str, ReadinessResult], ...]:
+    """Run or join one process-wide aggregate readiness probe.
+
+    Makes overlapping Docker, Traefik, and operator requests wait for the same bounded collection,
+    preventing duplicate probes from exhausting the worker pool or contending on dependency locks.
+
+    Arguments:
+        None.
+
+    Returns:
+        Stable dependency names paired with one shared collection result.
+
+    Raises:
+        BaseException: If the elected collector encounters an unexpected programming defect.
+    """
+    started = time.monotonic()
+    state = readiness_coordinator_state
+    elected = False
+    with state.lock:
+        future = state.future
+        if future is None:
+            future = readiness_collection_executor.submit(_collect_readiness_synchronously)
+            state.future = future
+            elected = True
+    if elected:
+        future.add_done_callback(_release_readiness_collection)
+
+    try:
+        result = future.result(timeout=HEALTH_CHECK_COORDINATION_TIMEOUT_SECONDS)
+    except FutureTimeoutError:
+        if not future.done():
+            return _coordination_timeout_result(time.monotonic() - started)
+        result = future.result()
+    return result
+
+
 @extend_schema(
     operation_id="health_readiness",
     summary="Check application readiness",
@@ -989,7 +1109,7 @@ def readiness_get(_view: object, request: ReadinessRequest) -> JsonResponse:
         BaseException: If a readiness probe raises an unexpected programming defect after every
             sibling probe finishes.
     """
-    results = async_to_sync(_collect_readiness)()
+    results = _coordinated_readiness()
     checks = {name: "unavailable" if result.error else "working" for name, result in results}
     ready = all(state == "working" for state in checks.values())
     state = "ready" if ready else "not_ready"

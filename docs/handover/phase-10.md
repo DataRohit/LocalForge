@@ -43,10 +43,16 @@ route and provider ownership. No Tunnel token or Resend key is copied into this 
   localforge-dev logs --since 2s --no-color` window after the final exercise was clean; affected containers had no
   unexplained warning-or-higher records, restarts, unhealthy state, public operator access, or credential disclosure.
 - Final verification after source-matched development and testing rebuilds passed the 33-test security-audit module.
-  The clean-start rebuilt container and host suites each completed 2,170 collections (2,147 core plus 23 timing),
+  The clean-start rebuilt container and host suites each completed 2,181 collections (2,158 core plus 23 timing),
   with 100% core coverage and status 0. After the complete host suite, five additional independent
   production-shaped registration timing processes passed through isolated RabbitMQ queues. Mailpit remained isolated
   from Resend and outside the measured registration response.
+- Eight simultaneous stale-cache `/health/` requests all returned `200` with one shared dependency collection.
+  Docker and Traefik polling remained healthy through repeated mail-cache expiry, with no capacity-shaped `503`,
+  false dependency state, or failure-level bounded log record.
+- Public scanner requests for unknown paths such as `/wp-admin/install.php` remain correlated `404` responses but
+  log at `INFO`, not `WARNING`; malformed, denied, throttled, unavailable, and server-failure outcomes retain their
+  documented higher severity.
 
 ## Secret ownership and rotation
 
