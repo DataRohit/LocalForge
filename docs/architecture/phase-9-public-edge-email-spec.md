@@ -1,4 +1,4 @@
-# Phase 10 public edge and email specification
+# Phase 9 public edge and email specification
 
 ## Problem Statement
 
@@ -60,4 +60,4 @@ canonical apex and `www` redirects, secret rotation, and external runtime verifi
 ## Further Notes
 
 Implementation must reconcile the former local-only and no-hosted-service statements before runtime changes land. The
-Cloudflare popup's DMARC, apex, and `www` recommendations are Phase 10 acceptance concerns, not optional cleanup.
+Cloudflare popup's DMARC, apex, and `www` recommendations are Phase 9 acceptance concerns, not optional cleanup.

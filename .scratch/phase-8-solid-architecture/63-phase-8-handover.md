@@ -17,7 +17,7 @@ each change improved the design, and how platform behaviour was preserved.
 - [Phase 7 handover](../../docs/handover/phase-7.md)
 - [Documentation standard](../../docs/platform/documentation-standard.md)
 
-**Status:** complete
+**Status:** done
 
 - [x] `docs/handover/phase-8.md` identifies every audited module cluster and summarizes its five-principle
       disposition.

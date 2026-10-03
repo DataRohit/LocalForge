@@ -2,7 +2,7 @@
 
 Authoritative for: the ordered steps, and the pass/fail criterion for each.
 
-This describes work that has **not** been done. Read [../adr/README.md](../adr/README.md),
+This records the ordered build phases and their gates. Read [../adr/README.md](../adr/README.md),
 [../platform/conventions.md](../platform/conventions.md),
 [../platform/service-inventory.md](../platform/service-inventory.md),
 [../platform/kubernetes-mapping.md](../platform/kubernetes-mapping.md), and
@@ -33,7 +33,7 @@ Two constraints that are easy to trip over:
 
 ## 2. Files this plan creates
 
-Listed so scope creep is recognisable. Rows from the completed build now exist; Phase 10 planning adds only the
+Listed so scope creep is recognisable. Rows from the completed build now exist; Phase 9 planning adds only the
 public edge, email, and handover evidence named below.
 
 | Path | Purpose |
@@ -65,11 +65,11 @@ public edge, email, and handover evidence named below.
 | `docs/architecture/solid-audit-plan.md` | Phase 8 interpretation, scope, evidence rules, and gates for the SOLID architecture audit |
 | `docs/architecture/solid-findings.md` | Phase 8 module inventory and evidence-backed finding ledger, completed by ticket 53 |
 | `docs/handover/phase-8.md` | Final SOLID findings, changes, verification, runtime evidence, and deferred work, created by ticket 63 |
-| `docs/adr/0022-public-edge-and-resend.md` | Accepted public deployment and Resend boundary for Phase 10 |
-| `docs/architecture/phase-10-public-edge-email.md` | Phase 10 scope, security boundary, email contract, and gate |
-| `docs/architecture/phase-10-public-edge-email-spec.md` | Phase 10 problem statement, user stories, decisions, and test contract |
-| `docs/runbooks/phase-10-public-edge-email.md` | Phase 10 DNS, Tunnel, email, and rollback runbook |
-| `docs/handover/phase-10.md` | Phase 10 public deployment evidence, secret ownership, rollback procedure, and manual closeout state |
+| `docs/adr/0022-public-edge-and-resend.md` | Accepted public deployment and Resend boundary for Phase 9 |
+| `docs/architecture/phase-9-public-edge-email.md` | Phase 9 scope, security boundary, email contract, and gate |
+| `docs/architecture/phase-9-public-edge-email-spec.md` | Phase 9 problem statement, user stories, decisions, and test contract |
+| `docs/runbooks/phase-9-public-edge-email.md` | Phase 9 DNS, Tunnel, email, and rollback runbook |
+| `docs/handover/phase-9.md` | Phase 9 public deployment evidence, secret ownership, rollback procedure, and manual closeout state |
 | `docs/platform/documentation-standard.md` | The worked reference for the docstring standard the checker enforces |
 | `.env.example` | Committed variable manifest, placeholders only |
 | `.env.development.sops`, `.env.testing.sops` | Committed encrypted env files |
@@ -112,7 +112,7 @@ public edge, email, and handover evidence named below.
 
 ## 3. Phases
 
-Ten phases. **A phase may not begin until the previous gate passes.** If a gate fails, stop and fix it. Never
+Nine phases. **A phase may not begin until the previous gate passes.** If a gate fails, stop and fix it. Never
 weaken a gate to make it pass.
 
 Every phase gate that starts or changes a runtime service also applies the
@@ -363,11 +363,11 @@ Pass: both exit `0`; no anonymous volumes in the project; no `_default` network;
 
 Fail: fix the Compose file, recreate the affected service, re-run the **full** audit.
 
-### Phase 9 — Hand over to the ticket set
+### Ticket set handover
 
 The platform is now running, integrated, and audited. **Stop building infrastructure here** and continue from
-[.scratch/README.md](../../.scratch/README.md), where ticket phases 4 through 8 deliver the application surface,
-the full test and audit passes, and the evidence-led SOLID architecture audit.
+[.scratch/README.md](../../.scratch/README.md), where ticket phases 4 through 9 deliver the application surface,
+the full test and audit passes, the evidence-led SOLID architecture audit, and the public edge and email.
 
 Do not start a route, model, or feature outside the fixed surface listed in [AGENTS.md](../../AGENTS.md).
 
@@ -380,12 +380,12 @@ Report before handing over: every file created, grouped by Section 2; how each r
 pinned version that had moved since 2026-09-13, with its new release date; the phase 8 audit output; and anything
 in `docs/` that turned out to be wrong.
 
-### Phase 10 — Public edge and transactional email
+### Phase 9 — Public edge and transactional email
 
-Phase 10 publishes the existing Docker deployment through Cloudflare Tunnel and adds Resend for development email.
+Phase 9 publishes the existing Docker deployment through Cloudflare Tunnel and adds Resend for development email.
 The authoritative scope, security boundary, email contract, and rollback sequence live in
-[phase-10-public-edge-email.md](../architecture/phase-10-public-edge-email.md) and
-[the runbook](../runbooks/phase-10-public-edge-email.md). Work the Phase 10 tickets in `.scratch/` only after the
+[phase-9-public-edge-email.md](../architecture/phase-9-public-edge-email.md) and
+[the runbook](../runbooks/phase-9-public-edge-email.md). Work the Phase 9 tickets in `.scratch/` only after the
 Phase 8 handover is complete.
 
 Gate: external DNS and TLS reach only `localforge.datarohit.com`; `/health/`, authenticated REST, and authenticated
@@ -393,7 +393,7 @@ WebSocket flows work through the Tunnel; development email sends through Resend 
 `no-reply@localforge.datarohit.com`; testing still uses Mailpit; operator surfaces and secrets remain private; and
 the affected runtime log window is clean.
 
-The prepared operator record is [docs/handover/phase-10.md](../handover/phase-10.md). Phase 10 remains open for the
+The prepared operator record is [docs/handover/phase-9.md](../handover/phase-9.md). Phase 9 remains open for the
 controlled post-remediation inbox/junk placement check and rollback rehearsal recorded there; no new scope starts
 until that closeout or a new governing document and ticket set exists.
 

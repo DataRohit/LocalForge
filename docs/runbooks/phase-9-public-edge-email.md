@@ -1,7 +1,7 @@
-# Phase 10 public edge and email runbook
+# Phase 9 public edge and email runbook
 
 This runbook records the operator sequence for the public LocalForge deployment. The completed evidence is in the
-[Phase 10 handover](../handover/phase-10.md); use this runbook for reproduction, rotation, and rollback.
+[Phase 9 handover](../handover/phase-9.md); use this runbook for reproduction, rotation, and rollback.
 
 ## Prerequisites
 

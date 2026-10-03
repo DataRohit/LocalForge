@@ -82,7 +82,7 @@ Exactly two, and there is no third.
 2. The stack runs with no internet access. Only image pulls, image builds, and dependency resolution touch the
    network, once.
 3. Application and agent traffic stays local by default. The only approved external boundaries are the documented
-   Phase 10 Cloudflare Tunnel public edge and Resend development email; use no other hosted gateways, telemetry,
+   Phase 9 Cloudflare Tunnel public edge and Resend development email; use no other hosted gateways, telemetry,
    dashboards, or external SaaS integrations.
 4. Every service is integrated with Django and verified end to end before the next one starts.
 5. Kubernetes is reasoning-only. Create no cluster, write no manifests, apply nothing.
@@ -172,8 +172,8 @@ means adding a registry row in a documentation change first.
 
 ## Phase order
 
-Nine build-plan phases with explicit gates, in [docs/build/plan.md](./docs/build/plan.md) Section 3, delivered by
-the 63 tickets in [.scratch/](./.scratch/README.md), grouped into 8 ticket phases:
+Nine sequential ticket phases with explicit gates, in [docs/build/plan.md](./docs/build/plan.md) Section 3 and
+the 70-ticket index in [.scratch/](./.scratch/README.md):
 
 | Ticket phase | Delivers                                                                             |
 | ------------ | ------------------------------------------------------------------------------------ |
@@ -185,6 +185,7 @@ the 63 tickets in [.scratch/](./.scratch/README.md), grouped into 8 ticket phase
 | 6            | Async services: worker, scheduler, dashboard, async email, event fan-out             |
 | 7            | Testing and audit: both modes in parallel, convention and security audits            |
 | 8            | SOLID architecture: evidence-led audit, focused improvements, final verification     |
+| 9            | Public edge/email: Cloudflare, Resend, DNS, runtime verification                     |
 
 Infrastructure comes first, then the project is brought up to meet it, then Django is wired to each running
 service, then the application is built on top. Do not build the application against services that are not yet
@@ -237,7 +238,7 @@ These predate this work.
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | Which workflow or skill fits this task                        | **`/ask-matt`**, the router over `.agents/skills/`                                   |
 | What do the words mean                                        | [CONTEXT.md](./CONTEXT.md)                                                           |
-| What should I work on next                                    | [.scratch/README.md](./.scratch/README.md) — 63 tickets, phased, with blockers       |
+| What should I work on next                                    | [.scratch/README.md](./.scratch/README.md) — 70 tickets in 9 sequential phases       |
 | Which tool, and why that one                                  | [docs/adr/](./docs/adr/README.md) — one decision per file, indexed                   |
 | How SOLID applies to this Python project                      | [docs/architecture/solid-audit-plan.md](./docs/architecture/solid-audit-plan.md)     |
 | Names, IDs, variables, secrets, script contracts              | [docs/platform/conventions.md](./docs/platform/conventions.md)                       |

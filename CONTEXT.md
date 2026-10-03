@@ -19,7 +19,7 @@ inside `django-test-dt5qx` against container hostnames. Host mode runs pytest on
 published ports on `127.0.0.1`. Both are required; one passing is not a pass.
 
 There is no separate production Compose environment. A **public deployment** may expose the development Compose stack
-through the controlled Phase 10 edge; it remains the `development` environment and must not expose operator services.
+through the controlled Phase 9 edge; it remains the `development` environment and must not expose operator services.
 
 ## Naming
 

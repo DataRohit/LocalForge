@@ -3,16 +3,18 @@
 **What to build:** Make Cloudflare authoritative for the public LocalForge hostname and sender identity, with root
 email authentication and canonical host redirects documented and verifiable.
 
-**Blocked by:** [64: Public deployment scope and configuration contract](64-public-deployment-scope.md)
+**Blocked by:**
+
+- [64: Public deployment scope and configuration contract](64-public-deployment-scope.md)
 
 **Governing sources:**
 
 - [Public edge and Resend ADR](../../docs/adr/0022-public-edge-and-resend.md)
-- [Phase 10 runbook](../../docs/runbooks/phase-10-public-edge-email.md)
+- [Phase 9 runbook](../../docs/runbooks/phase-9-public-edge-email.md)
 - [Cloudflare DNS documentation](https://developers.cloudflare.com/dns/)
 - [Resend domain documentation](https://resend.com/docs/dashboard/domains/introduction)
 
-**Status:** complete
+**Status:** done
 
 **External evidence (2026-09-25):** Cloudflare is authoritative for `datarohit.com` and the authenticated Resend
 dashboard reports `localforge.datarohit.com` as **Verified** in `ap-northeast-1` (Tokyo), with sending enabled. The

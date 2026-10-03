@@ -1,6 +1,6 @@
 # Conventions
 
-> Deprecated compatibility copy. The authoritative Phase 10 registry is
+> Deprecated compatibility copy. The authoritative Phase 9 registry is
 > [platform/conventions.md](platform/conventions.md); use it for all current names, networks, ports, and variables.
 
 Historical compatibility reference only; see the canonical platform conventions linked above.

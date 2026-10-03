@@ -17,6 +17,11 @@ resolved from the repository, never reconstructed from a ticket title.
    [runtime truth gate](../AGENTS.md#rules) passes for every affected environment and container. Unexplained live
    warnings or errors block completion even when tests pass.
 
+Every ticket uses the same structure: `What to build`, a list-form `Blocked by` section, `Governing sources`, a
+`Status` field, and checked acceptance criteria. `done` means every criterion and gate passed; `pending` means at
+least one criterion or gate remains. Evidence paragraphs may follow the shared fields when a ticket records an audit
+or external verification result.
+
 ## Phase order
 
 Infrastructure first, then the project is brought up to meet it, then Django is wired to each running service, then
@@ -32,7 +37,7 @@ the application surface is built on top.
 | 6 | [phase-6-async-services](./phase-6-async-services) | 42–46 | Celery worker, scheduler, Flower, async email, event fan-out |
 | 7 | [phase-7-testing-and-audit](./phase-7-testing-and-audit) | 47–52 | Full suites in both modes, convention and security audits |
 | 8 | [phase-8-solid-architecture](./phase-8-solid-architecture) | 53–63 | Evidence-led SOLID audit, focused improvements, final verification |
-| 10 | [phase-10-public-edge-email](./phase-10-public-edge-email) | 64–70 | Cloudflare Tunnel edge, Resend development email, DNS security, public runtime verification |
+| 9 | [phase-9-public-edge-email](./phase-9-public-edge-email) | 64–70 | Cloudflare Tunnel edge, Resend development email, DNS security, public runtime verification |
 
 ## Ticket index
 
@@ -104,13 +109,13 @@ search; its title is never used to predict its filename.
 | 61 | [61: Cross-module dependency audit](./phase-8-solid-architecture/61-cross-module-dependency-audit.md) |
 | 62 | [62: Complete SOLID verification](./phase-8-solid-architecture/62-complete-solid-verification.md) |
 | 63 | [63: Phase 8 handover](./phase-8-solid-architecture/63-phase-8-handover.md) |
-| 64 | [64: Public deployment scope and configuration contract](./phase-10-public-edge-email/64-public-deployment-scope.md) |
-| 65 | [65: Cloudflare DNS and email identity](./phase-10-public-edge-email/65-cloudflare-dns-and-email-identity.md) |
-| 66 | [66: Cloudflare Tunnel edge](./phase-10-public-edge-email/66-cloudflared-public-edge.md) |
-| 67 | [67: Resend development transport](./phase-10-public-edge-email/67-resend-development-transport.md) |
-| 68 | [68: Public runtime security hardening](./phase-10-public-edge-email/68-public-runtime-security.md) |
-| 69 | [69: Public runtime truth verification](./phase-10-public-edge-email/69-public-runtime-verification.md) |
-| 70 | [70: Phase 10 handover](./phase-10-public-edge-email/70-phase-10-handover.md) |
+| 64 | [64: Public deployment scope and configuration contract](./phase-9-public-edge-email/64-public-deployment-scope.md) |
+| 65 | [65: Cloudflare DNS and email identity](./phase-9-public-edge-email/65-cloudflare-dns-and-email-identity.md) |
+| 66 | [66: Cloudflare Tunnel edge](./phase-9-public-edge-email/66-cloudflared-public-edge.md) |
+| 67 | [67: Resend development transport](./phase-9-public-edge-email/67-resend-development-transport.md) |
+| 68 | [68: Public runtime security hardening](./phase-9-public-edge-email/68-public-runtime-security.md) |
+| 69 | [69: Public runtime truth verification](./phase-9-public-edge-email/69-public-runtime-verification.md) |
+| 70 | [70: Phase 9 handover](./phase-9-public-edge-email/70-phase-9-handover.md) |
 
 ## Dependency graph
 

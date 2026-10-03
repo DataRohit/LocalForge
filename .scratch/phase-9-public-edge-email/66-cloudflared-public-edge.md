@@ -11,11 +11,11 @@ Tunnel to Traefik, while keeping direct Docker ports and operator services priva
 **Governing sources:**
 
 - [Public edge and Resend ADR](../../docs/adr/0022-public-edge-and-resend.md)
-- [Phase 10 runbook](../../docs/runbooks/phase-10-public-edge-email.md)
+- [Phase 9 runbook](../../docs/runbooks/phase-9-public-edge-email.md)
 - [Cloudflare Tunnel documentation](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
 - [Service inventory](../../docs/platform/service-inventory.md)
 
-**Status:** complete
+**Status:** done
 
 - [x] Add the pinned `docker.io/cloudflare/cloudflared:2026.9.3` service `cloudflared-cf7q2` on `edge-net-ne2vk`.
 - [x] Store the provider credential as native `TUNNEL_TOKEN` in the generated development env file. The earlier

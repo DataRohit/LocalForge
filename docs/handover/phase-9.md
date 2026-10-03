@@ -1,4 +1,4 @@
-# Phase 10 public edge and email handover
+# Phase 9 public edge and email handover
 
 Handover recorded **2026-09-26** after Tickets 64–69. The existing `localforge-dev` Compose deployment is the public
 development deployment; testing remains the separate `localforge-test` Mailpit-backed environment.
@@ -16,7 +16,7 @@ development deployment; testing remains the separate `localforge-test` Mailpit-b
 | DMARC | `_dmarc.datarohit.com`, `p=none`, aggregate review **2026-10-25** |
 | Testing sender | `no-reply@localforge.invalid` through Mailpit |
 
-The exact Resend provider rows are preserved in the [Phase 10 runbook](../runbooks/phase-10-public-edge-email.md).
+The exact Resend provider rows are preserved in the [Phase 9 runbook](../runbooks/phase-9-public-edge-email.md).
 The Tunnel CNAME target is intentionally provider-managed and is not duplicated here; Ticket 66 records the named
 route and provider ownership. No Tunnel token or Resend key is copied into this report.
 
@@ -78,7 +78,7 @@ The rollback sequence is reversible. The supported application-side commands are
 `uv run poe development-rebuild`, and `uv run poe development-health`; Cloudflare DNS, Redirect Rules, Tunnel route,
 and Resend revocation are provider-console actions recorded in the runbook. A live rollback rehearsal was not run:
 no DNS, credential, or data-volume mutation was authorized for this evidence-only handover. The authoritative
-step-by-step procedure remains the [Phase 10 runbook](../runbooks/phase-10-public-edge-email.md).
+step-by-step procedure remains the [Phase 9 runbook](../runbooks/phase-9-public-edge-email.md).
 
 ## Phase gate and stop condition
 

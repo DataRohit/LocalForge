@@ -18,7 +18,7 @@ while the complete SOLID inventory has no unresolved required finding or improve
 - [Security audit](../../docs/security/security-audit.md)
 - [Documentation standard](../../docs/platform/documentation-standard.md)
 
-**Status:** complete
+**Status:** done
 
 - [x] Every inventory row has a final clear, fixed, not-applicable, or justified observation disposition with exact
       source and test evidence.

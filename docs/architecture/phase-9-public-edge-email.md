@@ -1,6 +1,6 @@
-# Phase 10: Public edge and transactional email
+# Phase 9: Public edge and transactional email
 
-Phase 10 turns the verified LocalForge Docker stack into a controlled public deployment. Cloudflare Tunnel carries
+Phase 9 turns the verified LocalForge Docker stack into a controlled public deployment. Cloudflare Tunnel carries
 HTTPS traffic for `localforge.datarohit.com` to the existing Traefik edge. Resend sends development transactional mail
 from `no-reply@localforge.datarohit.com`; Mailpit remains the testing transport.
 

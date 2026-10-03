@@ -15,7 +15,7 @@ testing continues to use Mailpit with no Resend credentials.
 - [Platform conventions](../../docs/platform/conventions.md)
 - [Resend Django integration](https://resend.com/django)
 
-**Status:** complete
+**Status:** done
 
 - [x] Add a domain-scoped Resend sending credential through the secret generator and environment files; never log or
       commit the key.

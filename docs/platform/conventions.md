@@ -60,7 +60,7 @@ unambiguous. The matching validation pattern, used by `scripts/audit_naming.py` 
 [service-inventory.md](./service-inventory.md) Section 6, is `^[a-z][a-z-]*-[a-z2-9]{5}$`.
 
 Every ID is exactly five characters and unique across both environments: **30 containers and 8 networks, 38 IDs, no
-duplicates.** The additional development container is the Phase 10 Cloudflare Tunnel client; it reuses the existing
+duplicates.** The additional development container is the Phase 9 Cloudflare Tunnel client; it reuses the existing
 public edge network and does not create a third environment.
 
 ### 2.2 Development
@@ -457,7 +457,7 @@ report the testing one ready while it was dead.
 ### 3.4 Public deployment profile
 
 The public deployment uses the existing `development` environment and its generated `.env.development` file. It does
-not create a production file or Compose project. These values define the Phase 10 contract before runtime hardening:
+not create a production file or Compose project. These values define the Phase 9 contract before runtime hardening:
 
 | Variable or boundary | Public value | Contract |
 | --- | --- | --- |

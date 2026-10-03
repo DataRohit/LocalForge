@@ -1,6 +1,6 @@
 # Service inventory
 
-> Deprecated compatibility copy. The authoritative Phase 10 inventory is
+> Deprecated compatibility copy. The authoritative Phase 9 inventory is
 > [platform/service-inventory.md](platform/service-inventory.md); use it for all current services, ports, and health checks.
 
 Historical compatibility reference only; see the canonical platform service inventory linked above.

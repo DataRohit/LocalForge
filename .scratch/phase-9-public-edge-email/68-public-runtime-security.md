@@ -14,9 +14,9 @@ while preserving the fixed application surface.
 - [API error contract](../../docs/adr/0018-api-error-contract.md)
 - [WebSocket authentication](../../docs/adr/0019-websocket-authentication.md)
 - [Access zone decision](../../docs/adr/0021-access-zone-for-published-ports.md)
-- [Phase 10 architecture](../../docs/architecture/phase-10-public-edge-email.md)
+- [Phase 9 architecture](../../docs/architecture/phase-9-public-edge-email.md)
 
-**Status:** complete
+**Status:** done
 
 - [x] Enforce `https://localforge.datarohit.com` in host allowlists, CSRF trusted origins, CORS origins, absolute
       account links, and authenticated WebSocket origin checks.

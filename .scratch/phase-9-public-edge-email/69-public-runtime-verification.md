@@ -3,16 +3,18 @@
 **What to build:** Prove the public deployment works end to end from outside the Docker host and remains healthy,
 private, observable, and reversible.
 
-**Blocked by:** [68: Public runtime security hardening](68-public-runtime-security.md)
+**Blocked by:**
+
+- [68: Public runtime security hardening](68-public-runtime-security.md)
 
 **Governing sources:**
 
-- [Phase 10 architecture](../../docs/architecture/phase-10-public-edge-email.md)
-- [Phase 10 runbook](../../docs/runbooks/phase-10-public-edge-email.md)
+- [Phase 9 architecture](../../docs/architecture/phase-9-public-edge-email.md)
+- [Phase 9 runbook](../../docs/runbooks/phase-9-public-edge-email.md)
 - [Service inventory](../../docs/platform/service-inventory.md)
 - [Runtime truth rule](../../AGENTS.md)
 
-**Status:** complete
+**Status:** done
 
 - [x] From an external network, verify DNS, TLS, canonical redirects, `/health/`, API authentication, and an
       authenticated WebSocket exchange through `localforge.datarohit.com`.
