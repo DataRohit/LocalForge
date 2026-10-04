@@ -69,10 +69,9 @@ Trivy 0.68.2 additionally scans the actual filesystem layers of every registered
 
 Images were refreshed at their pinned tags. Locally built images pin base-image digests and every installed Debian
 package version, and Compose disables mutable build provenance attestations so identical inputs retain one image
-identity. Future dependency drift therefore fails the build instead of silently changing the runtime layer. That
-removed all fixable high/critical findings from
-`localforge/django:0.1.0`, `localforge/django-test:0.1.0`, Valkey, RabbitMQ, Traefik, Mailpit, Redis exporter, and
-the remaining clean registered images.
+identity. Future dependency drift therefore fails the build instead of silently changing the runtime layer. The
+current scan records the exact remaining high/critical findings in the reviewed snapshot; the runtime exposure gate
+keeps internal services off public ports.
 
 `environments-setup` rebuilds every local image through cached deterministic layers on each run rather than
 trusting a pre-existing mutable tag. Consecutive no-edit builds reproduced the same three image IDs. The image
@@ -100,18 +99,19 @@ corresponding source is scanned. Any future secret finding fails the policy unle
 documented with its exact path and line coordinates.
 
 The following vulnerability findings remain only in current pinned upstream images and are accepted until the
-upstream project publishes a replacement image; review due **2026-10-06**:
+upstream project publishes a replacement image; the live snapshot and review are due **2026-10-14**:
 
 | Image | Fixable high/critical package findings | Reason pinned past |
 | --- | ---: | --- |
 | `chrislusf/seaweedfs:4.46` | 1 | current pinned upstream release; unsigned administration surfaces are not host-published |
-| `dpage/pgadmin4:9.17` | 2 | current pinned upstream release; authenticated UI is loopback-only |
+| `cloudflare/cloudflared:2026.9.3` | 2 | current pinned upstream release; connector has no host-published port |
+| `dpage/pgadmin4:9.17` | 6 | current pinned upstream release; authenticated UI is loopback-only |
 | `ghcr.io/google/cadvisor:v0.60.5` | 25 | current pinned upstream release; no host publication |
-| `grafana/alloy:v1.19.2` | 2 | current pinned upstream release; no host publication |
+| `grafana/alloy:v1.19.2` | 4 | current pinned upstream release; no host publication |
 | `grafana/grafana-oss:13.0.2` | 84 | current pinned upstream release; authenticated UI is loopback-only |
 | `grafana/loki:3.7.7` | 10 | current pinned upstream release; no host publication |
-| `localforge/pgbackrest:18.6` | 22 | rebuilt from the current PostgreSQL 18.6 base; remaining records originate in that base |
-| `postgres:18.6` | 22 | current pinned upstream release; database ports are loopback-only |
+| `localforge/pgbackrest:18.6` | 29 | rebuilt from the current PostgreSQL 18.6 base; remaining records originate in that base |
+| `postgres:18.6` | 29 | current pinned upstream release; database ports are loopback-only |
 | `prom/prometheus:v3.14.0` | 6 | current pinned upstream release; no host publication |
 | `quay.io/prometheuscommunity/postgres-exporter:v0.20.1` | 12 | current pinned upstream release; no host publication |
 
