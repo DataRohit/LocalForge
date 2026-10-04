@@ -52,21 +52,23 @@ repos:
     hooks:
       - id: ruff-check
         name: ruff check
-        entry: uv run ruff check --fix
+        entry: uv run --project backend poe -C backend lint
         language: system
+        pass_filenames: false
         types:
           - python
 
       - id: ruff-format
         name: ruff format
-        entry: uv run ruff format
+        entry: uv run --project backend poe -C backend format
         language: system
+        pass_filenames: false
         types:
           - python
 
       - id: docs-standard
         name: documentation standard
-        entry: uv run python scripts/check_docstrings.py
+        entry: uv run --project backend poe -C backend docs-standard
         language: system
         pass_filenames: false
         types:
@@ -74,7 +76,7 @@ repos:
 
       - id: mypy
         name: mypy
-        entry: uv run mypy
+        entry: uv run --project backend poe -C backend types-mypy
         language: system
         stages:
           - pre-push
@@ -82,7 +84,7 @@ repos:
 
       - id: ty
         name: ty
-        entry: uvx ty@0.0.78 check --force-exclude
+        entry: uv run --project backend poe -C backend types-ty
         language: system
         stages:
           - pre-push
@@ -90,7 +92,7 @@ repos:
 
       - id: pytest
         name: pytest with coverage
-        entry: uv run poe test
+        entry: uv run --project backend poe -C backend test
         language: system
         stages:
           - pre-push

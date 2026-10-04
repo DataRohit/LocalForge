@@ -3,7 +3,7 @@
 Authoritative for: what must exist on the machine before phase 4, how to check each item, and what was actually
 observed here.
 
-Run this list first, via `scripts/preflight.py`. Everything below was probed on **this machine on 2026-09-13**;
+Run this list first, via `backend/scripts/preflight.py`. Everything below was probed on **this machine on 2026-09-13**;
 re-verify, because the machine may have moved on.
 
 The supported first-run interface performs that check and prepares local environment files without replacing
@@ -60,8 +60,8 @@ project virtualenv is correctly on 3.14.6, so this is a `PATH` ordering artefact
 It changes how every command is run:
 
 - Always use the backend project — `uv run --project backend pytest`, `./localforge.sh check`, and
-  `uv run --project backend python scripts/gen_secrets.py`. These commands resolve to 3.14.6.
-- A bare `python scripts/gen_secrets.py` silently runs under 3.12.10 and may fail on 3.14-only syntax, or worse,
+  `uv run --project backend python backend/scripts/gen_secrets.py`. These commands resolve to 3.14.6.
+- A bare `python backend/scripts/gen_secrets.py` silently runs under 3.12.10 and may fail on 3.14-only syntax, or worse,
   succeed while testing the wrong interpreter.
 - The container image uses `python:3.14-slim`, so container and virtualenv agree; only the host `PATH` disagrees.
 

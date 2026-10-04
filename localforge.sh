@@ -9,5 +9,5 @@ else
 fi
 
 cd "$repository_root"
-export PYTHONPATH="$repository_root:$repository_root/src${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="$repository_root:$repository_root/backend:$repository_root/backend/src${PYTHONPATH:+:$PYTHONPATH}"
 exec uv run --project "$project_root" poe -C "$project_root" "$@"

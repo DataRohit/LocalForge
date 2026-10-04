@@ -71,7 +71,7 @@ Generate fresh local credentials only on a machine with no LocalForge Docker dat
 uv sync --project backend --all-groups --frozen
 ./localforge.sh docker-clean-check
 Remove-Item -LiteralPath .env.development,.env.testing,.env.testing.host -Force -ErrorAction SilentlyContinue
-uv run --project backend python scripts/gen_secrets.py --environment all
+uv run --project backend python backend/scripts/gen_secrets.py --environment all
 notepad .env.development
 ./localforge.sh secrets-generate
 ./localforge.sh environments-setup

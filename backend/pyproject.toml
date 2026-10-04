@@ -96,7 +96,7 @@ dev = [
 [tool.ruff]
 target-version = "py314"
 line-length = 100
-src = ["../src", "../tests", ".."]
+src = ["src", "tests", ".."]
 extend-exclude = ["../.agents"]
 force-exclude = true
 
@@ -108,30 +108,29 @@ ignore = ["COM812", "CPY001"]
 convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-"../src/config/settings/*.py" = ["F403"]
-"../src/config/celery.py" = ["A002"]
-"../src/accounts/password_management.py" = ["BLE001"]
-"../src/accounts/tasks.py" = ["BLE001"]
-"../src/accounts/username_management.py" = ["BLE001"]
-"../src/manage.py" = ["PLC0415"]
-"../**/migrations/*.py" = ["D", "E501", "RUF012"]
-"../scripts/*.py" = ["T201", "TC003"]
-"../scripts/gen_secrets.py" = ["S603"]
-"../scripts/preflight.py" = ["S603"]
-"../scripts/sops_env.py" = ["S603"]
-"../scripts/manage_platform.py" = ["C901", "PLR0911", "PLR0912", "PLR0913", "PLR0915", "S603", "S310"]
-"scripts/manage_platform.py" = ["C901", "PLR0911", "PLR0912", "PLR0913", "PLR0915", "S310"]
-"../scripts/audit_security.py" = ["S603"]
-"../tests/**/*.py" = ["S101"]
-"../tests/conftest.py" = ["S101", "SLF001"]
-"../tests/websocket.py" = ["ANN401", "ASYNC109", "S101"]
-"../tests/unit/conftest.py" = ["S101", "S603"]
-"../tests/unit/config/test_celery.py" = ["S101", "SLF001"]
-"../tests/unit/test_harness.py" = ["S101", "S603"]
-"../tests/unit/scripts/test_django_entrypoint.py" = ["S101", "S603"]
-"../tests/integration/config/test_worker_service.py" = ["S603"]
-"../tests/integration/config/test_task_queue.py" = ["S101", "SLF001"]
-"../tests/integration/notifications/test_task_fanout.py" = ["S603"]
+"src/config/settings/*.py" = ["F403"]
+"src/config/celery.py" = ["A002"]
+"src/accounts/password_management.py" = ["BLE001"]
+"src/accounts/tasks.py" = ["BLE001"]
+"src/accounts/username_management.py" = ["BLE001"]
+"src/manage.py" = ["PLC0415"]
+"**/migrations/*.py" = ["D", "E501", "RUF012"]
+"scripts/*.py" = ["T201", "TC003"]
+"scripts/gen_secrets.py" = ["S603"]
+"scripts/preflight.py" = ["S603"]
+"scripts/sops_env.py" = ["S603"]
+"scripts/manage_platform.py" = ["C901", "PLR0911", "PLR0912", "PLR0913", "PLR0915", "S603", "S310"]
+"scripts/audit_security.py" = ["S603"]
+"tests/**/*.py" = ["S101"]
+"tests/conftest.py" = ["S101", "SLF001"]
+"tests/websocket.py" = ["ANN401", "ASYNC109", "S101"]
+"tests/unit/conftest.py" = ["S101", "S603"]
+"tests/unit/config/test_celery.py" = ["S101", "SLF001"]
+"tests/unit/test_harness.py" = ["S101", "S603"]
+"tests/unit/scripts/test_django_entrypoint.py" = ["S101", "S603"]
+"tests/integration/config/test_worker_service.py" = ["S603"]
+"tests/integration/config/test_task_queue.py" = ["S101", "SLF001"]
+"tests/integration/notifications/test_task_fanout.py" = ["S603"]
 "../.github/scripts/validate_commit_message.py" = ["C901", "INP001", "PLR0912"]
 
 [tool.ruff.format]
@@ -141,9 +140,9 @@ line-ending = "lf"
 [tool.mypy]
 python_version = "3.14"
 plugins = ["mypy_django_plugin.main"]
-files = ["../src", "../tests", "../scripts", "../.github/scripts"]
+files = ["src", "tests", "scripts", "../.github/scripts"]
 exclude = '(^|[\\/])\.agents([\\/]|$)'
-mypy_path = "../src"
+mypy_path = "src"
 strict = true
 extra_checks = true
 warn_unreachable = true
@@ -177,10 +176,10 @@ disable_error_code = ["misc"]
 [tool.ty.environment]
 python = ".venv"
 python-version = "3.14"
-root = ["../src", ".."]
+root = ["src", ".."]
 
 [tool.ty.src]
-include = ["../src", "../tests", "../scripts", "../.github/scripts"]
+include = ["src", "tests", "scripts", "../.github/scripts"]
 exclude = ["../.agents/**"]
 
 [tool.ty.rules]
@@ -189,8 +188,8 @@ all = "error"
 [tool.pytest.ini_options]
 minversion = "9.1"
 DJANGO_SETTINGS_MODULE = "config.settings.testing"
-pythonpath = ["../src", ".."]
-testpaths = ["../tests"]
+pythonpath = ["src", ".."]
+testpaths = ["tests"]
 addopts = [
     "-ra",
     "--timeout=60",
@@ -199,8 +198,8 @@ addopts = [
     "--ignore=../.agents",
     "--strict-config",
     "--strict-markers",
-    "--cov=../src",
-    "--cov=../scripts",
+    "--cov=src",
+    "--cov=scripts",
     "--cov-branch",
     "--cov-report=term-missing",
     "--cov-report=html:htmlcov",
@@ -223,7 +222,7 @@ xfail_strict = true
 
 [tool.coverage.run]
 branch = true
-source = ["../src", "../scripts"]
+source = ["src", "scripts"]
 relative_files = true
 
 [tool.coverage.report]
@@ -241,11 +240,11 @@ output = "coverage.xml"
 [tool.poe.tasks.dev]
 help = "Start the ASGI development server (needs the development stack reachable)"
 cmd = """uvicorn config.asgi:application
-  --app-dir ../src
+  --app-dir src
   --host 127.0.0.1
   --port 8000
   --reload
-  --reload-dir ../src
+  --reload-dir src
   --ws websockets-sansio"""
 
 [tool.poe.tasks.help]
@@ -399,52 +398,52 @@ cmd = "python -m scripts.manage_platform testing-verify"
 
 [tool.poe.tasks.migrate]
 help = "Apply database migrations (development database; run from inside django-uv5n2)"
-cmd = "python ../src/manage.py migrate"
+cmd = "python src/manage.py migrate"
 
 [tool.poe.tasks.migrations]
 help = "Create database migrations"
-cmd = "python ../src/manage.py makemigrations"
+cmd = "python src/manage.py makemigrations"
 
 [tool.poe.tasks.superuser]
 help = "Create a Django superuser (development database; run from inside django-uv5n2)"
-cmd = "python ../src/manage.py createsuperuser"
+cmd = "python src/manage.py createsuperuser"
 
 [tool.poe.tasks.shell]
 help = "Open the Django shell (development database; run from inside django-uv5n2)"
-cmd = "python ../src/manage.py shell"
+cmd = "python src/manage.py shell"
 
 [tool.poe.tasks.django-check]
 help = "Run Django system and migration checks"
 sequence = [
     { cmd = "python -m scripts.manage_platform testing-health" },
-    { cmd = "python ../src/manage.py check", env = { DJANGO_SETTINGS_MODULE = "config.settings.development" } },
-    { cmd = "python ../src/manage.py check --database default", env = { DJANGO_SETTINGS_MODULE = "config.settings.testing" } },
-    { cmd = "python ../src/manage.py makemigrations --check --dry-run", env = { DJANGO_SETTINGS_MODULE = "config.settings.testing" } },
+    { cmd = "python src/manage.py check", env = { DJANGO_SETTINGS_MODULE = "config.settings.development" } },
+    { cmd = "python src/manage.py check --database default", env = { DJANGO_SETTINGS_MODULE = "config.settings.testing" } },
+    { cmd = "python src/manage.py makemigrations --check --dry-run", env = { DJANGO_SETTINGS_MODULE = "config.settings.testing" } },
 ]
 
 [tool.poe.tasks.openapi-generate]
 help = "Generate the validated warning-free OpenAPI 3.1 artifact"
-cmd = "python ../src/manage.py spectacular --validate --fail-on-warn --file ../docs/api/openapi-v1.yaml"
+cmd = "python src/manage.py spectacular --validate --fail-on-warn --file ../docs/api/openapi-v1.yaml"
 
 [tool.poe.tasks.openapi-check]
 help = "Verify the fixed API contract and committed generated artifacts"
-cmd = "pytest ../tests/unit/config/test_openapi_contract.py --no-cov -q"
+cmd = "pytest tests/unit/config/test_openapi_contract.py --no-cov -q"
 
 [tool.poe.tasks.docs-standard]
 help = "Check the no-comment rule and the docstring section structure"
-cmd = "python ../scripts/check_docstrings.py"
+cmd = "python scripts/check_docstrings.py"
 
 [tool.poe.tasks.lint]
 help = "Run Ruff lint checks"
-cmd = "ruff check ../src ../tests ../scripts ../.github/scripts"
+cmd = "ruff check src tests scripts ../.github/scripts"
 
 [tool.poe.tasks.format]
 help = "Format Python code with Ruff"
-cmd = "ruff format ../src ../tests ../scripts ../.github/scripts"
+cmd = "ruff format src tests scripts ../.github/scripts"
 
 [tool.poe.tasks.format-check]
 help = "Verify Python formatting without changing files"
-cmd = "ruff format --check ../src ../tests ../scripts ../.github/scripts"
+cmd = "ruff format --check src tests scripts ../.github/scripts"
 
 [tool.poe.tasks.types-mypy]
 help = "Run strict mypy type checking"
@@ -460,7 +459,7 @@ sequence = ["types-mypy", "types-ty"]
 
 [tool.poe.tasks.architecture-audit]
 help = "Enforce stable runtime import direction and acyclic project dependencies"
-cmd = "pytest ../tests/unit/test_architecture.py --no-cov -q"
+cmd = "pytest tests/unit/test_architecture.py --no-cov -q"
 
 [tool.poe.tasks.test]
 help = "Start testing dependencies and run the complete host suite"

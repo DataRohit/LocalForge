@@ -13,7 +13,7 @@ $ProjectRoot = if (Test-Path (Join-Path $BackendProject "pyproject.toml")) {
 }
 
 $Uv = Get-Command uv -ErrorAction Stop
-$env:PYTHONPATH = "$RepositoryRoot;$(Join-Path $RepositoryRoot 'src')"
+$env:PYTHONPATH = "$RepositoryRoot;$(Join-Path $RepositoryRoot 'backend');$(Join-Path $RepositoryRoot 'backend\src')"
 Push-Location $RepositoryRoot
 try {
     & $Uv.Source run --project $ProjectRoot poe -C $ProjectRoot @Arguments
