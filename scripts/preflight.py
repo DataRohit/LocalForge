@@ -472,7 +472,7 @@ INTERPRETER_REQUIREMENT = Requirement(
     title="Project virtualenv interpreter",
     minimum_label="3.14",
     required=True,
-    remediation="uv venv --python 3.14 .venv",
+    remediation="uv venv --python 3.14 backend/.venv",
     matters_when=REQUIRED_NOW,
 )
 
@@ -581,14 +581,16 @@ def virtualenv_roots(prefix: Path, base_prefix: Path) -> list[Path]:
     Returns:
         The directories to exclude from the host search path.
     """
-    roots = [(REPOSITORY_ROOT / ".venv").resolve()]
+    roots = [(REPOSITORY_ROOT / "backend" / ".venv").resolve()]
     if prefix != base_prefix:
         roots.append(prefix.resolve())
 
     return roots
 
 
-def host_search_path(prefix: Path = ACTIVE_PREFIX, base_prefix: Path = BASE_PREFIX) -> str:
+def host_search_path(
+    prefix: Path = ACTIVE_PREFIX, base_prefix: Path = BASE_PREFIX
+) -> str:
     """Build a search path with the project virtualenv removed.
 
     Drops every entry belonging to an active virtualenv or to the repository's own, which is what
@@ -699,7 +701,7 @@ def project_interpreter(root: Path) -> Path:
     message when the virtualenv is absent entirely.
 
     Arguments:
-        root: Repository root holding the .venv directory.
+        root: Repository root holding the backend project.
 
     Returns:
         Path to the virtualenv interpreter.
@@ -728,7 +730,7 @@ def evaluate_project_interpreter(probes: SystemProbes, root: Path) -> CheckResul
     Returns:
         The evaluated result for the virtualenv interpreter.
     """
-    interpreter = project_interpreter(root)
+    interpreter = project_interpreter(root / "backend")
     check = ToolCheck(
         requirement=INTERPRETER_REQUIREMENT,
         command=(str(interpreter), "--version"),
@@ -800,7 +802,9 @@ def docker_usage(probes: SystemProbes) -> str | None:
     Returns:
         A one-line summary of engine storage, or None when the engine could not be queried.
     """
-    output = probes.capture(("docker", "system", "df", "--format", "{{.Type}} {{.Size}}"))
+    output = probes.capture(
+        ("docker", "system", "df", "--format", "{{.Type}} {{.Size}}")
+    )
     if output is None:
         return None
 
@@ -835,7 +839,9 @@ def volumes_to_grade(probes: SystemProbes, paths: Iterable[Path]) -> dict[str, P
     return selected
 
 
-def evaluate_free_disk(probes: SystemProbes, root: Path, docker_data_root: Path) -> CheckResult:
+def evaluate_free_disk(
+    probes: SystemProbes, root: Path, docker_data_root: Path
+) -> CheckResult:
     """Evaluate free space on every volume the build consumes.
 
     Grades the repository volume and the container engine data volume together, because image
@@ -859,7 +865,9 @@ def evaluate_free_disk(probes: SystemProbes, root: Path, docker_data_root: Path)
 
         measurements.append((label, free_bytes / GIBIBYTE))
 
-    observed = ", ".join(f"{label} {free_gib:.1f} GiB" for label, free_gib in measurements)
+    observed = ", ".join(
+        f"{label} {free_gib:.1f} GiB" for label, free_gib in measurements
+    )
     usage = docker_usage(probes)
     if usage is not None:
         observed = f"{observed}; engine holds {usage}"
@@ -920,7 +928,9 @@ def build_report(
     results = [evaluate_tool(probes, check) for check in TOOL_CHECKS]
     results.append(evaluate_project_interpreter(probes, root))
     results.append(evaluate_host_resources(probes))
-    results.append(evaluate_free_disk(probes, root, docker_data_volume(probes, docker_data_root)))
+    results.append(
+        evaluate_free_disk(probes, root, docker_data_volume(probes, docker_data_root))
+    )
     results.append(evaluate_cluster_tooling(probes))
 
     return tuple(sorted(results, key=lambda result: result.number))
@@ -995,7 +1005,9 @@ def render_report(results: Sequence[CheckResult]) -> str:
 
     widths = [max(len(row[column]) for row in rows) for column in range(len(headers))]
     lines = [
-        "  ".join(cell.ljust(width) for cell, width in zip(row, widths, strict=True)).rstrip()
+        "  ".join(
+            cell.ljust(width) for cell, width in zip(row, widths, strict=True)
+        ).rstrip()
         for row in rows
     ]
     lines.insert(1, "  ".join("-" * width for width in widths))
@@ -1005,7 +1017,8 @@ def render_report(results: Sequence[CheckResult]) -> str:
     if guidance:
         lines.extend(("", "Guidance:"))
         lines.extend(
-            f"  {result.number}. {result.title}: {note_for(result)}" for result in guidance
+            f"  {result.number}. {result.title}: {note_for(result)}"
+            for result in guidance
         )
 
     return "\n".join(lines)

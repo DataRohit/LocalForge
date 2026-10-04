@@ -13,9 +13,10 @@ $ProjectRoot = if (Test-Path (Join-Path $BackendProject "pyproject.toml")) {
 }
 
 $Uv = Get-Command uv -ErrorAction Stop
-Push-Location $ProjectRoot
+$env:PYTHONPATH = "$RepositoryRoot;$(Join-Path $RepositoryRoot 'src')"
+Push-Location $RepositoryRoot
 try {
-    & $Uv.Source run --project $ProjectRoot poe @Arguments
+    & $Uv.Source run --project $ProjectRoot poe -C $ProjectRoot @Arguments
     exit $LASTEXITCODE
 } finally {
     Pop-Location

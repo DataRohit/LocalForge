@@ -17,15 +17,12 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from typing import TYPE_CHECKING, get_type_hints
+from typing import Sequence, get_type_hints  # noqa: UP035
 from unittest.mock import patch
 
 import pytest
 
 from scripts import preflight
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
 
 PASSING_OUTPUTS: dict[tuple[str, ...], str] = {
     ("docker", "--version"): "Docker version 29.7.2, build a7dcaa6",
@@ -185,7 +182,7 @@ def passing_probes() -> FakeProbes:
     Returns:
         A probe surface describing a fully satisfactory machine.
     """
-    interpreter = preflight.project_interpreter(preflight.REPOSITORY_ROOT)
+    interpreter = preflight.project_interpreter(preflight.REPOSITORY_ROOT / "backend")
 
     return FakeProbes(
         outputs={**PASSING_OUTPUTS, (str(interpreter), "--version"): "Python 3.14.6"},
@@ -252,7 +249,9 @@ def checklist_rows() -> dict[int, str]:
     for line in CHECKLIST_DOCUMENT.read_text(encoding="utf-8").splitlines():
         match = pattern.match(line)
         if match is not None:
-            rows[int(match.group(1))] = match.group(2).replace("`", "").replace("*", "").strip()
+            rows[int(match.group(1))] = (
+                match.group(2).replace("`", "").replace("*", "").strip()
+            )
 
     assert rows, f"no checklist rows parsed from {CHECKLIST_DOCUMENT}"
 
@@ -299,8 +298,12 @@ def test_every_version_floor_matches_the_checklist_document() -> None:
         AssertionError: If any implemented floor differs from the documented one.
     """
     documented = checklist_rows()
-    implemented = {check.requirement.number: check.requirement for check in preflight.TOOL_CHECKS}
-    implemented[preflight.INTERPRETER_REQUIREMENT.number] = preflight.INTERPRETER_REQUIREMENT
+    implemented = {
+        check.requirement.number: check.requirement for check in preflight.TOOL_CHECKS
+    }
+    implemented[preflight.INTERPRETER_REQUIREMENT.number] = (
+        preflight.INTERPRETER_REQUIREMENT
+    )
 
     compared = 0
     for number, requirement in implemented.items():
@@ -351,7 +354,9 @@ def test_information_alone_does_not_block_the_build() -> None:
         AssertionError: If the exit code is non-zero, or the summary miscounts optional items.
     """
     results = preflight.build_report(informational_probes())
-    informational = [result for result in results if result.status is preflight.Status.INFO]
+    informational = [
+        result for result in results if result.status is preflight.Status.INFO
+    ]
 
     assert [result.number for result in informational] == [4, 10, 11, 12, 13]
     assert preflight.exit_code(results) == 0
@@ -377,7 +382,9 @@ def test_every_informational_item_says_when_it_starts_to_matter() -> None:
         AssertionError: If an informational item omits either half of its guidance.
     """
     results = preflight.build_report(informational_probes())
-    informational = [result for result in results if result.status is preflight.Status.INFO]
+    informational = [
+        result for result in results if result.status is preflight.Status.INFO
+    ]
 
     assert informational
     for result in informational:
@@ -404,8 +411,12 @@ def test_a_bare_machine_fails_required_checks_and_reports_optional_ones() -> Non
             code is not the documented failure code.
     """
     results = preflight.build_report(failing_probes())
-    failed = [result.number for result in results if result.status is preflight.Status.FAIL]
-    informational = [result.number for result in results if result.status is preflight.Status.INFO]
+    failed = [
+        result.number for result in results if result.status is preflight.Status.FAIL
+    ]
+    informational = [
+        result.number for result in results if result.status is preflight.Status.INFO
+    ]
 
     assert failed == [1, 2, 3, 5, 6, 7, 8, 9]
     assert informational == [4, 10, 11, 12, 13]
@@ -429,7 +440,9 @@ def test_every_failing_row_names_a_remediation() -> None:
         AssertionError: If any unsatisfied row carries an empty remediation or guidance line.
     """
     results = preflight.build_report(failing_probes())
-    unsatisfied = [result for result in results if result.status is not preflight.Status.OK]
+    unsatisfied = [
+        result for result in results if result.status is not preflight.Status.OK
+    ]
 
     assert unsatisfied
     for result in unsatisfied:
@@ -444,7 +457,7 @@ def test_every_failing_row_names_a_remediation() -> None:
         (1, "winget install --id Docker.DockerDesktop --exact"),
         (2, "winget install --id Docker.DockerDesktop --exact"),
         (3, "winget install --id Git.Git --exact"),
-        (5, "uv venv --python 3.14 .venv"),
+        (5, "uv venv --python 3.14 backend/.venv"),
         (6, "pipx install uv"),
         (9, "winget install --id Kubernetes.kubectl --exact"),
         (10, "winget install --id Kubernetes.kind --exact"),
@@ -453,7 +466,9 @@ def test_every_failing_row_names_a_remediation() -> None:
         (13, "winget install --id PostgreSQL.PostgreSQL --exact"),
     ],
 )
-def test_installable_tools_name_an_executable_remediation(number: int, expected: str) -> None:
+def test_installable_tools_name_an_executable_remediation(
+    number: int, expected: str
+) -> None:
     """Give a runnable command wherever one exists.
 
     Confirms every row whose remedy is an install reports exactly the command to run, with no prose
@@ -469,7 +484,9 @@ def test_installable_tools_name_an_executable_remediation(number: int, expected:
     Raises:
         AssertionError: If the row does not name exactly the expected command.
     """
-    results = {result.number: result for result in preflight.build_report(failing_probes())}
+    results = {
+        result.number: result for result in preflight.build_report(failing_probes())
+    }
 
     assert results[number].remediation == expected
 
@@ -492,7 +509,9 @@ def test_rows_with_no_install_still_name_an_action(number: int) -> None:
     Raises:
         AssertionError: If the row carries no actionable guidance.
     """
-    results = {result.number: result for result in preflight.build_report(failing_probes())}
+    results = {
+        result.number: result for result in preflight.build_report(failing_probes())
+    }
 
     assert results[number].remediation
     assert results[number].remediation in preflight.note_for(results[number])
@@ -613,7 +632,10 @@ def test_the_host_interpreter_is_probed_without_the_project_virtualenv() -> None
     Raises:
         AssertionError: If the host row does not warn while the virtualenv row passes.
     """
-    results = {result.number: result for result in preflight.build_report(informational_probes())}
+    results = {
+        result.number: result
+        for result in preflight.build_report(informational_probes())
+    }
 
     assert results[4].status is preflight.Status.INFO
     assert results[4].observed == "3.12.10"
@@ -641,7 +663,7 @@ def test_a_base_interpreter_is_not_hidden_from_its_own_report() -> None:
     base = Path(sys.base_prefix)
 
     assert preflight.virtualenv_roots(base, base) == [
-        (preflight.REPOSITORY_ROOT / ".venv").resolve(),
+        (preflight.REPOSITORY_ROOT / "backend" / ".venv").resolve(),
     ]
 
 
@@ -666,7 +688,7 @@ def test_an_active_virtualenv_is_excluded_alongside_the_project_one() -> None:
     base = preflight.REPOSITORY_ROOT / "synthetic-base-interpreter"
 
     assert preflight.virtualenv_roots(active, base) == [
-        (preflight.REPOSITORY_ROOT / ".venv").resolve(),
+        (preflight.REPOSITORY_ROOT / "backend" / ".venv").resolve(),
         active.resolve(),
     ]
 
@@ -717,7 +739,9 @@ def test_an_unresolvable_search_path_entry_is_treated_as_unrelated() -> None:
 
 
 @pytest.mark.unit
-def test_the_windows_virtualenv_layout_is_preferred_when_present(tmp_path: Path) -> None:
+def test_the_windows_virtualenv_layout_is_preferred_when_present(
+    tmp_path: Path,
+) -> None:
     """Resolve the interpreter the Windows virtualenv provides.
 
     Confirms the Scripts layout is chosen when it exists, which is the layout on the machine this
@@ -740,7 +764,9 @@ def test_the_windows_virtualenv_layout_is_preferred_when_present(tmp_path: Path)
 
 
 @pytest.mark.unit
-def test_the_posix_virtualenv_layout_is_used_when_it_is_the_one_present(tmp_path: Path) -> None:
+def test_the_posix_virtualenv_layout_is_used_when_it_is_the_one_present(
+    tmp_path: Path,
+) -> None:
     """Resolve the interpreter a POSIX virtualenv provides.
 
     Confirms the bin layout is chosen when the Scripts layout is absent, so the same check works
@@ -915,7 +941,9 @@ def test_the_disk_row_reports_what_the_container_engine_already_holds() -> None:
     "output",
     [None, "", "Containers 4.8MB\nBuild Cache 0B"],
 )
-def test_engine_storage_is_omitted_when_it_carries_nothing_reportable(output: str | None) -> None:
+def test_engine_storage_is_omitted_when_it_carries_nothing_reportable(
+    output: str | None,
+) -> None:
     """Leave the engine accounting out rather than reporting an empty one.
 
     Confirms an unreachable engine, an empty answer, and an answer holding only categories the
@@ -1393,7 +1421,9 @@ def test_every_annotation_resolves_from_the_module_namespace(module_path: Path) 
         if inspect.isclass(member):
             inspected.append(member)
             inspected.extend(
-                attribute for attribute in vars(member).values() if inspect.isfunction(attribute)
+                attribute
+                for attribute in vars(member).values()
+                if inspect.isfunction(attribute)
             )
         elif inspect.isfunction(member):
             inspected.append(member)
@@ -1403,7 +1433,9 @@ def test_every_annotation_resolves_from_the_module_namespace(module_path: Path) 
 
 @pytest.mark.unit
 @pytest.mark.parametrize("module_path", SCRIPT_PATHS, ids=lambda path: path.name)
-def test_the_gate_parses_under_the_interpreter_it_exists_to_diagnose(module_path: Path) -> None:
+def test_the_gate_parses_under_the_interpreter_it_exists_to_diagnose(
+    module_path: Path,
+) -> None:
     """Stay readable by an older interpreter.
 
     Compiles each script under the oldest syntax the repository might meet on a developer's search
@@ -1475,7 +1507,9 @@ def test_the_host_probe_resolves_against_the_stripped_search_path() -> None:
         patch.object(shutil, "which", return_value="python") as which,
         patch.object(subprocess, "run", return_value=completed),
     ):
-        output = preflight.REAL_PROBES.capture_outside_virtualenv(("python", "--version"))
+        output = preflight.REAL_PROBES.capture_outside_virtualenv(
+            ("python", "--version")
+        )
 
     assert output == "Python 3.12.10"
     assert which.call_args.kwargs["path"] == preflight.host_search_path()
@@ -1485,9 +1519,24 @@ def test_the_host_probe_resolves_against_the_stripped_search_path() -> None:
 @pytest.mark.parametrize(
     ("completed", "expected"),
     [
-        (subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="boom"), None),
-        (subprocess.CompletedProcess(args=[], returncode=0, stdout=" out \n", stderr=""), "out"),
-        (subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=" err \n"), "err"),
+        (
+            subprocess.CompletedProcess(
+                args=[], returncode=1, stdout="", stderr="boom"
+            ),
+            None,
+        ),
+        (
+            subprocess.CompletedProcess(
+                args=[], returncode=0, stdout=" out \n", stderr=""
+            ),
+            "out",
+        ),
+        (
+            subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="", stderr=" err \n"
+            ),
+            "err",
+        ),
     ],
 )
 def test_command_output_prefers_standard_output_and_rejects_failures(

@@ -100,7 +100,9 @@ SMTP_INTEGRATION_TESTS = (
     "tests/integration/config/test_email.py::test_mailpit_rejects_unauthenticated_api_access",
     "tests/integration/config/test_email.py::test_a_message_round_trips_through_smtp_and_mailpit",
 )
-TEST_COLLECTION_PATTERN = re.compile(r"(?:(?P<selected>\d+)/)?(?P<total>\d+) tests? collected")
+TEST_COLLECTION_PATTERN = re.compile(
+    r"(?:(?P<selected>\d+)/)?(?P<total>\d+) tests? collected"
+)
 POSTGRES_SEVERITY_PATTERN = re.compile(
     r"^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)? [A-Z]+ \[\d+\] )?"
     r"(?:WARNING|ERROR|FATAL|PANIC):"
@@ -228,53 +230,53 @@ HELP_TEXT = """\
 LocalForge environment commands
 
 First setup
-  uv sync --all-groups --frozen
-  uv run poe setup                 Check prerequisites and prepare environment files
-  uv run poe environments-setup    Pull missing images, rebuild local images, start, and audit both
-  uv run poe docker-clean-check     Require zero LocalForge Docker resources
-  uv run poe docker-audit           Verify running resources, labels, health, and ownership
+  uv sync --project backend --all-groups --frozen
+  ./localforge.sh setup                 Check prerequisites and prepare environment files
+  ./localforge.sh environments-setup    Pull images, start, and audit both environments
+  ./localforge.sh docker-clean-check     Require zero LocalForge Docker resources
+  ./localforge.sh docker-audit           Verify running resources, labels, health, and ownership
 
 Development (each safe default preserves volumes)
-  uv run poe development-build     Build local development images
-  uv run poe development-up        Build if needed and start the full stack
-  uv run poe development-rebuild   Rebuild and recreate the full stack
-  uv run poe development-status    Show service state
-  uv run poe development-health    Verify service and application readiness
-  uv run poe development-logs      Show recent logs
-  uv run poe development-down      Stop the stack and preserve data
-  uv run poe development-reset     DESTRUCTIVE: remove data and rebuild from scratch
+  ./localforge.sh development-build     Build local development images
+  ./localforge.sh development-up        Build if needed and start the full stack
+  ./localforge.sh development-rebuild   Rebuild and recreate the full stack
+  ./localforge.sh development-status    Show service state
+  ./localforge.sh development-health    Verify service and application readiness
+  ./localforge.sh development-logs      Show recent logs
+  ./localforge.sh development-down      Stop the stack and preserve data
+  ./localforge.sh development-reset     DESTRUCTIVE: remove data and rebuild from scratch
 
 Testing (each safe default preserves volumes)
-  uv run poe testing-build          Build the test runner image
-  uv run poe testing-up             Build if needed and start the headless environment
-  uv run poe testing-rebuild        Rebuild and recreate the headless environment
-  uv run poe testing-status         Show service state
-  uv run poe testing-health         Verify testing dependency readiness
-  uv run poe testing-logs           Show recent logs
-  uv run poe testing-test-container Run the complete suite in the test container
-  uv run poe testing-test-host      Run the complete suite from the host
-  uv run poe testing-test-both      Run container mode, then host mode
-  uv run poe testing-registration-timing-stability
+  ./localforge.sh testing-build          Build the test runner image
+  ./localforge.sh testing-up             Build if needed and start the headless environment
+  ./localforge.sh testing-rebuild        Rebuild and recreate the headless environment
+  ./localforge.sh testing-status         Show service state
+  ./localforge.sh testing-health         Verify testing dependency readiness
+  ./localforge.sh testing-logs           Show recent logs
+  ./localforge.sh testing-test-container Run the complete suite in the test container
+  ./localforge.sh testing-test-host      Run the complete suite from the host
+  ./localforge.sh testing-test-both      Run container mode, then host mode
+  ./localforge.sh testing-registration-timing-stability
                                      Run five independent host registration timing passes
-  uv run poe testing-integration-audit
+  ./localforge.sh testing-integration-audit
                                      Prove Mailpit persistence and real degraded readiness
-  uv run poe testing-verify         Rebuild, run both modes, then stop on success
-  uv run poe testing-down           Stop the stack and preserve data
-  uv run poe testing-reset          DESTRUCTIVE: remove data and rebuild from scratch
+  ./localforge.sh testing-verify         Rebuild, run both modes, then stop on success
+  ./localforge.sh testing-down           Stop the stack and preserve data
+  ./localforge.sh testing-reset          DESTRUCTIVE: remove data and rebuild from scratch
 
 Secrets
-  uv run poe secrets-generate      Create or top up local environment files
-  uv run poe secrets-decrypt       Recover committed encrypted environment files
+  ./localforge.sh secrets-generate      Create or top up local environment files
+  ./localforge.sh secrets-decrypt       Recover committed encrypted environment files
 
 Developer access
-  uv run poe developer-access-export
+  ./localforge.sh developer-access-export
                                      Create browser bookmarks and password imports
 
 Options
-  uv run poe environments-setup --proxy-only
-  uv run poe development-up --proxy-only
-  uv run poe development-rebuild --proxy-only
-  uv run poe development-reset --proxy-only
+  ./localforge.sh environments-setup --proxy-only
+  ./localforge.sh development-up --proxy-only
+  ./localforge.sh development-rebuild --proxy-only
+  ./localforge.sh development-reset --proxy-only
                                      Do not publish Django host port 8000
                                      rejected for every other command
   --confirm-destroy-data           Required by direct reset invocations
@@ -559,7 +561,11 @@ class TestingModeResult:
         Returns:
             First non-zero post-mode status, otherwise zero.
         """
-        return self.non_log_post_code if self.non_log_post_code != EXIT_OK else self.log_code
+        return (
+            self.non_log_post_code
+            if self.non_log_post_code != EXIT_OK
+            else self.log_code
+        )
 
     @property
     def passed(self) -> bool:
@@ -738,7 +744,7 @@ def require_environment_file(root: Path, spec: EnvironmentSpec) -> int:
     if path.is_file():
         return EXIT_OK
 
-    print(f"{path.name} is missing; run `uv run poe setup` first")
+    print(f"{path.name} is missing; run `./localforge.sh setup` first")
     return EXIT_USAGE
 
 
@@ -779,9 +785,13 @@ def setup(root: Path, runner: Runner) -> int:
         if result.code not in DECRYPT_FALLBACK_CODES | {EXIT_OK}:
             return result.code
         if result.code in DECRYPT_FALLBACK_CODES:
-            print(f"{spec.name}: encrypted values unavailable; generating local credentials")
+            print(
+                f"{spec.name}: encrypted values unavailable; generating local credentials"
+            )
 
-    return runner.run(python_command(root, "gen_secrets.py", "--environment", "all")).code
+    return runner.run(
+        python_command(root, "gen_secrets.py", "--environment", "all")
+    ).code
 
 
 def generate_secrets(root: Path, runner: Runner) -> int:
@@ -797,7 +807,9 @@ def generate_secrets(root: Path, runner: Runner) -> int:
     Returns:
         Generator exit code.
     """
-    return runner.run(python_command(root, "gen_secrets.py", "--environment", "all")).code
+    return runner.run(
+        python_command(root, "gen_secrets.py", "--environment", "all")
+    ).code
 
 
 def decrypt_secrets(root: Path, runner: Runner) -> int:
@@ -828,7 +840,9 @@ def decrypt_secrets(root: Path, runner: Runner) -> int:
     if code != EXIT_OK:
         return code
 
-    return runner.run(python_command(root, "gen_secrets.py", "--environment", "all")).code
+    return runner.run(
+        python_command(root, "gen_secrets.py", "--environment", "all")
+    ).code
 
 
 def seed_storage(root: Path, runner: Runner, spec: EnvironmentSpec) -> int:
@@ -845,7 +859,9 @@ def seed_storage(root: Path, runner: Runner, spec: EnvironmentSpec) -> int:
     Returns:
         Storage helper exit code.
     """
-    endpoint = "http://127.0.0.1:8333" if spec is DEVELOPMENT else "http://127.0.0.1:28333"
+    endpoint = (
+        "http://127.0.0.1:8333" if spec is DEVELOPMENT else "http://127.0.0.1:28333"
+    )
     return runner.run(
         python_command(
             root,
@@ -885,14 +901,16 @@ def build(
     selected = services
     if selected is None:
         selected = (
-            ("postgres-pg3ka", "django-uv5n2") if spec is DEVELOPMENT else ("django-test-dt5qx",)
+            ("postgres-pg3ka", "django-uv5n2")
+            if spec is DEVELOPMENT
+            else ("django-test-dt5qx",)
         )
     arguments.extend(selected)
 
     return runner.run(compose_command(spec, *arguments)).code
 
 
-def ordinary_up(  # noqa: PLR0913
+def ordinary_up(
     root: Path,
     runner: Runner,
     spec: EnvironmentSpec,
@@ -921,7 +939,9 @@ def ordinary_up(  # noqa: PLR0913
     """
     arguments = ["up", "-d"]
     if wait:
-        arguments.extend(("--wait", "--wait-timeout", str(ENVIRONMENT_HEALTH_TIMEOUT_SECONDS)))
+        arguments.extend(
+            ("--wait", "--wait-timeout", str(ENVIRONMENT_HEALTH_TIMEOUT_SECONDS))
+        )
     arguments.append("--no-build")
     if recreate:
         arguments.append("--force-recreate")
@@ -1157,7 +1177,7 @@ def normalize_image_name(image: str) -> str:
     return normalized.removeprefix("library/")
 
 
-def evaluate_container_inventory(  # noqa: C901, PLR0912, PLR0915
+def evaluate_container_inventory(
     containers: Sequence[dict[str, object]],
     *,
     require_complete: bool = True,
@@ -1215,7 +1235,9 @@ def evaluate_container_inventory(  # noqa: C901, PLR0912, PLR0915
                 f"wrong-project {name} expected={expected_project} actual={project or '<missing>'}"
             )
         if expected_project is not None and service != name:
-            failures.append(f"wrong-service {name} expected={name} actual={service or '<missing>'}")
+            failures.append(
+                f"wrong-service {name} expected={name} actual={service or '<missing>'}"
+            )
         expected_image = CONTAINER_IMAGES.get(name)
         if expected_image is not None and normalize_image_name(image) != expected_image:
             failures.append(
@@ -1230,7 +1252,9 @@ def evaluate_container_inventory(  # noqa: C901, PLR0912, PLR0915
         if isinstance(state, dict):
             status_value = str(state.get("Status", ""))
             health = state.get("Health")
-            health_value = str(health.get("Status", "")) if isinstance(health, dict) else "none"
+            health_value = (
+                str(health.get("Status", "")) if isinstance(health, dict) else "none"
+            )
             print(
                 f"CONTAINER {name} image={image} status={status_value} health={health_value} "
                 f"project={project or '<missing>'} service={service or '<missing>'} "
@@ -1252,7 +1276,8 @@ def evaluate_container_inventory(  # noqa: C901, PLR0912, PLR0915
             failures.append(f"duplicate-service {project}/{service} count={count}")
     if require_complete:
         failures.extend(
-            f"missing-container {name}" for name in sorted(REQUIRED_CONTAINERS - observed_names)
+            f"missing-container {name}"
+            for name in sorted(REQUIRED_CONTAINERS - observed_names)
         )
 
     return failures
@@ -1366,7 +1391,10 @@ def evaluate_resource_inventory(
         name = record_name(record)
         labels = record_labels(record)
         project = labels.get("com.docker.compose.project", "")
-        if name not in expected_projects and project not in {"localforge-dev", "localforge-test"}:
+        if name not in expected_projects and project not in {
+            "localforge-dev",
+            "localforge-test",
+        }:
             continue
         observed.add(name)
         expected_project = expected_projects.get(name)
@@ -1380,8 +1408,12 @@ def evaluate_resource_inventory(
         print(f"{kind.upper()} {name} project={project or '<missing>'}")
 
     if require_complete:
-        required = set(expected_projects) if required_names is None else set(required_names)
-        failures.extend(f"missing-{kind} {name}" for name in sorted(required - observed))
+        required = (
+            set(expected_projects) if required_names is None else set(required_names)
+        )
+        failures.extend(
+            f"missing-{kind} {name}" for name in sorted(required - observed)
+        )
 
     return failures
 
@@ -1402,7 +1434,9 @@ def decode_inspect_output(output: str) -> list[dict[str, object]]:
         ValueError: If Docker returned a non-array or non-object member.
     """
     decoded = json.loads(output)
-    if not isinstance(decoded, list) or not all(isinstance(item, dict) for item in decoded):
+    if not isinstance(decoded, list) or not all(
+        isinstance(item, dict) for item in decoded
+    ):
         msg = "Docker inspect output is not an object array"
         raise ValueError(msg)
 
@@ -1490,7 +1524,11 @@ def docker_audit(runner: Runner, *, expect_clean: bool) -> int:
     )
     if image_result.code != EXIT_OK:
         return image_result.code
-    images = {line for line in image_result.output.splitlines() if line.startswith("localforge/")}
+    images = {
+        line
+        for line in image_result.output.splitlines()
+        if line.startswith("localforge/")
+    }
 
     if expect_clean:
         failures = evaluate_container_inventory(containers, require_complete=False)
@@ -1554,8 +1592,12 @@ def docker_audit(runner: Runner, *, expect_clean: bool) -> int:
                 required_names=REQUIRED_VOLUMES,
             )
         )
-        failures.extend(f"missing-image {name}" for name in sorted(LOCALFORGE_IMAGES - images))
-        failures.extend(f"stale-image {name}" for name in sorted(images - LOCALFORGE_IMAGES))
+        failures.extend(
+            f"missing-image {name}" for name in sorted(LOCALFORGE_IMAGES - images)
+        )
+        failures.extend(
+            f"stale-image {name}" for name in sorted(images - LOCALFORGE_IMAGES)
+        )
 
     if failures:
         for failure in sorted(set(failures)):
@@ -1669,7 +1711,9 @@ def inspect_images(
         )
         if result.code == EXIT_OK and result.output.startswith("sha256:"):
             present.add(image)
-            print(f"IMAGE present {image} id={result.output.removeprefix('sha256:')[:12]}")
+            print(
+                f"IMAGE present {image} id={result.output.removeprefix('sha256:')[:12]}"
+            )
         else:
             print(f"IMAGE absent {image} action=build")
 
@@ -1761,7 +1805,9 @@ def ensure_images(
     Returns:
         Zero when every selected image tag exists or was created successfully.
     """
-    required = frozenset(image for image, _spec, _service in (*local_targets, *external_targets))
+    required = frozenset(
+        image for image, _spec, _service in (*local_targets, *external_targets)
+    )
     code, present = inspect_images(runner, required)
     if code != EXIT_OK:
         return code
@@ -1854,7 +1900,7 @@ def start_without_wait(
     )
 
 
-def wait_and_verify_environment(  # noqa: PLR0913
+def wait_and_verify_environment(
     root: Path,
     runner: Runner,
     spec: EnvironmentSpec,
@@ -1889,7 +1935,7 @@ def wait_and_verify_environment(  # noqa: PLR0913
     return health(root, runner, spec, http_probe=http_probe)
 
 
-def environments_setup(  # noqa: PLR0913
+def environments_setup(
     root: Path,
     runner: Runner,
     *,
@@ -1998,9 +2044,9 @@ def probe_http(url: str, host: str) -> bool:
     Returns:
         Whether the endpoint answered successfully.
     """
-    request = urllib.request.Request(url, headers={"Host": host})  # noqa: S310
+    request = urllib.request.Request(url, headers={"Host": host})
     try:
-        with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310
+        with urllib.request.urlopen(request, timeout=10) as response:
             return int(response.status) == HTTPStatus.OK
     except (
         OSError,
@@ -2223,7 +2269,9 @@ def collect_testing_mode(runner: Runner, mode: str) -> TestingCollectionResult:
     for command in collection_commands:
         result = runner.run(command, capture=True)
         count = parse_test_collection(result.output) if result.code == EXIT_OK else None
-        code = result.code if result.code != EXIT_OK or count is not None else EXIT_FAILED
+        code = (
+            result.code if result.code != EXIT_OK or count is not None else EXIT_FAILED
+        )
         counts.append(count)
         codes.append(code)
 
@@ -2308,18 +2356,25 @@ def docker_environment_audit(runner: Runner, spec: EnvironmentSpec) -> int:
     if code != EXIT_OK:
         return code
 
-    expected_containers = DEVELOPMENT_CONTAINERS if spec is DEVELOPMENT else TESTING_CONTAINERS
+    expected_containers = (
+        DEVELOPMENT_CONTAINERS if spec is DEVELOPMENT else TESTING_CONTAINERS
+    )
     expected_networks = {
-        name: project for name, project in NETWORK_PROJECTS.items() if project == spec.project
+        name: project
+        for name, project in NETWORK_PROJECTS.items()
+        if project == spec.project
     }
     expected_volumes = {
-        name: project for name, project in VOLUME_PROJECTS.items() if project == spec.project
+        name: project
+        for name, project in VOLUME_PROJECTS.items()
+        if project == spec.project
     }
     required_volumes = DEVELOPMENT_VOLUMES if spec is DEVELOPMENT else TESTING_VOLUMES
     failures = evaluate_container_inventory(containers, require_complete=False)
     observed_containers = {record_name(record) for record in containers}
     failures.extend(
-        f"missing-container {name}" for name in sorted(expected_containers - observed_containers)
+        f"missing-container {name}"
+        for name in sorted(expected_containers - observed_containers)
     )
     failures.extend(
         evaluate_resource_inventory(
@@ -2340,7 +2395,14 @@ def docker_environment_audit(runner: Runner, spec: EnvironmentSpec) -> int:
     )
     if spec is TESTING:
         image_result = runner.run(
-            ("docker", "image", "inspect", "--format", "{{.Id}}", "localforge/django-test:0.1.0"),
+            (
+                "docker",
+                "image",
+                "inspect",
+                "--format",
+                "{{.Id}}",
+                "localforge/django-test:0.1.0",
+            ),
             capture=True,
         )
         if image_result.code != EXIT_OK or not image_result.output:
@@ -2664,13 +2726,19 @@ def run_testing_mode(
     started = now()
     test_code = runner.run(test_command).code
     duration = now() - started
-    print(f"TIMING phase=test-{collection.mode} seconds={duration:.3f} status={test_code}")
+    print(
+        f"TIMING phase=test-{collection.mode} seconds={duration:.3f} status={test_code}"
+    )
 
     health_code = health(root, runner, TESTING, http_probe=http_probe)
     ownership_code = docker_environment_audit(runner, TESTING)
     residue_code = audit_testing_container_set(runner, include_mailpit=True)
     non_log_post_code = next(
-        (code for code in (health_code, ownership_code, residue_code) if code != EXIT_OK),
+        (
+            code
+            for code in (health_code, ownership_code, residue_code)
+            if code != EXIT_OK
+        ),
         EXIT_OK,
     )
     ended_at = utc_timestamp()
@@ -2711,7 +2779,8 @@ def execute_testing_modes(
     requested_modes = ("container", "host") if mode == "both" else (mode,)
     total_started = now()
     collections = [
-        collect_testing_mode(runner, requested_mode) for requested_mode in requested_modes
+        collect_testing_mode(runner, requested_mode)
+        for requested_mode in requested_modes
     ]
     results = [
         run_testing_mode(
@@ -2755,7 +2824,9 @@ def execute_testing_modes(
 
     failed_modes = {result.mode for result in results if not result.passed}
     if mismatch:
-        counts = " ".join(f"{result.mode}={result.collection.complete}" for result in results)
+        counts = " ".join(
+            f"{result.mode}={result.collection.complete}" for result in results
+        )
         print(f"FAIL collection-mismatch {counts}")
 
     if failed_modes == {"container", "host"}:
@@ -2805,7 +2876,7 @@ def start_testing_mailpit(root: Path, runner: Runner) -> int:
     return code
 
 
-def testing_test(  # noqa: PLR0913
+def testing_test(
     root: Path,
     runner: Runner,
     mode: str,
@@ -3166,14 +3237,17 @@ def finalize_testing_mailpit(root: Path, runner: Runner) -> int:
         The first cleanup failure, or zero when the store is empty and the service is stopped.
     """
     results = [
-        testing_runtime_probe(root, runner, "mailpit-clear", mode) for mode in ("host", "container")
+        testing_runtime_probe(root, runner, "mailpit-clear", mode)
+        for mode in ("host", "container")
     ]
     if EXIT_OK in results:
         results.extend(
             testing_runtime_probe(root, runner, "mailpit-empty", mode)
             for mode in ("host", "container")
         )
-    results.append(runner.run(compose_command(TESTING, "rm", "-f", "-s", "mailpit-tm7bh")).code)
+    results.append(
+        runner.run(compose_command(TESTING, "rm", "-f", "-s", "mailpit-tm7bh")).code
+    )
 
     return next((code for code in results if code != EXIT_OK), EXIT_OK)
 
@@ -3373,7 +3447,16 @@ def build_parser() -> argparse.ArgumentParser:
         *(
             f"{environment}-{action}"
             for environment in ("development", "testing")
-            for action in ("build", "up", "down", "rebuild", "reset", "status", "health", "logs")
+            for action in (
+                "build",
+                "up",
+                "down",
+                "rebuild",
+                "reset",
+                "status",
+                "health",
+                "logs",
+            )
         ),
         "testing-test-container",
         "testing-test-host",
@@ -3393,7 +3476,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(  # noqa: C901, PLR0911, PLR0912, PLR0913
+def main(
     argv: Sequence[str] | None = None,
     *,
     root: Path = REPOSITORY_ROOT,

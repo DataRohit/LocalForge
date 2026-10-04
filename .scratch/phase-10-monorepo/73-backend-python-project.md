@@ -13,9 +13,17 @@
 - [Dependency ADR](../../docs/adr/0016-accept-release-lag.md)
 - [Build prerequisites](../../docs/build/prerequisites.md)
 
-**Status:** pending
+**Status:** done
 
-- [ ] Place `pyproject.toml`, `uv.lock`, `.python-version`, and the local `.venv` boundary under `backend/`.
-- [ ] Preserve dependency groups, pinned versions, task definitions, coverage, lint, type, and test settings.
-- [ ] Make root entry points invoke the backend project without relying on the caller's current directory.
-- [ ] Prove a clean backend environment can sync from the moved metadata.
+- [x] Place `pyproject.toml`, `uv.lock`, `.python-version`, and the local `.venv` boundary under `backend/`.
+- [x] Preserve dependency groups, pinned versions, task definitions, coverage, lint, type, and test settings.
+- [x] Make root entry points invoke the backend project without relying on the caller's current directory.
+- [x] Prove a clean backend environment can sync from the moved metadata.
+
+Evidence: Git moves `pyproject.toml`, `uv.lock`, and `.python-version` into `backend/`; uv created
+`backend/.venv` and installed the locked 123-package environment with `uv sync --project backend --locked
+--no-install-project`. `uv lock --check --project backend` passed. Backend-relative configuration keeps the existing
+root source trees usable during the staged move. Root wrappers select `backend/` with Poe's explicit `-C` option,
+export the transitional repository import paths, and resolve the repository from the script location. `localforge.ps1
+help`, `lint`, and `docs-standard` passed from `docs/`; `uv run --project backend python scripts/preflight.py` passed
+all 13 checks, including `backend/.venv`.

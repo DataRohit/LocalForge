@@ -8,5 +8,6 @@ else
     project_root="$repository_root"
 fi
 
-cd "$project_root"
-exec uv run --project "$project_root" poe "$@"
+cd "$repository_root"
+export PYTHONPATH="$repository_root:$repository_root/src${PYTHONPATH:+:$PYTHONPATH}"
+exec uv run --project "$project_root" poe -C "$project_root" "$@"

@@ -10,12 +10,12 @@ The supported first-run interface performs that check and prepares local environ
 existing values:
 
 ```console
-uv sync --all-groups --frozen
-uv run poe help
-uv run poe environments-setup
+uv sync --project backend --all-groups --frozen
+./localforge.sh help
+./localforge.sh environments-setup
 ```
 
-If port 8000 is already occupied, use `uv run poe environments-setup --proxy-only`; the override applies only to
+If port 8000 is already occupied, use `./localforge.sh environments-setup --proxy-only`; the override applies only to
 the development project and the testing project remains unchanged.
 
 The combined command reports redacted durations for environment preparation, image work, Compose startup, health
@@ -25,8 +25,8 @@ through cached deterministic layers, starts with `--no-build`, and runs no appli
 Optional or deliberately unused tools appear as `INFO`, not `WARN`. On this project that includes the bare PATH
 Python, kind/minikube, and host `psql`; their absence does not weaken a required gate.
 
-Use `uv run poe secrets-decrypt` when committed encrypted values must replace absent plaintext files explicitly.
-Use `uv run poe secrets-generate` to create or top up machine-local values without decrypting.
+Use `./localforge.sh secrets-decrypt` when committed encrypted values must replace absent plaintext files explicitly.
+Use `./localforge.sh secrets-generate` to create or top up machine-local values without decrypting.
 
 ## 1. Checklist
 
@@ -36,7 +36,7 @@ Use `uv run poe secrets-generate` to create or top up machine-local values witho
 | 2 | Docker Compose | `docker compose version` | 2.24 | **v5.5.1** — pass | Ships with Docker Desktop; else the `docker-compose-plugin` package |
 | 3 | Git | `git --version` | 2.40 | **2.53.0.windows.4** — pass | `git-scm.com` |
 | 4 | Python on `PATH` | `python --version` | 3.14 | **3.12.10 — see Section 2** | Not a blocker. Always use `uv run` |
-| 5 | Project virtualenv | `.venv\Scripts\python.exe --version` | 3.14 | **3.14.6** — pass | `uv venv --python 3.14 .venv` |
+| 5 | Project virtualenv | `backend\.venv\Scripts\python.exe --version` | 3.14 | **3.14.6** — pass | `uv venv --python 3.14 backend/.venv` |
 | 6 | uv | `uv --version` | 0.5 | **0.12.1** — pass | `pipx install uv` or the official installer |
 | 7 | Host resources | `docker info` | 8 GB RAM, 4 CPU | **16 CPU, 31.3 GiB** — pass | Raise Docker Desktop's limits |
 | 8 | Disk | `docker system df`, free space | 20 GB | **C: 277 GB free, Q: 1.5 TB free.** Docker already holds 2.2 GB images and 3.3 GB volumes from other work — pass | Free space, or move Docker's data root |
@@ -59,8 +59,8 @@ project virtualenv is correctly on 3.14.6, so this is a `PATH` ordering artefact
 
 It changes how every command is run:
 
-- Always `uv run …` — `uv run pytest`, `uv run poe check`, `uv run python scripts/gen_secrets.py`. All resolve to
-  3.14.6.
+- Always use the backend project — `uv run --project backend pytest`, `./localforge.sh check`, and
+  `uv run --project backend python scripts/gen_secrets.py`. These commands resolve to 3.14.6.
 - A bare `python scripts/gen_secrets.py` silently runs under 3.12.10 and may fail on 3.14-only syntax, or worse,
   succeed while testing the wrong interpreter.
 - The container image uses `python:3.14-slim`, so container and virtualenv agree; only the host `PATH` disagrees.
@@ -90,7 +90,7 @@ The platform is offline at runtime. Three operations need the network **once**:
 1. `docker pull` for the 14 pinned images.
 2. `docker build` for `localforge/django` and `localforge/pgbackrest` — the latter installs `pgbackrest` from the
    PGDG apt repository that `postgres:18.6` already has configured.
-3. `uv sync` to resolve dependencies.
+3. `uv sync --project backend` to resolve dependencies.
 
 After that, `docker compose up` must succeed with no external network. `internal: true` on three of the four
 development networks enforces it, and audit 6.5 in
@@ -98,7 +98,7 @@ development networks enforces it, and audit 6.5 in
 
 `pyproject.toml` pins a Microsoft package feed as the default index and `uv.lock` records that feed's artifact URLs.
 Do not change the index and do not disable TLS verification. If resolution fails, run `uv lock` then
-`uv sync --all-groups --frozen`.
+`uv sync --project backend --all-groups --frozen`.
 
 ## 5. This machine is shared
 

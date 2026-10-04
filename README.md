@@ -25,23 +25,24 @@ policy global at the root, and moves Python metadata, the virtual environment, s
 Install all dependency groups, inspect the commands, then build and start both environments:
 
 ```console
-uv sync --all-groups --frozen
-uv run poe help
-uv run poe environments-setup
+uv sync --project backend --all-groups --frozen
+./localforge.sh help
+./localforge.sh environments-setup
 ```
 
 On Windows, or whenever another process owns port 8000, use the first-run variant:
 
 ```console
-uv run poe environments-setup --proxy-only
+./localforge.sh environments-setup --proxy-only
 ```
 
-Package downloads use the Microsoft package feed configured in `pyproject.toml`, with system certificate verification
-enabled. The lockfile records this feed's artifact URLs so `uv sync --all-groups --frozen` does not attempt direct
-downloads from `files.pythonhosted.org`, which fails TLS negotiation on this managed network.
+Package downloads use the Microsoft package feed configured in `backend/pyproject.toml`, with system certificate
+verification enabled. The lockfile records this feed's artifact URLs so `uv sync --project backend --all-groups
+--frozen` does not attempt direct downloads from `files.pythonhosted.org`, which fails TLS negotiation on this managed
+network.
 
 Changing the default index alone does not redirect URLs already recorded in `uv.lock`. After an approved index change,
-run `uv lock` and then `uv sync --all-groups --frozen`. Do not disable TLS certificate verification.
+run `uv lock` and then `uv sync --project backend --all-groups --frozen`. Do not disable TLS certificate verification.
 
 `environments-setup` prepares environment files, pulls missing pinned external images, rebuilds all three local
 images through cached deterministic layers, starts both Compose projects with `--no-build`, waits for readiness, and
@@ -59,22 +60,22 @@ Restore the existing encrypted environment only when the original age private ke
 
 ```powershell
 $env:SOPS_AGE_KEY_FILE = 'C:\secure\localforge-age-key.txt'
-uv sync --all-groups --frozen
-uv run poe secrets-decrypt
-uv run poe environments-setup
+uv sync --project backend --all-groups --frozen
+./localforge.sh secrets-decrypt
+./localforge.sh environments-setup
 ```
 
 Generate fresh local credentials only on a machine with no LocalForge Docker data to preserve:
 
 ```powershell
-uv sync --all-groups --frozen
-uv run poe docker-clean-check
+uv sync --project backend --all-groups --frozen
+./localforge.sh docker-clean-check
 Remove-Item -LiteralPath .env.development,.env.testing,.env.testing.host -Force -ErrorAction SilentlyContinue
-uv run python scripts/gen_secrets.py --environment all
+uv run --project backend python scripts/gen_secrets.py --environment all
 notepad .env.development
-uv run poe secrets-generate
-uv run poe environments-setup
-uv run poe developer-access-export
+./localforge.sh secrets-generate
+./localforge.sh environments-setup
+./localforge.sh developer-access-export
 ```
 
 In the editor, replace only the `TUNNEL_TOKEN` and `RESEND_API_KEY` placeholders with newly issued provider values.
@@ -87,42 +88,42 @@ file. Never use generator `--force` against existing LocalForge volumes.
 Start and verify the complete development environment:
 
 ```console
-uv run poe development-up
-uv run poe development-health
+./localforge.sh development-up
+./localforge.sh development-health
 ```
 
 The public application entry point is `http://localforge.localhost:8080/`. If another local process owns port 8000,
-use `uv run poe development-up --proxy-only`; Traefik remains available while the direct loopback publication is
+use `./localforge.sh development-up --proxy-only`; Traefik remains available while the direct loopback publication is
 omitted.
 
 ## Environment commands
 
-Run `uv run poe help` for the complete categorized command list.
+Run `./localforge.sh help` for the complete categorized command list.
 
 | Workflow | Development | Testing |
 | --- | --- | --- |
-| Prepare both | `uv run poe environments-setup` | `uv run poe environments-setup` |
-| Start | `uv run poe development-up` | `uv run poe testing-up` |
-| Rebuild, preserve data | `uv run poe development-rebuild` | `uv run poe testing-rebuild` |
-| Status | `uv run poe development-status` | `uv run poe testing-status` |
-| Health | `uv run poe development-health` | `uv run poe testing-health` |
-| Recent logs | `uv run poe development-logs` | `uv run poe testing-logs` |
-| Follow one service | `uv run poe development-logs --follow django-uv5n2` | `uv run poe testing-logs --follow postgres-tp8vn` |
-| Stop, preserve data | `uv run poe development-down` | `uv run poe testing-down` |
-| **Destructive reset** | `uv run poe development-reset` | `uv run poe testing-reset` |
+| Prepare both | `./localforge.sh environments-setup` | `./localforge.sh environments-setup` |
+| Start | `./localforge.sh development-up` | `./localforge.sh testing-up` |
+| Rebuild, preserve data | `./localforge.sh development-rebuild` | `./localforge.sh testing-rebuild` |
+| Status | `./localforge.sh development-status` | `./localforge.sh testing-status` |
+| Health | `./localforge.sh development-health` | `./localforge.sh testing-health` |
+| Recent logs | `./localforge.sh development-logs` | `./localforge.sh testing-logs` |
+| Follow one service | `./localforge.sh development-logs --follow django-uv5n2` | `./localforge.sh testing-logs --follow postgres-tp8vn` |
+| Stop, preserve data | `./localforge.sh development-down` | `./localforge.sh testing-down` |
+| **Destructive reset** | `./localforge.sh development-reset` | `./localforge.sh testing-reset` |
 
 The reset commands remove that environment's named volumes and rebuild without cache. They are intentionally named
 separately from ordinary rebuilds.
 
-Run `uv run poe docker-audit` for the complete container, label, network, volume, image, and health inventory.
-`uv run poe docker-clean-check` is the inverse precondition: it fails if any LocalForge Docker resource remains.
+Run `./localforge.sh docker-audit` for the complete container, label, network, volume, image, and health inventory.
+`./localforge.sh docker-clean-check` is the inverse precondition: it fails if any LocalForge Docker resource remains.
 It is optional and belongs only at the start of a deliberate clean-room rehearsal; failure on an already configured
 machine is expected and does not mean the running inventory is invalid. The command never deletes anything.
-Run `uv run poe convention-audit` for the deeper live registry comparison: exact names, ports, mounts, internal
+Run `./localforge.sh convention-audit` for the deeper live registry comparison: exact names, ports, mounts, internal
 flags, anonymous-volume rejection, and active offline probes for both projects. Environment-specific variants are
 `convention-audit-development` and `convention-audit-testing`.
 
-Run `uv run poe security-audit` for the deployment, full-history secret, locked dependency, exact image
+Run `./localforge.sh security-audit` for the deployment, full-history secret, locked dependency, exact image
 vulnerability policy, protected-dashboard/private-port, broker-account, image-layer, and runtime-log gates.
 `security-audit-static` and `security-audit-runtime` split the network/scanner-heavy and live-environment portions.
 Accepted findings and review dates are in
@@ -138,10 +139,10 @@ requires port 8000 in normal mode while requiring it absent in proxy-only mode.
 Tests and static checks are not the final runtime verdict. After a source rebuild or any service-facing change, run:
 
 ```console
-uv run poe development-health
-uv run poe testing-health
-uv run poe docker-audit
-uv run poe development-logs django-uv5n2
+./localforge.sh development-health
+./localforge.sh testing-health
+./localforge.sh docker-audit
+./localforge.sh development-logs django-uv5n2
 ```
 
 Exercise the changed route, socket, task, scheduler, storage, mail, or operator command against the running stack,
@@ -161,10 +162,10 @@ does not waive contradictory runtime evidence.
 Environment setup and rebuild commands never execute tests. Test execution is explicit:
 
 ```console
-uv run poe testing-test-container
-uv run poe testing-test-host
-uv run poe testing-registration-timing-stability
-uv run poe testing-integration-audit
+./localforge.sh testing-test-container
+./localforge.sh testing-test-host
+./localforge.sh testing-registration-timing-stability
+./localforge.sh testing-integration-audit
 ```
 
 The testing environment keeps `django-test-dt5qx` running as a Compose service. Every complete host or container
@@ -186,8 +187,8 @@ the Mailpit container before returning, including after a failed assertion, whil
 `testing-verify` remains an explicit full-suite workflow and is not part of setup:
 
 ```console
-uv run poe testing-verify
-uv run poe testing-down
+./localforge.sh testing-verify
+./localforge.sh testing-down
 ```
 
 `testing-test-both` collects complete, core, and security-timing counts in both modes before either suite starts,
@@ -205,14 +206,14 @@ type-check discovery, and test discovery. Its files remain available and can sti
 Run linting and formatting checks:
 
 ```console
-uv run poe lint
-uv run poe format-check
+./localforge.sh lint
+./localforge.sh format-check
 ```
 
 Run both type checkers:
 
 ```console
-uv run poe typecheck
+./localforge.sh typecheck
 ```
 
 The ty task runs the locked release from uv's trusted tool cache, which also works on Windows systems that block
@@ -221,8 +222,8 @@ executables launched directly from a project virtual environment.
 Run the complete test gate:
 
 ```console
-uv run poe test
-uv run poe test-parallel
+./localforge.sh test
+./localforge.sh test-parallel
 ```
 
 Both commands enter the SMTP-aware host orchestrator, run the high-parallel core stage at 100% branch coverage,
@@ -232,14 +233,14 @@ before delegating to their internal stage tasks. Run the timing stage directly o
 prepared and timing evidence is the only result needed:
 
 ```console
-uv run poe test-security-timing
+./localforge.sh test-security-timing
 ```
 
 Run a focused group without applying the whole-suite coverage threshold:
 
 ```console
-uv run poe test-unit
-uv run poe test-integration
+./localforge.sh test-unit
+./localforge.sh test-integration
 ```
 
 Focused integration runs exclude statistical timing cases unless the dedicated task is requested. The complete
@@ -251,10 +252,10 @@ the container never receives a writable repository bind mount. No source lines a
 Run every local quality check with one command:
 
 ```console
-uv run poe check
+./localforge.sh check
 ```
 
-List all configured Poe tasks with `uv run poe`, or use the curated operational guide with `uv run poe help`.
+List all configured Poe tasks with `./localforge.sh`, or use the curated operational guide with `./localforge.sh help`.
 
 ## License
 
@@ -275,8 +276,8 @@ LocalForge is available under the [MIT License](LICENSE).
 Install the dependencies, then enable all configured hook types:
 
 ```console
-uv sync --all-groups
-uv run pre-commit install
+uv sync --project backend --all-groups
+uv run --project backend pre-commit install
 ```
 
 The installation enables pre-commit, commit-message, and pre-push hooks. Pre-push runs mypy, ty, and the full test suite.
@@ -285,5 +286,5 @@ Configure the commit template and repository-local identity using [the commit co
 Validate the complete repository at any time:
 
 ```console
-uv run pre-commit run --all-files
+uv run --project backend pre-commit run --all-files
 ```
