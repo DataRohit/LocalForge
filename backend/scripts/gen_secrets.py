@@ -16,7 +16,12 @@ from typing import Protocol
 
 import bcrypt
 
-REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[2]
+REPOSITORY_ROOT = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / ".env.example").is_file()
+    else Path(__file__).resolve().parents[1]
+)
 MANIFEST_PATH = REPOSITORY_ROOT / ".env.example"
 GENERATED_PLACEHOLDER = "<GENERATED>"
 COMMAND_TIMEOUT_SECONDS = 30

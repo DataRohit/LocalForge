@@ -32,7 +32,12 @@ from scripts.gen_secrets import (
 )
 from scripts.manage_platform import CONTAINER_IMAGES, REQUIRED_CONTAINERS
 
-REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[2]
+REPOSITORY_ROOT = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / ".env.example").is_file()
+    else Path(__file__).resolve().parents[1]
+)
 IMAGE_POLICY_RELATIVE_PATH = Path("docs/security/image-vulnerability-policy.json")
 COMMAND_TIMEOUT_SECONDS = 1800
 HTTP_TIMEOUT_SECONDS = 15
@@ -261,8 +266,9 @@ def deployment_check(runner: AuditRunner, root: Path = REPOSITORY_ROOT) -> bool:
     Returns:
         True when the check succeeds with exactly the accepted warning identifiers.
     """
+    backend_root = root / "backend" if (root / "backend").is_dir() else root
     result = runner.run(
-        (sys.executable, "backend/src/manage.py", "check", "--deploy"),
+        (sys.executable, str(backend_root / "src" / "manage.py"), "check", "--deploy"),
         environment=load_testing_environment(root),
     )
     warnings = frozenset(DEPLOYMENT_WARNING_PATTERN.findall(result.combined_output))

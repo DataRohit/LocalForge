@@ -17,7 +17,13 @@ from notifications.protocol import (
 
 pytestmark = pytest.mark.unit
 
-WEBSOCKET_CONTRACT = Path(__file__).resolve().parents[4] / "docs" / "api" / "websocket-v1.md"
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[4]
+REPOSITORY_ROOT = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / "docs").is_dir()
+    else Path(__file__).resolve().parents[3]
+)
+WEBSOCKET_CONTRACT = REPOSITORY_ROOT / "docs" / "api" / "websocket-v1.md"
 
 
 def test_websocket_outcomes_are_one_complete_code_authority() -> None:

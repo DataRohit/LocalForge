@@ -305,8 +305,10 @@ def test_replication_lag_is_a_recorded_limitation() -> None:
     Raises:
         AssertionError: If the limitation is no longer recorded.
     """
+    base = Path(settings.BASE_DIR).resolve()
+    repository_root = next(parent for parent in (base, *base.parents) if (parent / "docs").is_dir())
     record = " ".join(
-        (Path(settings.BASE_DIR).parent / "docs" / "adr" / "0012-streaming-replication.md")
+        (repository_root / "docs" / "adr" / "0012-streaming-replication.md")
         .read_text(encoding="utf-8")
         .split()
     )

@@ -53,7 +53,17 @@ if TYPE_CHECKING:
         WEBSOCKET_CONNECTION_ADMISSION_TIMEOUT_SECONDS: float
 
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[4]
+REPOSITORY_ROOT = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / "docs").is_dir()
+    else Path(__file__).resolve().parents[3]
+)
+SOURCE_ROOT = (
+    REPOSITORY_ROOT / "backend" / "src"
+    if (REPOSITORY_ROOT / "backend" / "src").is_dir()
+    else REPOSITORY_ROOT / "src"
+)
 ROUTE = "/ws/notifications/"
 HEADERS = [(b"host", b"localhost"), (b"origin", b"http://localhost:8080")]
 RECEIVE_TIMEOUT_SECONDS = 10
@@ -355,7 +365,7 @@ async def test_connection_admission_is_shared_with_another_process() -> None:
     now_milliseconds = 3_600_000
     environment = {
         **os.environ,
-        "PYTHONPATH": f"{REPOSITORY_ROOT / 'backend' / 'src'}{os.pathsep}{REPOSITORY_ROOT}",
+        "PYTHONPATH": f"{SOURCE_ROOT}{os.pathsep}{REPOSITORY_ROOT}",
     }
     child = await asyncio.to_thread(
         subprocess.run,

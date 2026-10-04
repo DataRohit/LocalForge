@@ -12,8 +12,17 @@ from pathlib import Path
 
 import pytest
 
-REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-ENTRYPOINT = REPOSITORY_ROOT / "backend" / "scripts" / "pgbackrest_entrypoint.sh"
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[4]
+REPOSITORY_ROOT = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / "docker").is_dir()
+    else Path(__file__).resolve().parents[3]
+)
+ENTRYPOINT = (
+    REPOSITORY_ROOT / "backend" / "scripts" / "pgbackrest_entrypoint.sh"
+    if (REPOSITORY_ROOT / "backend" / "scripts").is_dir()
+    else REPOSITORY_ROOT / "scripts" / "pgbackrest_entrypoint.sh"
+)
 CONVENTIONS = REPOSITORY_ROOT / "docs" / "platform" / "conventions.md"
 TIMEOUT_SECONDS = 30
 

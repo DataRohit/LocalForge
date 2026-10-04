@@ -33,8 +33,15 @@ from tests.websocket import WebsocketCommunicator
 if TYPE_CHECKING:
     from asgiref.typing import ASGI3Application, ASGIReceiveCallable, ASGISendCallable, Scope
 
-REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent
-BACKEND_ROOT = REPOSITORY_ROOT / "backend"
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[3]
+REPOSITORY_ROOT = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / "backend" / "pyproject.toml").is_file()
+    else Path(__file__).resolve().parents[2]
+)
+BACKEND_ROOT = (
+    REPOSITORY_ROOT / "backend" if (REPOSITORY_ROOT / "backend").is_dir() else REPOSITORY_ROOT
+)
 BACKEND_TESTS_ROOT = BACKEND_ROOT / "tests"
 SOURCE_ROOT = BACKEND_ROOT / "src"
 UNIT_ROOT = BACKEND_TESTS_ROOT / "unit"
@@ -1191,10 +1198,10 @@ def test_security_timing_marker_partitions_every_statistical_case_exactly_once()
     Raises:
         AssertionError: If a case is missing, duplicated, or assigned to the wrong stage.
     """
-    global_paths = (REPOSITORY_ROOT / "backend" / "tests",)
+    global_paths = (BACKEND_TESTS_ROOT,)
     timing_cases = _collected_security_timing_cases("security_timing", paths=global_paths)
     cases_by_test = Counter(
-        REPOSITORY_ROOT / nodeid.split("::", maxsplit=1)[0] for nodeid in timing_cases
+        BACKEND_ROOT / nodeid.split("::", maxsplit=1)[0] for nodeid in timing_cases
     )
 
     assert len(timing_cases) == SECURITY_TIMING_CASES

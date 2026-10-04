@@ -34,16 +34,16 @@ FROM base AS runtime-source-normalizer
 
 WORKDIR /normalized
 
-COPY --chmod=0555 src ./src
-COPY --chmod=0555 scripts ./scripts
+COPY --chmod=0555 backend/src ./src
+COPY --chmod=0555 backend/scripts ./scripts
 COPY --chmod=0555 docker/django/entrypoint.sh ./docker/django/entrypoint.sh
-COPY --chmod=0444 pyproject.toml uv.lock ./
+COPY --chmod=0444 backend/pyproject.toml backend/uv.lock ./
 
 RUN find /normalized -exec touch --no-dereference --date=@0 {} +
 
 FROM runtime-source-normalizer AS test-source-normalizer
 
-COPY --chmod=0555 tests ./tests
+COPY --chmod=0555 backend/tests ./tests
 COPY --chmod=0555 docs ./docs
 COPY --chmod=0555 docker ./docker
 COPY --chmod=0444 .dockerignore .sops.yaml .gitleaks.toml ./

@@ -33,7 +33,17 @@ RESULT_TIMEOUT_SECONDS = 25
 WORKER_STOP_TIMEOUT_SECONDS = 15
 STATE_POLL_SECONDS = 0.1
 SLOW_PROBE_SECONDS = 8.0
-REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[4]
+REPOSITORY_ROOT = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / "docs").is_dir()
+    else Path(__file__).resolve().parents[3]
+)
+SOURCE_ROOT = (
+    REPOSITORY_ROOT / "backend" / "src"
+    if (REPOSITORY_ROOT / "backend" / "src").is_dir()
+    else REPOSITORY_ROOT / "src"
+)
 EAGER_DISABLED = False
 THREAD_WORKER_CONCURRENCY = 2
 
@@ -167,7 +177,7 @@ def _worker(
     environment["LOCALFORGE_TEST_CELERY_DEFAULT_QUEUE"] = default_queue
     environment["LOCALFORGE_TEST_CELERY_SLOW_QUEUE"] = slow_queue
     environment["LOCALFORGE_TEST_CELERY_DEAD_LETTER_QUEUE"] = f"{default_queue}.dead"
-    python_path = [str(REPOSITORY_ROOT / "backend" / "src"), str(REPOSITORY_ROOT)]
+    python_path = [str(SOURCE_ROOT), str(REPOSITORY_ROOT)]
     if environment.get("PYTHONPATH"):
         python_path.append(environment["PYTHONPATH"])
     environment["PYTHONPATH"] = os.pathsep.join(python_path)

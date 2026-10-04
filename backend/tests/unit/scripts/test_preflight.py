@@ -181,7 +181,12 @@ def passing_probes() -> FakeProbes:
     Returns:
         A probe surface describing a fully satisfactory machine.
     """
-    interpreter = preflight.project_interpreter(preflight.REPOSITORY_ROOT / "backend")
+    project_root = (
+        preflight.REPOSITORY_ROOT / "backend"
+        if (preflight.REPOSITORY_ROOT / "backend").is_dir()
+        else preflight.REPOSITORY_ROOT
+    )
+    interpreter = preflight.project_interpreter(project_root)
 
     return FakeProbes(
         outputs={**PASSING_OUTPUTS, (str(interpreter), "--version"): "Python 3.14.6"},
@@ -637,7 +642,11 @@ def test_a_base_interpreter_is_not_hidden_from_its_own_report() -> None:
     base = Path(sys.base_prefix)
 
     assert preflight.virtualenv_roots(base, base) == [
-        (preflight.REPOSITORY_ROOT / "backend" / ".venv").resolve(),
+        (
+            preflight.REPOSITORY_ROOT / "backend" / ".venv"
+            if (preflight.REPOSITORY_ROOT / "backend").is_dir()
+            else preflight.REPOSITORY_ROOT / ".venv"
+        ).resolve(),
     ]
 
 
@@ -662,7 +671,11 @@ def test_an_active_virtualenv_is_excluded_alongside_the_project_one() -> None:
     base = preflight.REPOSITORY_ROOT / "synthetic-base-interpreter"
 
     assert preflight.virtualenv_roots(active, base) == [
-        (preflight.REPOSITORY_ROOT / "backend" / ".venv").resolve(),
+        (
+            preflight.REPOSITORY_ROOT / "backend" / ".venv"
+            if (preflight.REPOSITORY_ROOT / "backend").is_dir()
+            else preflight.REPOSITORY_ROOT / ".venv"
+        ).resolve(),
         active.resolve(),
     ]
 

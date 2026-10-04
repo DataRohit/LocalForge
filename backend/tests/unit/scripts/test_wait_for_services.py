@@ -406,12 +406,11 @@ def test_the_default_timeout_matches_the_documented_contract() -> None:
     Raises:
         AssertionError: If the default differs from the contract.
     """
-    document = (
-        Path(wait_for_services.__file__).resolve().parent.parent
-        / "docs"
-        / "platform"
-        / "conventions.md"
-    ).read_text(encoding="utf-8")
+    module_root = Path(wait_for_services.__file__).resolve()
+    repository_root = next(parent for parent in module_root.parents if (parent / "docs").is_dir())
+    document = (repository_root / "docs" / "platform" / "conventions.md").read_text(
+        encoding="utf-8"
+    )
 
     timeout = wait_for_services.build_parser().parse_args(["postgres"]).timeout
 

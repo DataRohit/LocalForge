@@ -55,7 +55,22 @@ if TYPE_CHECKING:
 
     from accounts.models import User
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[4]
+REPOSITORY_ROOT = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / "docs").is_dir()
+    else Path(__file__).resolve().parents[3]
+)
+SOURCE_ROOT = (
+    REPOSITORY_ROOT / "backend" / "src"
+    if (REPOSITORY_ROOT / "backend" / "src").is_dir()
+    else REPOSITORY_ROOT / "src"
+)
+BACKEND_ROOT = (
+    REPOSITORY_ROOT / "backend"
+    if (REPOSITORY_ROOT / "backend" / "pyproject.toml").is_file()
+    else REPOSITORY_ROOT
+)
 SERVER_START_TIMEOUT_SECONDS = 40
 SERVER_STOP_TIMEOUT_SECONDS = 10
 RECEIVE_TIMEOUT_SECONDS = 10
@@ -363,7 +378,7 @@ async def running_uvicorn(
     environment = {
         **os.environ,
         "DJANGO_SETTINGS_MODULE": "config.settings.testing",
-        "PYTHONPATH": f"{REPOSITORY_ROOT / 'backend' / 'src'}{os.pathsep}{REPOSITORY_ROOT}",
+        "PYTHONPATH": f"{SOURCE_ROOT}{os.pathsep}{BACKEND_ROOT}{os.pathsep}{REPOSITORY_ROOT}",
         **(environment_overrides or {}),
     }
     process = cast(
@@ -393,7 +408,7 @@ async def running_uvicorn(
                 "--lifespan",
                 "off",
             ],
-            cwd=REPOSITORY_ROOT,
+            cwd=BACKEND_ROOT,
             env=environment,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

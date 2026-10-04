@@ -15,7 +15,12 @@ import pytest
 import yaml
 from scripts import gen_secrets
 
-REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[4]
+REPOSITORY_ROOT = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / "compose.yaml").is_file()
+    else Path(__file__).resolve().parents[3]
+)
 CONVENTIONS_DOCUMENT = REPOSITORY_ROOT / "docs" / "platform" / "conventions.md"
 SHARED_FILE = REPOSITORY_ROOT / "compose.yaml"
 DEVELOPMENT_FILE = REPOSITORY_ROOT / "compose.development.yaml"
@@ -1422,6 +1427,11 @@ def test_local_images_pin_base_digests_and_installed_package_versions() -> None:
     assert "**/.hypothesis/" in dockerignore
     assert "FROM base AS runtime-source-normalizer" in django
     assert "FROM runtime-source-normalizer AS test-source-normalizer" in django
+    assert "COPY --chmod=0555 backend/src ./src" in django
+    assert "COPY --chmod=0555 backend/scripts ./scripts" in django
+    assert "COPY --chmod=0444 backend/pyproject.toml backend/uv.lock ./" in django
+    assert "COPY --chmod=0555 backend/tests ./tests" in django
+    assert "COPY --chmod=0755 backend/scripts/pgbackrest_entrypoint.sh" in pgbackrest
     assert "RUN find /normalized -exec touch --no-dereference --date=@0 {} +" in django
     assert "find /app -exec touch --no-dereference --date=@0 {} +" in django
     assert "/app/coverage.xml" in django

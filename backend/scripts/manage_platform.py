@@ -25,7 +25,12 @@ from typing import Protocol
 from scripts.export_developer_access import main as export_developer_access_main
 from scripts.gen_secrets import parse_env_text
 
-REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[2]
+REPOSITORY_ROOT = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / ".env.example").is_file()
+    else Path(__file__).resolve().parents[1]
+)
 ENVIRONMENT_HEALTH_TIMEOUT_SECONDS = 600
 HEALTH_POLL_SECONDS = 2
 EXIT_OK = 0
@@ -648,7 +653,11 @@ def python_command(root: Path, script: str, *arguments: str) -> tuple[str, ...]:
     Returns:
         Complete argument vector.
     """
-    return (sys.executable, str(root / "backend" / "scripts" / script), *arguments)
+    backend_root = (
+        root / "backend" if (root / "backend").is_dir() or not (root / "scripts").is_dir() else root
+    )
+
+    return (sys.executable, str(backend_root / "scripts" / script), *arguments)
 
 
 def compose_command(
@@ -2172,7 +2181,11 @@ def testing_mode_commands(
             (
                 "uv",
                 "run",
+                "--project",
+                "backend",
                 "pytest",
+                "-c",
+                "backend/pyproject.toml",
                 "--collect-only",
                 "-q",
                 "--no-cov",
@@ -2180,7 +2193,16 @@ def testing_mode_commands(
             )
             for selection in selections
         )
-        return collections, ("uv", "run", "poe", "test-stages")
+        return collections, (
+            "uv",
+            "run",
+            "--project",
+            "backend",
+            "poe",
+            "-C",
+            "backend",
+            "test-stages",
+        )
 
     msg = f"unsupported testing mode: {mode}"
     raise ValueError(msg)
@@ -2918,13 +2940,21 @@ def registration_timing_stability(
 
     started_at = utc_timestamp()
     test_code = EXIT_OK
+    backend_root = root / "backend" if (root / "backend" / "pyproject.toml").is_file() else root
+    project_file = backend_root / "pyproject.toml"
+    timing_test_path = backend_root / REGISTRATION_TIMING_TEST
+    timing_test = timing_test_path if timing_test_path.is_file() else Path(REGISTRATION_TIMING_TEST)
     for attempt in range(1, REGISTRATION_TIMING_STABILITY_ATTEMPTS + 1):
         test_code = runner.run(
             (
                 "uv",
                 "run",
+                "--project",
+                str(backend_root),
                 "pytest",
-                REGISTRATION_TIMING_TEST,
+                "-c",
+                str(project_file),
+                str(timing_test),
                 "-m",
                 "security_timing",
                 "--no-cov",
@@ -3053,8 +3083,11 @@ def testing_runtime_probe(
     probe = ("-m", TESTING_RUNTIME_PROBE_MODULE, action, *arguments)
     if mode == "host":
         environment = load_environment(root, ".env.testing.host")
-        source_root = root / "backend" / "src" if (root / "backend").is_dir() else root / "src"
-        python_path = (str(source_root), str(root / "backend"), str(root))
+        backend_root = (
+            root / "backend" if (root / "backend").is_dir() or not (root / "src").is_dir() else root
+        )
+        source_root = backend_root / "src"
+        python_path = (str(source_root), str(backend_root), str(root))
         environment["PYTHONPATH"] = os.pathsep.join(python_path)
         return runner.run((sys.executable, *probe), environment).code
     if mode == "container":

@@ -14,7 +14,12 @@ from pathlib import Path
 
 from scripts.gen_secrets import GENERATED_PLACEHOLDER, ManifestError, parse_env_text
 
-REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[2]
+REPOSITORY_ROOT = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / ".env.example").is_file()
+    else Path(__file__).resolve().parents[1]
+)
 ENVIRONMENT_FILE = ".env.development"
 BOOKMARKS_FILE = "bookmarks.html"
 PASSWORDS_FILE = "passwords.csv"

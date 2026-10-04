@@ -25,7 +25,17 @@ from config.channels import ConfirmedRedisPubSubChannelLayer
 from config.settings.base import CHANNEL_LAYER_PREFIX
 from tests.websocket import WebsocketCommunicator
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[4]
+REPOSITORY_ROOT = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / "docs").is_dir()
+    else Path(__file__).resolve().parents[3]
+)
+SOURCE_ROOT = (
+    REPOSITORY_ROOT / "backend" / "src"
+    if (REPOSITORY_ROOT / "backend" / "src").is_dir()
+    else REPOSITORY_ROOT / "src"
+)
 RECEIVE_TIMEOUT_SECONDS = 10
 PUBLISHER_TIMEOUT_SECONDS = 60
 IMMEDIATE_SEND_ROUNDS = 40
@@ -262,7 +272,7 @@ async def test_a_message_reaches_a_connection_in_another_process(worker_namespac
     receiver = await connect_relay(group)
 
     try:
-        environment = {**os.environ, "PYTHONPATH": str(REPOSITORY_ROOT / "backend" / "src")}
+        environment = {**os.environ, "PYTHONPATH": str(SOURCE_ROOT)}
         publisher = await asyncio.to_thread(
             subprocess.run,
             [sys.executable, "-c", PUBLISHER, group],

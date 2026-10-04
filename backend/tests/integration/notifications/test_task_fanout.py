@@ -46,7 +46,17 @@ WORKER_STOP_TIMEOUT_SECONDS = 15
 RECEIVE_TIMEOUT_SECONDS = 30
 NO_MESSAGE_TIMEOUT_SECONDS = 0.2
 STATE_POLL_SECONDS = 0.1
-REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[4]
+REPOSITORY_ROOT = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / "docs").is_dir()
+    else Path(__file__).resolve().parents[3]
+)
+SOURCE_ROOT = (
+    REPOSITORY_ROOT / "backend" / "src"
+    if (REPOSITORY_ROOT / "backend" / "src").is_dir()
+    else REPOSITORY_ROOT / "src"
+)
 TASK_ID_PATTERN = re.compile(
     r"Task accounts\.send_username_changed_email\["
     r"(?P<task_id>[0-9a-f-]{36})\] received"
@@ -139,7 +149,7 @@ def _worker(queue_name: str, node_name: str, log_path: Path) -> Iterator[None]:
     environment["LOCALFORGE_TEST_CELERY_SLOW_QUEUE"] = slow_queue
     environment["LOCALFORGE_TEST_CELERY_DEAD_LETTER_QUEUE"] = f"{queue_name}.dead"
     environment["POSTGRES_DB"] = str(settings.DATABASES["default"]["NAME"])
-    python_path = [str(REPOSITORY_ROOT / "backend" / "src"), str(REPOSITORY_ROOT)]
+    python_path = [str(SOURCE_ROOT), str(REPOSITORY_ROOT)]
     if environment.get("PYTHONPATH"):
         python_path.append(environment["PYTHONPATH"])
     environment["PYTHONPATH"] = os.pathsep.join(python_path)

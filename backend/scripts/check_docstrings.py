@@ -14,7 +14,12 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[2]
+REPOSITORY_ROOT = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / ".env.example").is_file()
+    else Path(__file__).resolve().parents[1]
+)
 
 DEFAULT_PATHS = ("backend/src", "backend/tests", "backend/scripts", ".github/scripts")
 EXCLUDED_DIRECTORIES = frozenset({"__pycache__", "migrations", ".agents", ".venv"})

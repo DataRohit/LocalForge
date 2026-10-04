@@ -32,7 +32,17 @@ RECEIVE_TIMEOUT_SECONDS = 10
 NO_MESSAGE_TIMEOUT_SECONDS = 0.2
 CLEANUP_TIMEOUT_SECONDS = 10
 PUBLISHER_TIMEOUT_SECONDS = 60
-REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[4]
+REPOSITORY_ROOT = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / "docs").is_dir()
+    else Path(__file__).resolve().parents[3]
+)
+SOURCE_ROOT = (
+    REPOSITORY_ROOT / "backend" / "src"
+    if (REPOSITORY_ROOT / "backend" / "src").is_dir()
+    else REPOSITORY_ROOT / "src"
+)
 
 PUBLISHER = """
 import os
@@ -382,7 +392,7 @@ async def test_publication_from_another_process_reaches_the_authenticated_socket
     communicator = await connect_notification_socket(account)
     environment = {
         **os.environ,
-        "PYTHONPATH": f"{REPOSITORY_ROOT / 'backend' / 'src'}{os.pathsep}{REPOSITORY_ROOT}",
+        "PYTHONPATH": f"{SOURCE_ROOT}{os.pathsep}{REPOSITORY_ROOT}",
     }
 
     try:

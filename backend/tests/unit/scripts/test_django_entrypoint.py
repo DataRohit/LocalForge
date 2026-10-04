@@ -11,7 +11,12 @@ from pathlib import Path
 
 import pytest
 
-REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[4]
+REPOSITORY_ROOT = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / "docker").is_dir()
+    else Path(__file__).resolve().parents[3]
+)
 ENTRYPOINT = REPOSITORY_ROOT / "docker" / "django" / "entrypoint.sh"
 
 TIMEOUT_SECONDS = 30

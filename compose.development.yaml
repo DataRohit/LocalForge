@@ -117,7 +117,7 @@ services:
     volumes:
       - postgres-replica-pg6vy-data:/var/lib/postgresql
       - ./docker/postgres/standby/conf.d:/etc/postgresql/conf.d:ro
-      - ./scripts/pg_replica_bootstrap.sh:/usr/local/bin/pg_replica_bootstrap.sh:ro
+      - ./backend/scripts/pg_replica_bootstrap.sh:/usr/local/bin/pg_replica_bootstrap.sh:ro
 
     entrypoint: ["/usr/local/bin/pg_replica_bootstrap.sh"]
     command: ["postgres"]

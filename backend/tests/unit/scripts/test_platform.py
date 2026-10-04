@@ -37,6 +37,7 @@ TEST_CORE_COUNT = 2008
 TEST_TIMING_COUNT = 23
 FAILED_STABILITY_ATTEMPTS = 2
 STABILITY_HEALTH_CHECK_COUNT = 2
+HELP_COMMAND_TOKEN_COUNT = 4
 
 
 @dataclass
@@ -771,7 +772,7 @@ def test_registration_timing_stability_runs_five_independent_processes(
     output = capsys.readouterr().out
     assert code == platform.EXIT_OK
     assert len(commands) == platform.REGISTRATION_TIMING_STABILITY_ATTEMPTS
-    assert all(platform.REGISTRATION_TIMING_TEST in command for command in commands)
+    assert all("registration_timing.py" in " ".join(map(str, command)) for command in commands)
     assert all("--no-cov" in command and "-m" in command for command in commands)
     up.assert_called_once()
     assert health.call_count == STABILITY_HEALTH_CHECK_COUNT
@@ -962,7 +963,16 @@ def test_both_test_modes_run_independently_and_return_distinct_failures(
     assert container_code == platform.EXIT_CONTAINER_TEST_FAILED
     assert host_code == platform.EXIT_HOST_TEST_FAILED
     assert both_code == platform.EXIT_BOTH_TEST_MODES_FAILED
-    assert ("uv", "run", "poe", "test-stages") in [call[0] for call in container_runner.calls]
+    assert (
+        "uv",
+        "run",
+        "--project",
+        "backend",
+        "poe",
+        "-C",
+        "backend",
+        "test-stages",
+    ) in [call[0] for call in container_runner.calls]
     assert logs.call_count == ENVIRONMENT_COUNT * 3
     assert all(not call.kwargs for call in logs.call_args_list)
 
@@ -2131,13 +2141,18 @@ def test_poe_exposes_every_operator_alias_with_help() -> None:
         AssertionError: If an alias is missing, undocumented, or bypasses the command module.
     """
     configuration = tomllib.loads(
-        (platform.REPOSITORY_ROOT / "backend" / "pyproject.toml").read_text(encoding="utf-8")
+        (
+            platform.REPOSITORY_ROOT / "backend" / "pyproject.toml"
+            if (platform.REPOSITORY_ROOT / "backend" / "pyproject.toml").is_file()
+            else platform.REPOSITORY_ROOT / "pyproject.toml"
+        ).read_text(encoding="utf-8")
     )
     tasks = configuration["tool"]["poe"]["tasks"]
     expected = {
-        line.split()[3]
+        line.split()[1]
         for line in platform.HELP_TEXT.splitlines()
         if line.lstrip().startswith("./localforge.sh ")
+        and len(line.split()) >= HELP_COMMAND_TOKEN_COUNT
     }
 
     assert expected <= set(tasks)
@@ -3131,7 +3146,16 @@ def test_selected_host_test_tasks_use_the_mailpit_lifecycle(tmp_path: Path) -> N
             == LOG_FAILURE
         )
 
-    assert runner.calls[0][0] == ("uv", "run", "poe", "test-integration-stages")
+    assert runner.calls[0][0] == (
+        "uv",
+        "run",
+        "--project",
+        "backend",
+        "poe",
+        "-C",
+        "backend",
+        "test-integration-stages",
+    )
     cleanup.assert_called_once()
 
 
@@ -3733,7 +3757,11 @@ def test_module_entry_point_defaults_to_help(capsys: pytest.CaptureFixture[str])
         pytest.raises(SystemExit) as captured,
     ):
         runpy.run_path(
-            str(platform.REPOSITORY_ROOT / "backend" / "scripts" / "manage_platform.py"),
+            str(
+                platform.REPOSITORY_ROOT / "backend" / "scripts" / "manage_platform.py"
+                if (platform.REPOSITORY_ROOT / "backend" / "scripts").is_dir()
+                else platform.REPOSITORY_ROOT / "scripts" / "manage_platform.py"
+            ),
             run_name="__main__",
         )
 

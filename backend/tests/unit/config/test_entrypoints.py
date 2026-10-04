@@ -21,7 +21,17 @@ from django.test import RequestFactory, override_settings
 
 from config import asgi, routing, wsgi
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[4]
+REPOSITORY_ROOT = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / "docs").is_dir()
+    else Path(__file__).resolve().parents[3]
+)
+SOURCE_ROOT = (
+    REPOSITORY_ROOT / "backend" / "src"
+    if (REPOSITORY_ROOT / "backend" / "src").is_dir()
+    else REPOSITORY_ROOT / "src"
+)
 
 
 @pytest.mark.unit
@@ -214,7 +224,7 @@ def test_asgi_cold_import_populates_apps_before_rest_framework_models() -> None:
     environment = {
         **os.environ,
         "DJANGO_SETTINGS_MODULE": "config.settings.testing",
-        "PYTHONPATH": f"{REPOSITORY_ROOT / 'backend' / 'src'}{os.pathsep}{REPOSITORY_ROOT}",
+        "PYTHONPATH": f"{SOURCE_ROOT}{os.pathsep}{REPOSITORY_ROOT}",
     }
     completed = subprocess.run(
         [sys.executable, "-c", "import config.asgi"],

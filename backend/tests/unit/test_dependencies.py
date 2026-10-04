@@ -13,8 +13,17 @@ from typing import cast
 
 import pytest
 
-REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent
-MANIFEST_PATH = REPOSITORY_ROOT / "backend" / "pyproject.toml"
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[3]
+REPOSITORY_ROOT = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / "backend" / "pyproject.toml").is_file()
+    else Path(__file__).resolve().parents[2]
+)
+MANIFEST_PATH = (
+    REPOSITORY_ROOT / "backend" / "pyproject.toml"
+    if (REPOSITORY_ROOT / "backend" / "pyproject.toml").is_file()
+    else REPOSITORY_ROOT / "pyproject.toml"
+)
 
 RUNTIME_DISTRIBUTIONS = (
     "asgiref",

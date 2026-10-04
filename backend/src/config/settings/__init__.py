@@ -13,7 +13,12 @@ import environ
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[4]
+REPOSITORY_ROOT = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / ".env.example").is_file()
+    else Path(__file__).resolve().parents[3]
+)
 
 CONFIGURED_MARKER = "DJANGO_SECRET_KEY"
 

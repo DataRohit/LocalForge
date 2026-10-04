@@ -12,7 +12,12 @@ from typing import override
 
 import pytest
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[3]
+REPOSITORY_ROOT = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / "backend").is_dir()
+    else Path(__file__).resolve().parents[2]
+)
 PROJECT_PREFIXES = ("accounts", "config", "github_scripts", "notifications", "scripts")
 
 

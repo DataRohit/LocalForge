@@ -65,7 +65,12 @@ EXIT_OK: Final = 0
 EXIT_UNREACHABLE: Final = 1
 EXIT_REJECTED: Final = 2
 
-REPOSITORY_ROOT: Final = Path(__file__).resolve().parent.parent.parent
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[2]
+REPOSITORY_ROOT: Final = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / ".env.example").is_file()
+    else Path(__file__).resolve().parents[1]
+)
 ENVIRONMENT_FILES: Final = {
     "development": ".env.development",
     "testing": ".env.testing.host",

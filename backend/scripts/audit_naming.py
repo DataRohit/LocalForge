@@ -16,7 +16,12 @@ from typing import Protocol
 
 from scripts import manage_platform as platform
 
-REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[2]
+REPOSITORY_ROOT = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / ".env.example").is_file()
+    else Path(__file__).resolve().parents[1]
+)
 NAME_PATTERN = re.compile(r"^[a-z][a-z-]*-[a-z2-9]{5}$")
 GETENT_NOT_FOUND_EXIT = 2
 WINDOWS_DRIVE_PREFIX_LENGTH = 2
@@ -34,7 +39,9 @@ EXPECTED_BIND_MOUNTS: dict[str, dict[str, frozenset[str]]] = {
     },
     "postgres-replica-pg6vy": {
         "/etc/postgresql/conf.d": frozenset({"docker/postgres/standby/conf.d"}),
-        "/usr/local/bin/pg_replica_bootstrap.sh": frozenset({"scripts/pg_replica_bootstrap.sh"}),
+        "/usr/local/bin/pg_replica_bootstrap.sh": frozenset(
+            {"backend/scripts/pg_replica_bootstrap.sh"}
+        ),
     },
     "pgadmin-pa7fe": {"/pgadmin4/servers.json": frozenset({"docker/pgadmin/servers.json"})},
     "seaweedfs-sw9cr": {"/etc/seaweedfs/s3.json.template": frozenset({"docker/seaweedfs/s3.json"})},

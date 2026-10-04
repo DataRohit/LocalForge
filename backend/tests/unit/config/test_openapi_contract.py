@@ -20,7 +20,12 @@ from jsonschema.validators import Draft202012Validator  # type: ignore[import-un
 
 from notifications.protocol import WebSocketOutcome
 
-REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[4]
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[4]
+REPOSITORY_ROOT: Final = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / "docs").is_dir()
+    else Path(__file__).resolve().parents[3]
+)
 OPENAPI_ARTIFACT: Final = REPOSITORY_ROOT / "docs" / "api" / "openapi-v1.yaml"
 WEBSOCKET_ARTIFACT: Final = REPOSITORY_ROOT / "docs" / "api" / "websocket-v1.md"
 PUBLIC_SECURITY: Final[list[dict[str, list[str]]]] = []
@@ -583,7 +588,9 @@ def test_every_published_evidence_node_id_collects() -> None:
             "-q",
             *sorted(references),
         ],
-        cwd=REPOSITORY_ROOT,
+        cwd=REPOSITORY_ROOT / "backend"
+        if (REPOSITORY_ROOT / "backend").is_dir()
+        else REPOSITORY_ROOT,
         check=False,
         capture_output=True,
         text=True,

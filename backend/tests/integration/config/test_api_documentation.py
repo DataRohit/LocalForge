@@ -31,7 +31,17 @@ if TYPE_CHECKING:
 
     from accounts.models import User
 
-REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[4]
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[4]
+REPOSITORY_ROOT: Final = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / "docs").is_dir()
+    else Path(__file__).resolve().parents[3]
+)
+SOURCE_ROOT: Final = (
+    REPOSITORY_ROOT / "backend" / "src"
+    if (REPOSITORY_ROOT / "backend" / "src").is_dir()
+    else REPOSITORY_ROOT / "src"
+)
 SERVER_START_TIMEOUT_SECONDS = 20.0
 REQUEST_TIMEOUT_SECONDS = 10.0
 DOCUMENTATION_PAGE_COUNT = 2
@@ -196,9 +206,7 @@ def _start_uvicorn(*, documentation_enabled: bool) -> tuple[subprocess.Popen[str
     environment = os.environ.copy()
     environment["DJANGO_SETTINGS_MODULE"] = "config.settings.testing"
     environment["DJANGO_API_DOCUMENTATION_ENABLED"] = str(documentation_enabled).lower()
-    environment["PYTHONPATH"] = os.pathsep.join(
-        (str(REPOSITORY_ROOT / "backend" / "src"), str(REPOSITORY_ROOT))
-    )
+    environment["PYTHONPATH"] = os.pathsep.join((str(SOURCE_ROOT), str(REPOSITORY_ROOT)))
     server = subprocess.Popen(  # noqa: S603
         [
             sys.executable,
@@ -206,7 +214,7 @@ def _start_uvicorn(*, documentation_enabled: bool) -> tuple[subprocess.Popen[str
             "uvicorn",
             "config.asgi:application",
             "--app-dir",
-            str(REPOSITORY_ROOT / "backend" / "src"),
+            str(SOURCE_ROOT),
             "--host",
             "127.0.0.1",
             "--port",

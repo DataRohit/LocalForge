@@ -18,7 +18,12 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
 
-REPOSITORY_ROOT = Path(__file__).resolve().parent.parent.parent
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[2]
+REPOSITORY_ROOT = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / ".env.example").is_file()
+    else Path(__file__).resolve().parents[1]
+)
 ACTIVE_PREFIX = Path(sys.prefix)
 BASE_PREFIX = Path(sys.base_prefix)
 USER_HOME = Path.home()
@@ -581,7 +586,12 @@ def virtualenv_roots(prefix: Path, base_prefix: Path) -> list[Path]:
     Returns:
         The directories to exclude from the host search path.
     """
-    roots = [(REPOSITORY_ROOT / "backend" / ".venv").resolve()]
+    backend_root = (
+        REPOSITORY_ROOT / "backend"
+        if (REPOSITORY_ROOT / "backend").is_dir() or not (REPOSITORY_ROOT / "src").is_dir()
+        else REPOSITORY_ROOT
+    )
+    roots = [(backend_root / ".venv").resolve()]
     if prefix != base_prefix:
         roots.append(prefix.resolve())
 
@@ -728,7 +738,8 @@ def evaluate_project_interpreter(probes: SystemProbes, root: Path) -> CheckResul
     Returns:
         The evaluated result for the virtualenv interpreter.
     """
-    interpreter = project_interpreter(root / "backend")
+    backend_root = root / "backend" if (root / "backend").is_dir() else root
+    interpreter = project_interpreter(backend_root)
     check = ToolCheck(
         requirement=INTERPRETER_REQUIREMENT,
         command=(str(interpreter), "--version"),

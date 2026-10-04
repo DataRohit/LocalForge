@@ -17,7 +17,17 @@ import pytest
 
 from config.urls import documentation_urlpatterns
 
-REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[4]
+_REPOSITORY_ROOT_CANDIDATE = Path(__file__).resolve().parents[4]
+REPOSITORY_ROOT: Final = (
+    _REPOSITORY_ROOT_CANDIDATE
+    if (_REPOSITORY_ROOT_CANDIDATE / "docs").is_dir()
+    else Path(__file__).resolve().parents[3]
+)
+SOURCE_ROOT: Final = (
+    REPOSITORY_ROOT / "backend" / "src"
+    if (REPOSITORY_ROOT / "backend" / "src").is_dir()
+    else REPOSITORY_ROOT / "src"
+)
 OPENAPI_ARTIFACT: Final = REPOSITORY_ROOT / "docs" / "api" / "openapi-v1.yaml"
 DOCUMENTATION_PATHS: Final = (
     "/api/schema/",
@@ -80,9 +90,7 @@ print(json.dumps(resolved))
     environment = os.environ.copy()
     environment["DJANGO_SETTINGS_MODULE"] = "config.settings.testing"
     environment["DJANGO_API_DOCUMENTATION_ENABLED"] = str(enabled).lower()
-    environment["PYTHONPATH"] = os.pathsep.join(
-        (str(REPOSITORY_ROOT / "backend" / "src"), str(REPOSITORY_ROOT))
-    )
+    environment["PYTHONPATH"] = os.pathsep.join((str(SOURCE_ROOT), str(REPOSITORY_ROOT)))
     completed = subprocess.run(  # noqa: S603
         [sys.executable, "-c", probe],
         cwd=REPOSITORY_ROOT,
@@ -169,9 +177,7 @@ print(json.dumps({
     environment = os.environ.copy()
     environment["DJANGO_SETTINGS_MODULE"] = "config.settings.testing"
     environment["DJANGO_API_DOCUMENTATION_ENABLED"] = "true"
-    environment["PYTHONPATH"] = os.pathsep.join(
-        (str(REPOSITORY_ROOT / "backend" / "src"), str(REPOSITORY_ROOT))
-    )
+    environment["PYTHONPATH"] = os.pathsep.join((str(SOURCE_ROOT), str(REPOSITORY_ROOT)))
     completed = subprocess.run(  # noqa: S603
         [sys.executable, "-c", probe],
         cwd=REPOSITORY_ROOT,
@@ -312,9 +318,7 @@ def test_direct_schema_generation_excludes_enabled_documentation_infrastructure(
     environment = os.environ.copy()
     environment["DJANGO_SETTINGS_MODULE"] = "config.settings.testing"
     environment["DJANGO_API_DOCUMENTATION_ENABLED"] = "true"
-    environment["PYTHONPATH"] = os.pathsep.join(
-        (str(REPOSITORY_ROOT / "backend" / "src"), str(REPOSITORY_ROOT))
-    )
+    environment["PYTHONPATH"] = os.pathsep.join((str(SOURCE_ROOT), str(REPOSITORY_ROOT)))
     probe = """
 import json
 import django
@@ -341,7 +345,7 @@ print(json.dumps(sorted(schema["paths"])))
     managed = subprocess.run(  # noqa: S603
         [
             sys.executable,
-            str(REPOSITORY_ROOT / "backend" / "src" / "manage.py"),
+            str(SOURCE_ROOT / "manage.py"),
             "spectacular",
             "--validate",
             "--fail-on-warn",
