@@ -1,6 +1,6 @@
 # LocalForge build tickets
 
-70 tracer-bullet tickets across 9 ticket phases, numbered globally in dependency order. Each ticket is sized to fit one
+78 tracer-bullet tickets across 10 ticket phases, numbered globally in dependency order. Each ticket is sized to fit one
 fresh context window and is verifiable on its own.
 
 Format follows [the ticket-writing skill](../.agents/skills/to-tickets/SKILL.md). Ticket files avoid implementation
@@ -38,6 +38,7 @@ the application surface is built on top.
 | 7 | [phase-7-testing-and-audit](./phase-7-testing-and-audit) | 47–52 | Full suites in both modes, convention and security audits |
 | 8 | [phase-8-solid-architecture](./phase-8-solid-architecture) | 53–63 | Evidence-led SOLID audit, focused improvements, final verification |
 | 9 | [phase-9-public-edge-email](./phase-9-public-edge-email) | 64–70 | Cloudflare Tunnel edge, Resend development email, DNS security, public runtime verification |
+| 10 | [phase-10-monorepo](./phase-10-monorepo) | 71–78 | Backend-first monorepo layout, global environment contract, path migration, clean-checkout verification |
 
 ## Ticket index
 
@@ -116,6 +117,14 @@ search; its title is never used to predict its filename.
 | 68 | [68: Public runtime security hardening](./phase-9-public-edge-email/68-public-runtime-security.md) |
 | 69 | [69: Public runtime truth verification](./phase-9-public-edge-email/69-public-runtime-verification.md) |
 | 70 | [70: Phase 9 handover](./phase-9-public-edge-email/70-phase-9-handover.md) |
+| 71 | [71: Monorepo boundary and inventory](./phase-10-monorepo/71-monorepo-boundary-and-inventory.md) |
+| 72 | [72: Global environment and tooling contract](./phase-10-monorepo/72-global-environment-and-tooling-contract.md) |
+| 73 | [73: Backend Python project boundary](./phase-10-monorepo/73-backend-python-project.md) |
+| 74 | [74: Backend source, tests, and scripts](./phase-10-monorepo/74-backend-source-tests-and-scripts.md) |
+| 75 | [75: Docker and Compose path migration](./phase-10-monorepo/75-docker-and-compose-paths.md) |
+| 76 | [76: CI, hooks, and documentation path migration](./phase-10-monorepo/76-ci-hooks-and-documentation-paths.md) |
+| 77 | [77: Clean checkout and runtime verification](./phase-10-monorepo/77-clean-checkout-and-runtime-verification.md) |
+| 78 | [78: Phase 10 handover](./phase-10-monorepo/78-phase-10-handover.md) |
 
 ## Dependency graph
 
@@ -165,7 +174,7 @@ Arrows point from blocker to blocked. Tickets on the same line can run in parall
 63 ──> 64 ──┬──> 65 ──┬──> 67 ──┐
             │         └──> 66 ──┤
             └──────────────> 66 ─┤
-                     66,67 ──> 68 ──> 69 ──> 70
+                     66,67 ──> 68 ──> 69 ──> 70 ──> 71 ──> 72 ──> 73 ──> 74 ──> 75 ──> 76 ──> 77 ──> 78
 ```
 
 ## Standards every ticket inherits
@@ -206,3 +215,5 @@ silently accept them because the response or tests succeeded.
 - Every project-owned Python module has a Phase 8 SOLID disposition backed by source and test evidence.
 - Every confirmed SOLID violation is fixed without changing the bounded application surface.
 - `uv run poe check` is green.
+- Phase 10 leaves global environment and Compose ownership at the root, places backend Python ownership under
+  `backend/`, passes the clean-checkout and runtime gates, has no stale root backend paths, and creates no frontend.

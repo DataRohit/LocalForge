@@ -4,6 +4,15 @@ LocalForge is a fully local Django backend platform. Docker Compose runs the dat
 object storage, mail capture, reverse proxy, monitoring, logging, backup, and application services; `uv` manages the
 host Python environment and Poe exposes the supported operator commands.
 
+## Phase 10 monorepo target
+
+Phase 10 plans a backend-first monorepo. Until tickets 71–78 are implemented, the current root commands and paths
+remain active. The accepted target keeps environment files, Compose orchestration, documentation, and repository
+policy global at the root, and moves Python metadata, the virtual environment, source, tests, and scripts under
+`backend/`. No frontend is created in this phase. See
+[the Phase 10 architecture](docs/architecture/phase-10-monorepo.md) and
+[the Phase 10 ticket set](.scratch/phase-10-monorepo/71-monorepo-boundary-and-inventory.md).
+
 ## Requirements
 
 - Python 3.14 or newer

@@ -63,7 +63,8 @@ it — database, cache, broker, WebSocket message layer, object storage, mail ca
 logging, backups, read replication — running in Docker on one machine with no cloud dependency.
 
 On top of that platform sits a deliberately bounded application surface: an authenticated REST API, WebSockets, and
-a health endpoint for the load balancer. Nothing else.
+a health endpoint for the load balancer. Nothing else. Phase 10 prepares a backend-first monorepo and adds no
+frontend implementation.
 
 ## Environments
 
@@ -172,8 +173,8 @@ means adding a registry row in a documentation change first.
 
 ## Phase order
 
-Nine sequential ticket phases with explicit gates, in [docs/build/plan.md](./docs/build/plan.md) Section 3 and
-the 70-ticket index in [.scratch/](./.scratch/README.md):
+Ten sequential ticket phases with explicit gates, in [docs/build/plan.md](./docs/build/plan.md) Section 3 and
+the 78-ticket index in [.scratch/](./.scratch/README.md):
 
 | Ticket phase | Delivers                                                                             |
 | ------------ | ------------------------------------------------------------------------------------ |
@@ -186,6 +187,7 @@ the 70-ticket index in [.scratch/](./.scratch/README.md):
 | 7            | Testing and audit: both modes in parallel, convention and security audits            |
 | 8            | SOLID architecture: evidence-led audit, focused improvements, final verification     |
 | 9            | Public edge/email: Cloudflare, Resend, DNS, runtime verification                     |
+| 10           | Monorepo restructure: global root contract, backend subtree, clean-checkout gate     |
 
 Infrastructure comes first, then the project is brought up to meet it, then Django is wired to each running
 service, then the application is built on top. Do not build the application against services that are not yet
@@ -238,7 +240,7 @@ These predate this work.
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | Which workflow or skill fits this task                        | **`/ask-matt`**, the router over `.agents/skills/`                                   |
 | What do the words mean                                        | [CONTEXT.md](./CONTEXT.md)                                                           |
-| What should I work on next                                    | [.scratch/README.md](./.scratch/README.md) — 70 tickets in 9 sequential phases       |
+| What should I work on next                                    | [.scratch/README.md](./.scratch/README.md) — 78 tickets in 10 sequential phases      |
 | Which tool, and why that one                                  | [docs/adr/](./docs/adr/README.md) — one decision per file, indexed                   |
 | How SOLID applies to this Python project                      | [docs/architecture/solid-audit-plan.md](./docs/architecture/solid-audit-plan.md)     |
 | Names, IDs, variables, secrets, script contracts              | [docs/platform/conventions.md](./docs/platform/conventions.md)                       |
@@ -247,6 +249,7 @@ These predate this work.
 | How this becomes Kubernetes later                             | [docs/platform/kubernetes-mapping.md](./docs/platform/kubernetes-mapping.md)         |
 | What must be installed first                                  | [docs/build/prerequisites.md](./docs/build/prerequisites.md)                         |
 | What to run, in what order                                    | [docs/build/plan.md](./docs/build/plan.md)                                           |
+| Monorepo ownership                                            | [docs/architecture/phase-10-monorepo.md](./docs/architecture/phase-10-monorepo.md)   |
 
 When two documents disagree, the more specific wins: `conventions.md` for a name, `service-inventory.md` for a port.
 Fix the disagreement rather than choosing silently.

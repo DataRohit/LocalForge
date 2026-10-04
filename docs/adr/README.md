@@ -32,6 +32,7 @@ Format follows `.agents/skills/domain-modeling/ADR-FORMAT.md`: sequential number
 | [0020](./0020-no-comments-structured-docstrings.md) | Code standards | No comments; structured docstrings, mechanically enforced | — | accepted |
 | [0021](./0021-access-zone-for-published-ports.md) | Network topology | A dedicated access zone, because internal networks cannot publish host ports | — | accepted |
 | [0022](./0022-public-edge-and-resend.md) | Public deployment and transactional email | Cloudflare Tunnel plus Resend on the existing Docker deployment | Cloudflare / Resend | accepted |
+| [0023](./0023-monorepo-layout.md) | Repository layout | Backend-first monorepo with global deployment and environment ownership | — | accepted |
 
 ## Evidence standard
 

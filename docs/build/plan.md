@@ -10,15 +10,15 @@ This records the ordered build phases and their gates. Read [../adr/README.md](.
 
 ## 1. Repository starting state
 
-Observed 2026-09-13. Re-verify; the tree may have moved on.
+Observed 2026-10-04 before Phase 10. Re-verify during Ticket 71; the tree may move during the migration.
 
 | Fact | Value |
 | --- | --- |
-| Django project root | `src/` |
+| Django project root before Phase 10 | `src/`; target after Phase 10 is `backend/src/` |
 | Settings | `src/config/settings.py` — a **single module**, to become a package |
 | ASGI entry point | `src/config/asgi.py`, plain `get_asgi_application()` |
 | Database | SQLite at `BASE_DIR / "db.sqlite3"` |
-| Dependencies | `uv` with `[dependency-groups]`. **No `requirements.txt` exists and none is created** |
+| Dependencies | `uv` with `[dependency-groups]` in `pyproject.toml`; target metadata location is `backend/` |
 | Task runner | `poethepoet`; `uv run poe check` is the full gate |
 | Python | `requires-python = ">=3.14"`, `.python-version` `3.14.6` |
 | Django | `>=6.0,<6.1` |
@@ -33,8 +33,8 @@ Two constraints that are easy to trip over:
 
 ## 2. Files this plan creates
 
-Listed so scope creep is recognisable. Rows from the completed build now exist; Phase 9 planning adds only the
-public edge, email, and handover evidence named below.
+Listed so scope creep is recognisable. Rows from the completed build now exist; Phase 10 adds only the monorepo
+planning documents and handover named below.
 
 | Path | Purpose |
 | --- | --- |
@@ -70,6 +70,10 @@ public edge, email, and handover evidence named below.
 | `docs/architecture/phase-9-public-edge-email-spec.md` | Phase 9 problem statement, user stories, decisions, and test contract |
 | `docs/runbooks/phase-9-public-edge-email.md` | Phase 9 DNS, Tunnel, email, and rollback runbook |
 | `docs/handover/phase-9.md` | Phase 9 public deployment evidence, secret ownership, rollback procedure, and manual closeout state |
+| `docs/adr/0023-monorepo-layout.md` | Accepted backend-first monorepo ownership decision |
+| `docs/architecture/phase-10-monorepo.md` | Phase 10 scope, ownership boundary, and gate |
+| `docs/architecture/phase-10-monorepo-spec.md` | Phase 10 requirements and acceptance evidence |
+| `docs/handover/phase-10.md` | Phase 10 final migration evidence and rollback record |
 | `docs/platform/documentation-standard.md` | The worked reference for the docstring standard the checker enforces |
 | `.env.example` | Committed variable manifest, placeholders only |
 | `.env.development.sops`, `.env.testing.sops` | Committed encrypted env files |
@@ -112,7 +116,7 @@ public edge, email, and handover evidence named below.
 
 ## 3. Phases
 
-Nine phases. **A phase may not begin until the previous gate passes.** If a gate fails, stop and fix it. Never
+Ten phases. **A phase may not begin until the previous gate passes.** If a gate fails, stop and fix it. Never
 weaken a gate to make it pass.
 
 Every phase gate that starts or changes a runtime service also applies the
@@ -393,9 +397,21 @@ WebSocket flows work through the Tunnel; development email sends through Resend 
 `no-reply@localforge.datarohit.com`; testing still uses Mailpit; operator surfaces and secrets remain private; and
 the affected runtime log window is clean.
 
-The prepared operator record is [docs/handover/phase-9.md](../handover/phase-9.md). Phase 9 remains open for the
-controlled post-remediation inbox/junk placement check and rollback rehearsal recorded there; no new scope starts
-until that closeout or a new governing document and ticket set exists.
+The prepared operator record is [docs/handover/phase-9.md](../handover/phase-9.md). Phase 9 is closed. No new
+implementation scope starts until the Phase 10 monorepo documents and ticket set are accepted.
+
+### Phase 10 — Backend-first monorepo restructure
+
+Phase 10 moves backend Python ownership into `backend/` while keeping environment files, Compose orchestration,
+documentation, repository policy, and future frontend ownership global at the root. It creates no frontend and no new
+runtime environment. The authoritative scope, ownership table, requirements, and decision are
+[phase-10-monorepo.md](../architecture/phase-10-monorepo.md),
+[phase-10-monorepo-spec.md](../architecture/phase-10-monorepo-spec.md), and
+[ADR 0023](../adr/0023-monorepo-layout.md).
+
+Work tickets 71–78 in `.scratch/phase-10-monorepo/` in order. Ticket 78 closes only after a clean-checkout install,
+both environment rebuilds, quality gates, SOPS parity, security audits, and runtime truth evidence pass. The final
+record is [docs/handover/phase-10.md](../handover/phase-10.md).
 
 ## 4. Rollback
 
