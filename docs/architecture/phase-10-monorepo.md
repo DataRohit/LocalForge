@@ -13,6 +13,8 @@ The pre-move ownership and path-sensitive inventory is
 - Move Python metadata, virtual-environment configuration, backend source, tests, and Python scripts under `backend/`.
 - Keep `.env.example`, encrypted environment files, `.sops.yaml`, Compose files, Docker orchestration, `docs/`,
   `.scratch/`, `AGENTS.md`, and repository policy at root.
+- Provide `localforge.ps1` and `localforge.sh` as root entry points. They resolve the repository root, select the
+  backend project when present, and invoke Poe from that project directory regardless of caller directory.
 - Update every command, Docker context, CI workflow, hook, import path, coverage path, and documentation link that
   references moved backend files.
 - Preserve the two existing Compose environments and every registered name, port, route, secret, and ticket history.

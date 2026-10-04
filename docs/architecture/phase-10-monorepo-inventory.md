@@ -21,6 +21,7 @@ security policy, or environment contract:
 | Environment and secrets | `.env.example`, `.env.development.sops`, `.env.testing.sops`, `.sops.yaml` |
 | Compose and image ignore rules | `compose.yaml`, `compose.development.yaml`, `compose.testing.yaml`, `compose.proxy-only.yaml`, `.dockerignore` |
 | Repository policy | `.editorconfig`, `.gitattributes`, `.gitignore`, `.gitleaks.toml`, `.gitmessage`, `.markdownlint-cli2.jsonc`, `.markdownlint.json`, `.pre-commit-config.yaml`, `.yamllint.yml` |
+| Root command entry points | `localforge.ps1`, `localforge.sh` |
 | Agent and project governance | `AGENTS.md`, `CONTEXT.md`, `CONTRIBUTING.md`, `GOVERNANCE.md`, `CODE_OF_CONDUCT.md`, `COMMIT_CONVENTION.md`, `SECURITY.md`, `SUPPORT.md`, `CHANGELOG.md`, `LICENSE`, `README.md`, `skills-lock.json` |
 | CI coordination | `.github/` |
 

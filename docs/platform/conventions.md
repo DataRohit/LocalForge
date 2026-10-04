@@ -185,6 +185,13 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 6. A required variable that is missing raises at startup. Silent defaults for required values turn a configuration
    error into a runtime mystery.
 
+### 3.1.1 Repository-root contract
+
+Environment files, `.sops.yaml`, and generated plaintext outputs always resolve from repository root. SOPS and secret
+generation scripts may move with backend Python ownership, but their root path contract never changes. Invoke Poe
+through `localforge.ps1` or `localforge.sh`; each wrapper resolves repository root and selects the backend project
+after the monorepo move.
+
 ### 3.2 Inventory
 
 **Sec** = secret, **Req** = required.

@@ -75,6 +75,7 @@ planning documents and handover named below.
 | `docs/architecture/phase-10-monorepo-spec.md` | Phase 10 requirements and acceptance evidence |
 | `docs/architecture/phase-10-monorepo-inventory.md` | Pre-move file ownership and path-sensitive surface inventory |
 | `docs/handover/phase-10.md` | Phase 10 final migration evidence and rollback record |
+| `localforge.ps1`, `localforge.sh` | Root command entry points; select the backend project when it exists and run Poe from its project directory |
 | `docs/platform/documentation-standard.md` | The worked reference for the docstring standard the checker enforces |
 | `.env.example` | Committed variable manifest, placeholders only |
 | `.env.development.sops`, `.env.testing.sops` | Committed encrypted env files |
@@ -413,6 +414,11 @@ runtime environment. The authoritative scope, ownership table, requirements, and
 Work tickets 71–78 in `.scratch/phase-10-monorepo/` in order. Ticket 78 closes only after a clean-checkout install,
 both environment rebuilds, quality gates, SOPS parity, security audits, and runtime truth evidence pass. The final
 record is [docs/handover/phase-10.md](../handover/phase-10.md).
+
+Phase 10 root command contract: run `./localforge.sh <task>` from a POSIX shell or
+`./localforge.ps1 <task>` from PowerShell. Each wrapper resolves the repository root, runs from the selected Python
+project, and selects `backend/` once its `pyproject.toml` exists. Environment and Compose files remain addressed from
+the repository root.
 
 ## 4. Rollback
 

@@ -52,6 +52,7 @@ staticfiles/
 .cache/
 
 .venv/
+/backend/.venv/
 venv/
 env/
 ENV/
@@ -61,8 +62,8 @@ venv.bak/
 
 .env
 .env.*
-!.env.example
-!.env.*.sops
+!/.env.example
+!/.env.*.sops
 
 pip-log.txt
 pip-delete-this-directory.txt
