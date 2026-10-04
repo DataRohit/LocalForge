@@ -73,6 +73,7 @@ planning documents and handover named below.
 | `docs/adr/0023-monorepo-layout.md` | Accepted backend-first monorepo ownership decision |
 | `docs/architecture/phase-10-monorepo.md` | Phase 10 scope, ownership boundary, and gate |
 | `docs/architecture/phase-10-monorepo-spec.md` | Phase 10 requirements and acceptance evidence |
+| `docs/architecture/phase-10-monorepo-inventory.md` | Pre-move file ownership and path-sensitive surface inventory |
 | `docs/handover/phase-10.md` | Phase 10 final migration evidence and rollback record |
 | `docs/platform/documentation-standard.md` | The worked reference for the docstring standard the checker enforces |
 | `.env.example` | Committed variable manifest, placeholders only |

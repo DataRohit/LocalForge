@@ -4,6 +4,9 @@ Phase 10 moves the existing Python backend into `backend/` while preserving one 
 global environment files, global documentation, and global repository policy. It prepares a future `frontend/`
 directory without creating frontend code or a second environment.
 
+The pre-move ownership and path-sensitive inventory is
+[phase-10-monorepo-inventory.md](./phase-10-monorepo-inventory.md).
+
 ## Scope
 
 - Define and document the root versus `backend/` ownership boundary.
