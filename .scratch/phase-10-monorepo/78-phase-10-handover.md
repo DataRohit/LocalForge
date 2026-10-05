@@ -15,11 +15,13 @@ next phase that may add a frontend.
 - [Build plan](../../docs/build/plan.md)
 - [Ticket index](../README.md)
 
-**Status:** pending
+**Status:** done
 
-- [ ] Record final root/global and backend ownership, every command-path compatibility decision, and no-frontend scope.
-- [ ] Record clean-checkout dependency, quality, SOPS, Docker, runtime, security, and log evidence.
-- [ ] Record rollback steps and any follow-up needed before frontend work begins.
-- [ ] Confirm Phase 10 gate passes and all Phase 10 tickets are done.
+- [x] Record final root/global and backend ownership, every command-path compatibility decision, and no-frontend scope.
+- [x] Record clean-checkout dependency, quality, SOPS, Docker, runtime, security, and log evidence.
+- [x] Record rollback steps and any follow-up needed before frontend work begins.
+- [x] Confirm Phase 10 gate passes and all Phase 10 tickets are done.
 
-Durable evidence: [Phase 10 handover](../../docs/handover/phase-10.md).
+Evidence: [Phase 10 handover](../../docs/handover/phase-10.md) records the final ownership map, Makefile command
+compatibility, clean-checkout and runtime gates, SOPS parity, rollback, and frontend follow-up. Tickets 71–77 are
+done, the phase gate passes, and no frontend implementation was added.
