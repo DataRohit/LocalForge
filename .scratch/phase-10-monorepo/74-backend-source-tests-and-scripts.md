@@ -23,7 +23,6 @@ imports, test discovery, and script contracts.
 Evidence: Git moves root `src/`, `tests/`, and `scripts/` ownership into `backend/src/`, `backend/tests/`, and
 `backend/scripts/`. Backend-relative Ruff, mypy, ty, pytest,
 coverage, and Poe paths now resolve from the moved project; repository-root settings, operator scripts, test harnesses,
-and subprocess `PYTHONPATH` values resolve through `backend/`. Root wrappers select the backend project and preserve
-caller-independent execution. `localforge.ps1 lint`, `localforge.ps1 docs-standard`, `localforge.ps1 help`,
-`uv lock --check --project backend`, and `uv sync --project backend --locked --no-install-project` pass. Root
+and subprocess `PYTHONPATH` values resolve through `backend/`. Root Makefile targets select the backend project and preserve
+caller-independent execution. `make lint`, `make docs-standard`, `make help`, `make sync`, and `make check` pass. Root
 `src/`, `tests/`, and `scripts/` trees no longer exist.

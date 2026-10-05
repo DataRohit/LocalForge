@@ -612,6 +612,7 @@ def test_dependency_check_propagates_export_and_audit_status() -> None:
         [audit.CommandResult(0, ""), audit.CommandResult(0, '{"dependencies": []}')]
     )
     assert audit.dependency_check(passed)
+    assert passed.calls[0][0][1:3] == ("export", "--project")
     assert passed.calls[1][0][1] == f"pip-audit@{audit.PIP_AUDIT_VERSION}"
 
 

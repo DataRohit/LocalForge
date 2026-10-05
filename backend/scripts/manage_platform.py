@@ -233,53 +233,53 @@ HELP_TEXT = """\
 LocalForge environment commands
 
 First setup
-  uv sync --project backend --all-groups --frozen
-  ./localforge.sh setup                 Check prerequisites and prepare environment files
-  ./localforge.sh environments-setup    Pull images, start, and audit both environments
-  ./localforge.sh docker-clean-check     Require zero LocalForge Docker resources
-  ./localforge.sh docker-audit           Verify running resources, labels, health, and ownership
+  make sync
+  make setup                 Check prerequisites and prepare environment files
+  make environments-setup    Pull images, start, and audit both environments
+  make docker-clean-check     Require zero LocalForge Docker resources
+  make docker-audit           Verify running resources, labels, health, and ownership
 
 Development (each safe default preserves volumes)
-  ./localforge.sh development-build     Build local development images
-  ./localforge.sh development-up        Build if needed and start the full stack
-  ./localforge.sh development-rebuild   Rebuild and recreate the full stack
-  ./localforge.sh development-status    Show service state
-  ./localforge.sh development-health    Verify service and application readiness
-  ./localforge.sh development-logs      Show recent logs
-  ./localforge.sh development-down      Stop the stack and preserve data
-  ./localforge.sh development-reset     DESTRUCTIVE: remove data and rebuild from scratch
+  make development-build     Build local development images
+  make development-up        Build if needed and start the full stack
+  make development-rebuild   Rebuild and recreate the full stack
+  make development-status    Show service state
+  make development-health    Verify service and application readiness
+  make development-logs      Show recent logs
+  make development-down      Stop the stack and preserve data
+  make development-reset     DESTRUCTIVE: remove data and rebuild from scratch
 
 Testing (each safe default preserves volumes)
-  ./localforge.sh testing-build          Build the test runner image
-  ./localforge.sh testing-up             Build if needed and start the headless environment
-  ./localforge.sh testing-rebuild        Rebuild and recreate the headless environment
-  ./localforge.sh testing-status         Show service state
-  ./localforge.sh testing-health         Verify testing dependency readiness
-  ./localforge.sh testing-logs           Show recent logs
-  ./localforge.sh testing-test-container Run the complete suite in the test container
-  ./localforge.sh testing-test-host      Run the complete suite from the host
-  ./localforge.sh testing-test-both      Run container mode, then host mode
-  ./localforge.sh testing-registration-timing-stability
+  make testing-build          Build the test runner image
+  make testing-up             Build if needed and start the headless environment
+  make testing-rebuild        Rebuild and recreate the headless environment
+  make testing-status         Show service state
+  make testing-health         Verify testing dependency readiness
+  make testing-logs           Show recent logs
+  make testing-test-container Run the complete suite in the test container
+  make testing-test-host      Run the complete suite from the host
+  make testing-test-both      Run container mode, then host mode
+  make testing-registration-timing-stability
                                      Run five independent host registration timing passes
-  ./localforge.sh testing-integration-audit
+  make testing-integration-audit
                                      Prove Mailpit persistence and real degraded readiness
-  ./localforge.sh testing-verify         Rebuild, run both modes, then stop on success
-  ./localforge.sh testing-down           Stop the stack and preserve data
-  ./localforge.sh testing-reset          DESTRUCTIVE: remove data and rebuild from scratch
+  make testing-verify         Rebuild, run both modes, then stop on success
+  make testing-down           Stop the stack and preserve data
+  make testing-reset          DESTRUCTIVE: remove data and rebuild from scratch
 
 Secrets
-  ./localforge.sh secrets-generate      Create or top up local environment files
-  ./localforge.sh secrets-decrypt       Recover committed encrypted environment files
+  make secrets-generate      Create or top up local environment files
+  make secrets-decrypt       Recover committed encrypted environment files
 
 Developer access
-  ./localforge.sh developer-access-export
+  make developer-access-export
                                      Create browser bookmarks and password imports
 
 Options
-  ./localforge.sh environments-setup --proxy-only
-  ./localforge.sh development-up --proxy-only
-  ./localforge.sh development-rebuild --proxy-only
-  ./localforge.sh development-reset --proxy-only
+  make environments-setup ARGS="--proxy-only"
+  make development-up ARGS="--proxy-only"
+  make development-rebuild ARGS="--proxy-only"
+  make development-reset ARGS="--proxy-only"
                                      Do not publish Django host port 8000
                                      rejected for every other command
   --confirm-destroy-data           Required by direct reset invocations
@@ -747,7 +747,7 @@ def require_environment_file(root: Path, spec: EnvironmentSpec) -> int:
     if path.is_file():
         return EXIT_OK
 
-    print(f"{path.name} is missing; run `./localforge.sh setup` first")
+    print(f"{path.name} is missing; run `make setup` first")
     return EXIT_USAGE
 
 

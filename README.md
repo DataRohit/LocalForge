@@ -25,30 +25,29 @@ is created in this phase. See
 Install all dependency groups, inspect the commands, then build and start both environments:
 
 ```console
-uv sync --project backend --all-groups --frozen
-./localforge.sh help
-./localforge.sh environments-setup
+make sync
+make help
+make environments-setup
 ```
 
-On Windows, including when another process owns port 8000, use the PowerShell wrapper for the first-run variant:
+On Windows, including when another process owns port 8000, use the Makefile for the first-run variant:
 
 ```powershell
-.\localforge.ps1 environments-setup --proxy-only
+make environments-setup ARGS="--proxy-only"
 ```
 
 On POSIX shells, use:
 
 ```console
-./localforge.sh environments-setup --proxy-only
+make environments-setup ARGS="--proxy-only"
 ```
 
 Package downloads use the Microsoft package feed configured in `backend/pyproject.toml`, with system certificate
-verification enabled. The lockfile records this feed's artifact URLs so `uv sync --project backend --all-groups
---frozen` does not attempt direct downloads from `files.pythonhosted.org`, which fails TLS negotiation on this managed
-network.
+verification enabled. The lockfile records this feed's artifact URLs so `make sync` does not attempt direct downloads
+from `files.pythonhosted.org`, which fails TLS negotiation on this managed network.
 
 Changing the default index alone does not redirect URLs already recorded in `backend/uv.lock`. After an approved index
-change, run `uv lock --project backend` and then `uv sync --project backend --all-groups --frozen`. Do not disable TLS
+change, run `uv lock --project backend` and then `make sync`. Do not disable TLS
 certificate verification.
 
 `environments-setup` prepares environment files, pulls missing pinned external images, rebuilds all three local
@@ -67,22 +66,22 @@ Restore the existing encrypted environment only when the original age private ke
 
 ```powershell
 $env:SOPS_AGE_KEY_FILE = 'C:\secure\localforge-age-key.txt'
-uv sync --project backend --all-groups --frozen
-.\localforge.ps1 secrets-decrypt
-.\localforge.ps1 environments-setup
+make sync
+make secrets-decrypt
+make environments-setup
 ```
 
 Generate fresh local credentials only on a machine with no LocalForge Docker data to preserve:
 
 ```powershell
-uv sync --project backend --all-groups --frozen
-.\localforge.ps1 docker-clean-check
+make sync
+make docker-clean-check
 Remove-Item -LiteralPath .env.development,.env.testing,.env.testing.host -Force -ErrorAction SilentlyContinue
-.\localforge.ps1 secrets-generate
+make secrets-generate
 notepad .env.development
-.\localforge.ps1 secrets-generate
-.\localforge.ps1 environments-setup
-.\localforge.ps1 developer-access-export
+make secrets-generate
+make environments-setup
+make developer-access-export
 ```
 
 In the editor, replace only the `TUNNEL_TOKEN` and `RESEND_API_KEY` placeholders with newly issued provider values.
@@ -95,42 +94,42 @@ file. Never use generator `--force` against existing LocalForge volumes.
 Start and verify the complete development environment:
 
 ```console
-./localforge.sh development-up
-./localforge.sh development-health
+make development-up
+make development-health
 ```
 
 The public application entry point is `http://localforge.localhost:8080/`. If another local process owns port 8000,
-use `./localforge.sh development-up --proxy-only`; Traefik remains available while the direct loopback publication is
+use `make development-up ARGS="--proxy-only"`; Traefik remains available while the direct loopback publication is
 omitted.
 
 ## Environment commands
 
-Run `./localforge.sh help` for the complete categorized command list.
+Run `make help` for the complete categorized command list.
 
 | Workflow | Development | Testing |
 | --- | --- | --- |
-| Prepare both | `./localforge.sh environments-setup` | `./localforge.sh environments-setup` |
-| Start | `./localforge.sh development-up` | `./localforge.sh testing-up` |
-| Rebuild, preserve data | `./localforge.sh development-rebuild` | `./localforge.sh testing-rebuild` |
-| Status | `./localforge.sh development-status` | `./localforge.sh testing-status` |
-| Health | `./localforge.sh development-health` | `./localforge.sh testing-health` |
-| Recent logs | `./localforge.sh development-logs` | `./localforge.sh testing-logs` |
-| Follow one service | `./localforge.sh development-logs --follow django-uv5n2` | `./localforge.sh testing-logs --follow postgres-tp8vn` |
-| Stop, preserve data | `./localforge.sh development-down` | `./localforge.sh testing-down` |
-| **Destructive reset** | `./localforge.sh development-reset` | `./localforge.sh testing-reset` |
+| Prepare both | `make environments-setup` | `make environments-setup` |
+| Start | `make development-up` | `make testing-up` |
+| Rebuild, preserve data | `make development-rebuild` | `make testing-rebuild` |
+| Status | `make development-status` | `make testing-status` |
+| Health | `make development-health` | `make testing-health` |
+| Recent logs | `make development-logs` | `make testing-logs` |
+| Follow one service | `make development-logs ARGS="--follow django-uv5n2"` | `make testing-logs ARGS="--follow postgres-tp8vn"` |
+| Stop, preserve data | `make development-down` | `make testing-down` |
+| **Destructive reset** | `make development-reset` | `make testing-reset` |
 
 The reset commands remove that environment's named volumes and rebuild without cache. They are intentionally named
 separately from ordinary rebuilds.
 
-Run `./localforge.sh docker-audit` for the complete container, label, network, volume, image, and health inventory.
-`./localforge.sh docker-clean-check` is the inverse precondition: it fails if any LocalForge Docker resource remains.
+Run `make docker-audit` for the complete container, label, network, volume, image, and health inventory.
+`make docker-clean-check` is the inverse precondition: it fails if any LocalForge Docker resource remains.
 It is optional and belongs only at the start of a deliberate clean-room rehearsal; failure on an already configured
 machine is expected and does not mean the running inventory is invalid. The command never deletes anything.
-Run `./localforge.sh convention-audit` for the deeper live registry comparison: exact names, ports, mounts, internal
+Run `make convention-audit` for the deeper live registry comparison: exact names, ports, mounts, internal
 flags, anonymous-volume rejection, and active offline probes for both projects. Environment-specific variants are
 `convention-audit-development` and `convention-audit-testing`.
 
-Run `./localforge.sh security-audit` for the deployment, full-history secret, locked dependency, exact image
+Run `make security-audit` for the deployment, full-history secret, locked dependency, exact image
 vulnerability policy, protected-dashboard/private-port, broker-account, image-layer, and runtime-log gates.
 `security-audit-static` and `security-audit-runtime` split the network/scanner-heavy and live-environment portions.
 Accepted findings and review dates are in
@@ -146,10 +145,10 @@ requires port 8000 in normal mode while requiring it absent in proxy-only mode.
 Tests and static checks are not the final runtime verdict. After a source rebuild or any service-facing change, run:
 
 ```console
-./localforge.sh development-health
-./localforge.sh testing-health
-./localforge.sh docker-audit
-./localforge.sh development-logs django-uv5n2
+make development-health
+make testing-health
+make docker-audit
+make development-logs ARGS="django-uv5n2"
 ```
 
 Exercise the changed route, socket, task, scheduler, storage, mail, or operator command against the running stack,
@@ -169,10 +168,10 @@ does not waive contradictory runtime evidence.
 Environment setup and rebuild commands never execute tests. Test execution is explicit:
 
 ```console
-./localforge.sh testing-test-container
-./localforge.sh testing-test-host
-./localforge.sh testing-registration-timing-stability
-./localforge.sh testing-integration-audit
+make testing-test-container
+make testing-test-host
+make testing-registration-timing-stability
+make testing-integration-audit
 ```
 
 The testing environment keeps `django-test-dt5qx` running as a Compose service. Every complete host or container
@@ -194,8 +193,8 @@ the Mailpit container before returning, including after a failed assertion, whil
 `testing-verify` remains an explicit full-suite workflow and is not part of setup:
 
 ```console
-./localforge.sh testing-verify
-./localforge.sh testing-down
+make testing-verify
+make testing-down
 ```
 
 `testing-test-both` collects complete, core, and security-timing counts in both modes before either suite starts,
@@ -213,14 +212,14 @@ type-check discovery, and test discovery. Its files remain available and can sti
 Run linting and formatting checks:
 
 ```console
-./localforge.sh lint
-./localforge.sh format-check
+make lint
+make format-check
 ```
 
 Run both type checkers:
 
 ```console
-./localforge.sh typecheck
+make typecheck
 ```
 
 The ty task runs the locked release from uv's trusted tool cache, which also works on Windows systems that block
@@ -229,8 +228,8 @@ executables launched directly from a project virtual environment.
 Run the complete test gate:
 
 ```console
-./localforge.sh test
-./localforge.sh test-parallel
+make test
+make test-parallel
 ```
 
 Both commands enter the SMTP-aware host orchestrator, run the high-parallel core stage at 100% branch coverage,
@@ -240,14 +239,14 @@ before delegating to their internal stage tasks. Run the timing stage directly o
 prepared and timing evidence is the only result needed:
 
 ```console
-./localforge.sh test-security-timing
+make test-security-timing
 ```
 
 Run a focused group without applying the whole-suite coverage threshold:
 
 ```console
-./localforge.sh test-unit
-./localforge.sh test-integration
+make test-unit
+make test-integration
 ```
 
 Focused integration runs exclude statistical timing cases unless the dedicated task is requested. The complete
@@ -259,10 +258,10 @@ the container never receives a writable repository bind mount. No source lines a
 Run every local quality check with one command:
 
 ```console
-./localforge.sh check
+make check
 ```
 
-List all configured Poe tasks with `./localforge.sh`, or use the curated operational guide with `./localforge.sh help`.
+List all configured Poe tasks with `make help`.
 
 ## License
 
@@ -283,8 +282,8 @@ LocalForge is available under the [MIT License](LICENSE).
 Install the dependencies, then enable all configured hook types:
 
 ```console
-uv sync --project backend --all-groups
-uv run --project backend pre-commit install
+make sync
+make pre-commit-install
 ```
 
 The installation enables pre-commit, commit-message, and pre-push hooks. Pre-push runs mypy, ty, and the full test suite.
@@ -293,5 +292,5 @@ Configure the commit template and repository-local identity using [the commit co
 Validate the complete repository at any time:
 
 ```console
-uv run --project backend pre-commit run --all-files
+make pre-commit
 ```

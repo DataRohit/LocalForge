@@ -189,7 +189,7 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 
 Environment files, `.sops.yaml`, and generated plaintext outputs always resolve from repository root. SOPS and secret
 generation scripts may move with backend Python ownership, but their root path contract never changes. Invoke Poe
-through `localforge.ps1` or `localforge.sh`; each wrapper resolves repository root and selects the backend project
+through the root `Makefile`; each target selects the backend project
 after the monorepo move.
 
 ### 3.2 Inventory
@@ -624,15 +624,15 @@ Generated and vendored paths are excluded by name — `migrations`, `__pycache__
 file written by `makemigrations` cannot be held to a hand-written standard.
 
 Exit `0` clean; `1` violations, printed one per line as `FAIL <path>:<line> <rule> <detail>` followed by a count.
-Runs in `./localforge.sh check` and as a pre-commit hook.
+Runs in `make check` and as a pre-commit hook.
 
 ### 4.13 `backend/scripts/manage_platform.py`
 
-Cross-platform operator adapter exposed by the `./localforge.sh ...` tasks. It centralizes Compose file selection,
+Cross-platform operator adapter exposed by the `make ...` tasks. It centralizes Compose file selection,
 environment preparation, safe rebuilds, explicitly destructive resets, readiness checks, logs, and host/container
 test orchestration so onboarding documentation does not duplicate shell logic.
 
-The stable interface is listed by `./localforge.sh help`. Safe `down` and `rebuild` commands preserve named volumes;
+The stable interface is listed by `make help`. Safe `down` and `rebuild` commands preserve named volumes;
 `development-reset` and `testing-reset` are the only task names that delete them. `environments-setup` prepares,
 builds only missing local image tags once through representative services, starts with `--no-build`, times, and
 audits both environments without running application tests. Existing local image tags make setup a no-build,

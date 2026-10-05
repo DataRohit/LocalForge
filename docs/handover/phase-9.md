@@ -1,7 +1,7 @@
 # Phase 9 public edge and email handover
 
 > Historical path note: this handover records pre-Phase-10 command evidence. `uv run poe` and `uv run python` examples
-> are translated today through `localforge.ps1` or `localforge.sh` and the `backend/` project.
+> ran from the pre-move backend root; current equivalents use the root `Makefile` and `backend/` project.
 
 Handover updated **2026-10-04** during Ticket 70. The existing `localforge-dev` Compose deployment is the public
 development deployment; testing remains the separate `localforge-test` Mailpit-backed environment.

@@ -3,7 +3,7 @@
 Authoritative for: what must exist on the machine before phase 4, how to check each item, and what was actually
 observed here.
 
-Run this list first through `./localforge.ps1 preflight` or `./localforge.sh preflight`; the implementation lives in
+Run this list first through `make preflight`; the implementation lives in
 `backend/scripts/preflight.py`. Everything below was probed on **this machine on 2026-09-13**;
 re-verify, because the machine may have moved on.
 
@@ -11,12 +11,12 @@ The supported first-run interface performs that check and prepares local environ
 existing values:
 
 ```console
-uv sync --project backend --all-groups --frozen
-./localforge.sh help
-./localforge.sh environments-setup
+make sync
+make help
+make environments-setup
 ```
 
-If port 8000 is already occupied, use `./localforge.sh environments-setup --proxy-only`; the override applies only to
+If port 8000 is already occupied, use `make environments-setup ARGS="--proxy-only"`; the override applies only to
 the development project and the testing project remains unchanged.
 
 The combined command reports redacted durations for environment preparation, image work, Compose startup, health
@@ -26,8 +26,8 @@ through cached deterministic layers, starts with `--no-build`, and runs no appli
 Optional or deliberately unused tools appear as `INFO`, not `WARN`. On this project that includes the bare PATH
 Python, kind/minikube, and host `psql`; their absence does not weaken a required gate.
 
-Use `./localforge.sh secrets-decrypt` when committed encrypted values must replace absent plaintext files explicitly.
-Use `./localforge.sh secrets-generate` to create or top up machine-local values without decrypting.
+Use `make secrets-decrypt` when committed encrypted values must replace absent plaintext files explicitly.
+Use `make secrets-generate` to create or top up machine-local values without decrypting.
 
 ## 1. Checklist
 
@@ -46,8 +46,9 @@ Use `./localforge.sh secrets-generate` to create or top up machine-local values 
 | 11 | SOPS | `sops --version` | 3.13 | **3.13.3** — pass | `winget install --id SecretsOPerationS.SOPS --exact` |
 | 12 | age | `age --version` | 1.3 | **1.3.1** — pass | `winget install --id FiloSottile.age --exact` |
 | 13 | `psql` on the host | `psql --version` | 16 | **NOT PRESENT** — optional | `docker exec -it postgres-pg3ka psql` needs no host client |
+| 14 | GNU Make | `make --version` | 3.81 | **4.4.1 — pass** | Install GNU Make and add its executable to `PATH` |
 
-Items 1 through 9 pass, and SOPS and age were installed during ticket 02. Nothing blocks phase 4.
+Items 1 through 9 and 14 pass, and SOPS and age were installed during ticket 02. Nothing blocks phase 4.
 
 The published winget identifiers are not the ones an obvious guess produces: SOPS is
 **`SecretsOPerationS.SOPS`**, not `getsops.sops`, and both IDs need `--exact` to resolve. `winget install
@@ -61,8 +62,8 @@ ordering artefact, not a missing dependency.
 
 It changes how every command is run:
 
-- Always use the backend project — `uv run --project backend --directory backend pytest`, `./localforge.sh check`, and
-  `./localforge.ps1 secrets-generate` or `./localforge.sh secrets-generate`. These commands resolve to 3.14.6.
+- Always use the backend project — `uv run --project backend --directory backend pytest`, `make check`, and
+  `make secrets-generate`. These commands resolve to 3.14.6.
 - A bare `python backend/scripts/gen_secrets.py` silently runs under 3.12.10 and may fail on 3.14-only syntax, or worse,
   succeed while testing the wrong interpreter.
 - The container image uses `python:3.14-slim`, so container and virtualenv agree; only the host `PATH` disagrees.
@@ -92,7 +93,7 @@ The platform is offline at runtime. Three operations need the network **once**:
 1. `docker pull` for the 14 pinned images.
 2. `docker build` for `localforge/django` and `localforge/pgbackrest` — the latter installs `pgbackrest` from the
    PGDG apt repository that `postgres:18.6` already has configured.
-3. `uv sync --project backend` to resolve dependencies.
+3. `make sync` to resolve dependencies.
 
 After that, `docker compose up` must succeed with no external network. `internal: true` on three of the four
 development networks enforces it, and audit 6.5 in
@@ -101,7 +102,7 @@ development networks enforces it, and audit 6.5 in
 `backend/pyproject.toml` pins a Microsoft package feed as the default index and `backend/uv.lock` records
 that feed's artifact URLs.
 Do not change the index and do not disable TLS verification. If resolution fails, run `uv lock --project backend` then
-`uv sync --project backend --all-groups --frozen`.
+`make sync`.
 
 ## 5. This machine is shared
 

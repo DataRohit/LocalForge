@@ -114,7 +114,7 @@ violation, including a commented-out line of code.
 | Ruff `D` rules, google convention | Presence of docstrings, summary formatting, and that every named parameter appears under `Arguments:` |
 | `backend/scripts/check_docstrings.py` | The comment ban and the section structure Ruff cannot express |
 
-Both run in `./localforge.ps1 check` or `./localforge.sh check` and in the pre-commit hooks. The checker's contract is in
+Both run in `make check` and in the pre-commit hooks. The checker's contract is in
 [conventions.md](./conventions.md) Section 4.10.
 
 ## 6. What is out of scope

@@ -1,7 +1,7 @@
 # Phase 7 final verification and handover
 
 > Historical path note: this handover records pre-Phase-10 command evidence. Unqualified `uv` and Poe commands
-> ran from the former project root; current equivalents use `backend/` through `localforge.ps1` or `localforge.sh`.
+> ran from the former project root; current equivalents use `backend/` through the root `Makefile`.
 
 Reverified **2026-09-24** after repairing the manual handover failures. This report records the final built scope,
 test and runtime evidence, accepted risks, review dates, and the completed operator-run clean-room rehearsal.

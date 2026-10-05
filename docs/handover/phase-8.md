@@ -1,7 +1,7 @@
 # Phase 8 SOLID architecture handover
 
 > Historical path note: this handover records pre-Phase-10 evidence. Unqualified source, test, script, and Poe paths
-> refer to the backend root at that time; current paths use `backend/` and root wrappers.
+> refer to the backend root at that time; current paths use `backend/` and root `Makefile` targets.
 
 Reverified **2026-09-24**. This report closes the evidence-led SOLID audit without expanding LocalForge's bounded
 application or platform surface.

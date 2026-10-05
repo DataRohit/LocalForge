@@ -13,8 +13,8 @@ resolved from the repository, never reconstructed from a ticket title.
 2. Work the **frontier**: any ticket whose linked blockers are all done.
 3. Read every linked governing source before starting. [AGENTS.md](../AGENTS.md) defines repository-wide rules.
 4. `/clear` context between tickets. Each is self-contained by construction.
-5. A ticket is done when every acceptance criterion is checked, `./localforge.ps1 check` or
-   `./localforge.sh check` is green, and the [runtime truth gate](../AGENTS.md#rules) passes for every affected
+5. A ticket is done when every acceptance criterion is checked, `make check` is green, and the
+   [runtime truth gate](../AGENTS.md#rules) passes for every affected
    environment and container. Unexplained live
    warnings or errors block completion even when tests pass.
 
@@ -215,6 +215,6 @@ silently accept them because the response or tests succeeded.
 - The suite passes in a container and on the host, at 100% branch coverage, in parallel.
 - Every project-owned Python module has a Phase 8 SOLID disposition backed by source and test evidence.
 - Every confirmed SOLID violation is fixed without changing the bounded application surface.
-- `./localforge.ps1 check` or `./localforge.sh check` is green.
+- `make check` is green.
 - Phase 10 leaves global environment and Compose ownership at the root, places backend Python ownership under
   `backend/`, passes the clean-checkout and runtime gates, has no stale root backend paths, and creates no frontend.

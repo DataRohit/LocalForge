@@ -12,7 +12,7 @@ This records the ordered build phases and their gates. Read [../adr/README.md](.
 
 Observed 2026-10-04 before Phase 10. Re-verify during Ticket 71; the tree may move during the migration.
 The unqualified paths in this historical snapshot describe the pre-move tree; all current repository paths and
-commands below use `backend/` or the root wrappers.
+commands below use `backend/` or the root `Makefile`.
 
 | Fact | Value |
 | --- | --- |
@@ -21,7 +21,7 @@ commands below use `backend/` or the root wrappers.
 | ASGI entry point | `backend/src/config/asgi.py`, plain `get_asgi_application()` |
 | Database | SQLite at `BASE_DIR / "db.sqlite3"` |
 | Dependencies | `uv` with `[dependency-groups]` in `backend/pyproject.toml`; target metadata location is `backend/` |
-| Task runner | `poethepoet`; `./localforge.sh check` is the full gate |
+| Task runner | `poethepoet`; `make check` is the full gate |
 | Python | `requires-python = ">=3.14"`, `backend/.python-version` `3.14.6` |
 | Django | `>=6.0,<6.1` |
 | Quality gate | Django checks, Ruff format + lint with `select = ["ALL"]`, mypy strict, ty, pytest at **100% branch coverage** |
@@ -77,7 +77,7 @@ planning documents and handover named below.
 | `docs/architecture/phase-10-monorepo-spec.md` | Phase 10 requirements and acceptance evidence |
 | `docs/architecture/phase-10-monorepo-inventory.md` | Pre-move file ownership and path-sensitive surface inventory |
 | `docs/handover/phase-10.md` | Phase 10 final migration evidence and rollback record |
-| `localforge.ps1`, `localforge.sh` | Root command entry points; select the backend project when it exists and run Poe from its project directory |
+| `Makefile` | Root command entry point; selects the backend project and runs Poe from its project directory |
 | `docs/platform/documentation-standard.md` | The worked reference for the docstring standard the checker enforces |
 | `.env.example` | Committed variable manifest, placeholders only |
 | `.env.development.sops`, `.env.testing.sops` | Committed encrypted env files |
@@ -145,11 +145,11 @@ change first.
 ### Phase 3 — Prerequisites
 
 ```console
-uv run --project backend --directory backend python scripts/preflight.py
+make preflight
 ```
 
-Pass: exit `0`; items 1–9 of [prerequisites.md](./prerequisites.md) green. SOPS and age may be absent this early —
-they are needed only before committing an encrypted env file.
+Pass: exit `0`; required items 1–9 and 14 of [prerequisites.md](./prerequisites.md) green. SOPS and age may be absent
+this early — they are needed only before committing an encrypted env file.
 
 ### Phase 4 — Django scaffolding, wired to nothing
 
@@ -214,7 +214,7 @@ ticket phase 4; at this stage the schema is near-empty and that is correct.
 Gate:
 
 ```console
-./localforge.sh check
+make check
 ```
 
 Pass: exit `0`. A coverage drop below 100% means new modules need tests, not a lower threshold.
@@ -229,10 +229,10 @@ Before pinning RabbitMQ, check whether 4.3.x is still within community support �
 community-supported series is current, pin that and update the inventory.
 
 ```console
-./localforge.sh setup
-./localforge.sh development-build
-./localforge.sh development-up
-./localforge.sh development-health
+make setup
+make development-build
+make development-up
+make development-health
 ```
 
 The command adapter retains the original idempotent storage gate:
@@ -242,13 +242,13 @@ For a deliberate clean-room verification, remove only LocalForge resources and r
 This destroys development data and is not the ordinary restart path.
 
 ```console
-./localforge.sh development-reset
+make development-reset
 ```
 
 Ordinary source rebuilds preserve named volumes:
 
 ```console
-./localforge.sh development-rebuild
+make development-rebuild
 ```
 
 **Gate 5a — everything healthy.**
@@ -316,7 +316,7 @@ import check would pass while the behaviour is broken. If one fails, apply the e
 [../adr/0016-accept-release-lag.md](../adr/0016-accept-release-lag.md) for that dependency only, and record the
 commit and CI run in that file.
 
-Gate: all twelve pass and `./localforge.sh check` is still green.
+Gate: all twelve pass and `make check` is still green.
 
 ### Phase 7 — Testing environment
 
@@ -324,19 +324,19 @@ Gate: all twelve pass and `./localforge.sh check` is still green.
 [../platform/service-inventory.md](../platform/service-inventory.md) Section 4 and **no dashboard or UI service**.
 
 ```console
-./localforge.sh testing-reset
-./localforge.sh testing-up
-./localforge.sh testing-health
+make testing-reset
+make testing-up
+make testing-health
 ```
 
 Environment preparation ends here and runs no application tests. The phase gate then runs the explicit test
 commands:
 
 ```console
-./localforge.sh testing-test-container
-./localforge.sh testing-test-host
-./localforge.sh testing-registration-timing-stability
-./localforge.sh testing-down
+make testing-test-container
+make testing-test-host
+make testing-registration-timing-stability
+make testing-down
 ```
 
 The testing startup tasks retain the original storage step:
@@ -344,7 +344,7 @@ The testing startup tasks retain the original storage step:
 
 The complete host workflow includes five independent production-shaped registration timing passes after the full
 suite. Each pass publishes to an isolated RabbitMQ queue without eager task execution or a worker, while separate
-Mailpit cases prove delivery. `./localforge.sh testing-verify` remains an explicit full-suite workflow. A failure leaves
+Mailpit cases prove delivery. `make testing-verify` remains an explicit full-suite workflow. A failure leaves
 the testing services running for diagnosis.
 
 Gate:
@@ -417,9 +417,8 @@ Work tickets 71–78 in `.scratch/phase-10-monorepo/` in order. Ticket 78 closes
 both environment rebuilds, quality gates, SOPS parity, security audits, and runtime truth evidence pass. The final
 record is [docs/handover/phase-10.md](../handover/phase-10.md).
 
-Phase 10 root command contract: run `./localforge.sh <task>` from a POSIX shell or
-`./localforge.ps1 <task>` from PowerShell. Each wrapper resolves the repository root, runs from the selected Python
-project, and selects `backend/` once its `backend/pyproject.toml` exists. Environment and Compose files remain
+Phase 10 root command contract: run `make <task>` from the repository root. The Makefile runs from the selected Python
+project and selects `backend/` once its `backend/pyproject.toml` exists. Environment and Compose files remain
 addressed from the repository root.
 
 ## 4. Rollback

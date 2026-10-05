@@ -2,7 +2,7 @@
 
 > Historical path note: this ledger records Phase 8 evidence before the Phase 10 move. Its `src/`, `tests/`, and
 > `scripts/` paths and `uv run poe` commands refer to the pre-move backend root. Current equivalents are `backend/`
-> paths and the root `localforge.ps1` or `localforge.sh` wrappers.
+> paths and the root `Makefile` targets.
 
 Status: Phase 8 complete. All eleven tickets, 53-63, are closed.
 

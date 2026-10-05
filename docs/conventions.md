@@ -578,15 +578,15 @@ Generated and vendored paths are excluded by name — `migrations`, `__pycache__
 file written by `makemigrations` cannot be held to a hand-written standard.
 
 Exit `0` clean; `1` violations, printed one per line as `FAIL <path>:<line> <rule> <detail>` followed by a count.
-Runs in `./localforge.sh check` and as a pre-commit hook.
+Runs in `make check` and as a pre-commit hook.
 
 ### 4.13 `backend/scripts/manage_platform.py`
 
-Cross-platform operator adapter exposed by the `./localforge.sh ...` tasks. It centralizes Compose file selection,
+Cross-platform operator adapter exposed by the `make ...` tasks. It centralizes Compose file selection,
 environment preparation, safe rebuilds, explicitly destructive resets, readiness checks, logs, and host/container
 test orchestration so onboarding documentation does not duplicate shell logic.
 
-The stable interface is listed by `./localforge.sh help`. Safe `down` and `rebuild` commands preserve named volumes;
+The stable interface is listed by `make help`. Safe `down` and `rebuild` commands preserve named volumes;
 `development-reset` and `testing-reset` are the only task names that delete them. `environments-setup` prepares,
 builds only missing local image tags once through representative services, starts with `--no-build`, times, and
 audits both environments without running application tests. Existing local image tags make setup a no-build,
@@ -625,14 +625,14 @@ means identity, process-file, broker, worker, or reply readiness failed. It neve
 ### 4.15 `backend/scripts/export_developer_access.py`
 
 Creates repository-root `bookmarks.html` and `passwords.csv` files from `.env.development` through
-`./localforge.sh developer-access-export`. The bookmark file uses the Netscape exchange format accepted by major
+`make developer-access-export`. The bookmark file uses the Netscape exchange format accepted by major
 browsers and groups every host-published application or operator UI from
 [service-inventory.md](./service-inventory.md) Section 3. The password file uses the browser import header
 `name,url,username,password` and includes Traefik, pgAdmin, RabbitMQ, Flower, Mailpit, and Grafana.
 
 The command validates every required value before writing, splits the generated Flower and Mailpit basic-auth
 pairs on their first colon, and never prints a credential. Django admin bookmarks are included, but Django
-superuser credentials are not: `./localforge.sh superuser` creates those interactively and no generated environment
+superuser credentials are not: `make superuser` creates those interactively and no generated environment
 variable holds them. Both generated files are ignored by Git. Exit `0` means both files were written; exit `1`
 means development configuration was missing or malformed, or an output file could not be written.
 

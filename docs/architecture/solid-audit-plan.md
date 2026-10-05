@@ -160,15 +160,15 @@ module shape is still wrong.
 Ticket 62 reruns the full supported verification sequence after all area audits:
 
 ```console
-uv sync --project backend --all-groups --frozen
-./localforge.sh development-health
-./localforge.sh testing-health
-./localforge.sh docker-audit
-./localforge.sh testing-test-both
-./localforge.sh testing-integration-audit
-./localforge.sh check
-./localforge.sh convention-audit
-./localforge.sh security-audit
+make sync
+make development-health
+make testing-health
+make docker-audit
+make testing-test-both
+make testing-integration-audit
+make check
+make convention-audit
+make security-audit
 ```
 
 Any runtime-affecting change also requires the affected environment rebuild, deployed seam exercise, project-scoped

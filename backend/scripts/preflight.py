@@ -470,6 +470,18 @@ TOOL_CHECKS: tuple[ToolCheck, ...] = (
         command=("psql", "--version"),
         minimum=(16,),
     ),
+    ToolCheck(
+        requirement=Requirement(
+            number=14,
+            title="GNU Make",
+            minimum_label="3.81",
+            required=True,
+            remediation="Install GNU Make and add its executable to PATH",
+            matters_when=REQUIRED_NOW,
+        ),
+        command=("make", "--version"),
+        minimum=(3, 81),
+    ),
 )
 
 INTERPRETER_REQUIREMENT = Requirement(

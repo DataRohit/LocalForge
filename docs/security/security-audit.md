@@ -1,8 +1,7 @@
 # Phase 7 security and reliability audit
 
-Reviewed **2026-09-26**. Re-run the complete audit with `./localforge.ps1 security-audit` or
-`./localforge.sh security-audit`; runtime-affecting changes also require both health gates,
-`./localforge.ps1 convention-audit` or `./localforge.sh convention-audit`, deployed behavior exercise, and bounded
+Reviewed **2026-09-26**. Re-run the complete audit with `make security-audit`; runtime-affecting changes also require
+both health gates, `make convention-audit`, deployed behavior exercise, and bounded
 log review.
 
 ## Findings and disposition

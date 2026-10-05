@@ -24,11 +24,11 @@ while the complete SOLID inventory has no unresolved required finding or improve
       source and test evidence.
 - [x] Every required finding and improvement is fixed; observations explain why a code change would be speculative,
       shallower, or unsupported by real variation.
-- [x] `./localforge.sh testing-test-both` passes with identical collection and pass counts in host and container modes,
+- [x] `make testing-test-both` passes with identical collection and pass counts in host and container modes,
       100% branch coverage, zero warnings, zero skips, and clean resource teardown.
-- [x] `./localforge.sh testing-integration-audit` passes every lifecycle, persistence, degraded-readiness, and recovery
+- [x] `make testing-integration-audit` passes every lifecycle, persistence, degraded-readiness, and recovery
       exercise.
-- [x] `./localforge.sh check`, `./localforge.sh convention-audit`, and `./localforge.sh security-audit` pass without exclusions
+- [x] `make check`, `make convention-audit`, and `make security-audit` pass without exclusions
       added to hide Phase 8 changes.
 - [x] Both environments pass health and Docker ownership checks after source-matched rebuilds.
 - [x] The fixed HTTP and WebSocket contracts, command interfaces, service registry, two environments, and offline

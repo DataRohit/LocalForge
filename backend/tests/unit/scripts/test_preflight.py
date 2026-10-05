@@ -32,6 +32,7 @@ PASSING_OUTPUTS: dict[tuple[str, ...], str] = {
     ("sops", "--version"): "sops 3.13.3",
     ("age", "--version"): "v1.3.2",
     ("psql", "--version"): "psql (PostgreSQL) 16.4",
+    ("make", "--version"): "GNU Make 4.4.1",
     ("kind", "version"): "kind v0.33.0 go1.25.1 windows/amd64",
 }
 
@@ -39,7 +40,7 @@ HOST_PYTHON_COMMAND = ("python", "--version")
 PASSING_CPU_COUNT = 16
 PASSING_MEMORY_BYTES = 32 * preflight.GIBIBYTE
 PASSING_FREE_BYTES = 500 * preflight.GIBIBYTE
-EXPECTED_ROW_NUMBERS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13)
+EXPECTED_ROW_NUMBERS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
 CHECKLIST_DOCUMENT = preflight.REPOSITORY_ROOT / "docs" / "build" / "prerequisites.md"
 REPOSITORY_VOLUME = preflight.REPOSITORY_ROOT
 OTHER_VOLUME = preflight.REPOSITORY_ROOT / "another-volume"
@@ -408,7 +409,7 @@ def test_a_bare_machine_fails_required_checks_and_reports_optional_ones() -> Non
     failed = [result.number for result in results if result.status is preflight.Status.FAIL]
     informational = [result.number for result in results if result.status is preflight.Status.INFO]
 
-    assert failed == [1, 2, 3, 5, 6, 7, 8, 9]
+    assert failed == [1, 2, 3, 5, 6, 7, 8, 9, 14]
     assert informational == [4, 10, 11, 12, 13]
     assert preflight.exit_code(results) == 1
 
@@ -452,6 +453,7 @@ def test_every_failing_row_names_a_remediation() -> None:
         (11, "winget install --id SecretsOPerationS.SOPS --exact"),
         (12, "winget install --id FiloSottile.age --exact"),
         (13, "winget install --id PostgreSQL.PostgreSQL --exact"),
+        (14, "Install GNU Make and add its executable to PATH"),
     ],
 )
 def test_installable_tools_name_an_executable_remediation(number: int, expected: str) -> None:
@@ -1236,7 +1238,7 @@ def test_the_summary_counts_failures_and_informational_items() -> None:
     results = preflight.build_report(failing_probes())
 
     assert preflight.summary_line(results) == (
-        "FAIL: 8 required check(s) failed, 5 informational item(s)."
+        "FAIL: 9 required check(s) failed, 5 informational item(s)."
     )
 
 

@@ -25,8 +25,7 @@ Evidence (pre-move action, now complete): Git moved `pyproject.toml`, `uv.lock`,
 uv created `backend/.venv`
 and installed the locked 123-package environment with `uv sync --project backend --locked
 --no-install-project`. `uv lock --check --project backend` passed. Backend-relative configuration keeps the existing
-root source trees usable during the staged move. Root wrappers select `backend/` with Poe's explicit `-C` option,
-export the transitional repository import paths, and resolve the repository from the script location.
-`localforge.ps1 help`, `lint`, and `docs-standard` passed from `docs/`;
-`uv run --project backend --directory backend python scripts/preflight.py` passed
-all 13 checks, including `backend/.venv`.
+root source trees usable during the staged move. Root Makefile targets select `backend/`, export the transitional
+repository import paths, and resolve the repository from the script location. `make help`, `make lint`, and
+`make docs-standard` passed from `docs/`; `make preflight` passed
+all 14 checks, including `backend/.venv` and GNU Make.

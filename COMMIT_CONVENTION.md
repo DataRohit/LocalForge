@@ -66,7 +66,7 @@ co-author trailers and Git-generated merge or revert messages. It also validates
 Follow the title and identity rules above when composing messages. Enable the repository hooks and template with:
 
 ```console
-uv run pre-commit install
+make pre-commit-install
 git config --local commit.template .gitmessage
 git config --local commit.cleanup strip
 git config --local user.name "Rohit Vilas Ingole"

@@ -25,8 +25,8 @@ No frontend is created in Phase 10.
 
 - Root commands delegate into `backend/` through explicit working-directory configuration; no command depends on the
   caller's current directory.
-- `localforge.ps1` and `localforge.sh` are the supported root entry points. Before the move they select the root
-  project; after the move they select `backend/` and keep root environment and Compose paths explicit.
+- `Makefile` is the supported root entry point. Before the move it selected the root project; after the move it
+  selects `backend/` and keeps root environment and Compose paths explicit.
 - Compose paths, Docker build contexts, CI paths, pre-commit paths, coverage paths, and documentation links must be
   updated together and verified from a clean checkout.
 - Root environment names and secret ownership stay global. Backend code reads the same root env files through an

@@ -35,15 +35,15 @@ Runtime evidence captured 2026-09-25:
 - External registration returned `201`; activation returned `204`; password-reset and username-reset requests each
   returned `202`. Resend dashboard showed `Delivered` for activation, password-recovery, and username-recovery
   messages from `no-reply@localforge.datarohit.com` to the operator-controlled recipient.
-- The source-matched testing image was rebuilt with `./localforge.sh testing-rebuild`. The container and host verification
+- The source-matched testing image was rebuilt with `make testing-rebuild`. The container and host verification
   both completed `2149` collections (`2126` core plus `23` timing), with 100% core coverage and status 0. Mailpit was
   created and removed by the supported runner; no Resend credential was used by testing.
 - The authenticated REST probe used the application edge at `127.0.0.1:8080` with the public Host header: `POST
   /api/v1/jwt/create/` followed by `GET /api/v1/users/me/` returned `200`; the temporary probe account was deleted
   afterward. The public edge was probed from the host through Cloudflare; DNS was checked with `Resolve-DnsName`, and
   each apex/www HTTP+HTTPS redirect was checked with `Invoke-WebRequest`.
-- Runtime gates used `./localforge.sh development-health`, `./localforge.sh testing-health`,
-  `./localforge.sh docker-audit`, and
+- Runtime gates used `make development-health`, `make testing-health`,
+  `make docker-audit`, and
   `uv run --project backend --directory backend python -m scripts.audit_security --scope runtime`.
   `docker compose --project-name localforge-dev logs --since 2s --no-color` was inspected immediately after the
   final exercise on 2026-09-25; the affected development

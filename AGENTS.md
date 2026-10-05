@@ -89,8 +89,8 @@ Exactly two, and there is no third.
 5. Kubernetes is reasoning-only. Create no cluster, write no manifests, apply nothing.
 6. Pinned versions only. `latest` is forbidden, including Dockerfile base images.
 7. Use `uv run` for every Python command. Bare `python` here is 3.12.10, not the required 3.14.6.
-   Root operator commands use `localforge.ps1` on PowerShell or `localforge.sh` on POSIX shells; both resolve the
-   repository root, select `backend/` after Ticket 73 moves the project, and run Poe from the selected project.
+   Root operator commands use `make`; the root `Makefile` selects `backend/` after Ticket 73 moves the project and
+   runs Poe from the selected project.
 8. Keep the quality gate where it is: 100% branch coverage, Ruff `select = ["ALL"]`, mypy `strict`. Fix the code.
 9. **Runtime truth is a separate gate.** Tests prove controlled cases; they do not prove the running stack is
    healthy. After any runtime, integration, infrastructure, observability, or test-harness change:
@@ -226,7 +226,7 @@ These predate this work.
 | Area         | Rule                                                                                      |
 | ------------ | ----------------------------------------------------------------------------------------- |
 | Dependencies | `uv` with `[dependency-groups]`; use `uv add`. **Never create a `requirements.txt`**      |
-| Tasks        | `poethepoet`; full gate: `./localforge.ps1 check` or `./localforge.sh check`              |
+| Tasks        | `poethepoet`; full gate: `make check`                                                     |
 | Linting      | Ruff, `select = ["ALL"]`, line length 100                                                 |
 | Types        | mypy `strict` plus `ty`; both must pass                                                   |
 | Tests        | pytest, 100% branch coverage enforced, `xfail_strict`, markers `unit` and `integration`   |

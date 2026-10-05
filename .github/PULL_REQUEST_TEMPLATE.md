@@ -18,8 +18,8 @@ Describe failure modes, compatibility impact, operational risk, and rollback ste
 
 - [ ] The change is focused and contains no unrelated work.
 - [ ] Tests and documentation are updated where needed.
-- [ ] `./localforge.ps1 check` or `./localforge.sh check` passes.
-- [ ] `uv run --project backend pre-commit run --all-files` passes.
+- [ ] `make check` passes.
+- [ ] `make pre-commit` passes.
 - [ ] No secrets or sensitive data are included.
 - [ ] Security, compatibility, and data-migration impacts are documented.
 - [ ] The changelog is updated when the change is user-visible.

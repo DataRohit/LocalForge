@@ -329,18 +329,18 @@ def test_help_publishes_the_complete_stable_command_surface(
     output = capsys.readouterr().out
 
     assert code == platform.EXIT_OK
-    assert "./localforge.sh setup" in output
-    assert "./localforge.sh development-rebuild" in output
-    assert "./localforge.sh testing-rebuild" in output
-    assert "./localforge.sh testing-test-container" in output
-    assert "./localforge.sh testing-test-host" in output
-    assert "./localforge.sh testing-registration-timing-stability" in output
-    assert "./localforge.sh testing-verify" in output
-    assert "./localforge.sh environments-setup --proxy-only" in output
-    assert "./localforge.sh development-up --proxy-only" in output
-    assert "./localforge.sh development-rebuild --proxy-only" in output
-    assert "./localforge.sh development-reset --proxy-only" in output
-    assert "./localforge.sh developer-access-export" in output
+    assert "make setup" in output
+    assert "make development-rebuild" in output
+    assert "make testing-rebuild" in output
+    assert "make testing-test-container" in output
+    assert "make testing-test-host" in output
+    assert "make testing-registration-timing-stability" in output
+    assert "make testing-verify" in output
+    assert 'make environments-setup ARGS="--proxy-only"' in output
+    assert 'make development-up ARGS="--proxy-only"' in output
+    assert 'make development-rebuild ARGS="--proxy-only"' in output
+    assert 'make development-reset ARGS="--proxy-only"' in output
+    assert "make developer-access-export" in output
     assert "rejected for every other command" in output
     assert "DESTRUCTIVE" in output
     assert "preserves volumes" in output
@@ -2122,7 +2122,7 @@ def test_missing_environment_and_invalid_extra_arguments_fail_before_commands(
         platform.EXIT_USAGE,
     )
     assert runner.calls == []
-    assert "run `./localforge.sh setup` first" in capsys.readouterr().out
+    assert "run `make setup` first" in capsys.readouterr().out
 
 
 def test_poe_exposes_every_operator_alias_with_help() -> None:
@@ -2151,8 +2151,7 @@ def test_poe_exposes_every_operator_alias_with_help() -> None:
     expected = {
         line.split()[1]
         for line in platform.HELP_TEXT.splitlines()
-        if line.lstrip().startswith("./localforge.sh ")
-        and len(line.split()) >= HELP_COMMAND_TOKEN_COUNT
+        if line.lstrip().startswith("make ") and len(line.split()) >= HELP_COMMAND_TOKEN_COUNT
     }
 
     assert expected <= set(tasks)

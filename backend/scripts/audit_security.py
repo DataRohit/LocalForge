@@ -413,6 +413,8 @@ def dependency_check(runner: AuditRunner) -> bool:
             (
                 "uv",
                 "export",
+                "--project",
+                str(REPOSITORY_ROOT / "backend"),
                 "--locked",
                 "--no-dev",
                 "--no-emit-project",

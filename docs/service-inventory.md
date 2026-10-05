@@ -300,9 +300,9 @@ Every service either exposes a native UI or is given a companion.
 | `valkey-cache-exporter-ve7ts` | metrics through Grafana | `http://localhost:3000/` | **companion** | Grafana login |
 | `valkey-channels-exporter-vx4nq` | metrics through Grafana | `http://localhost:3000/` | **companion** | Grafana login |
 
-After setup and verification, run `./localforge.sh developer-access-export` to create browser-importable
+After setup and verification, run `make developer-access-export` to create browser-importable
 `bookmarks.html` and `passwords.csv` files at the repository root. The password import contains only credentials
-generated in `.env.development`; create and save the Django superuser separately with `./localforge.sh superuser`.
+generated in `.env.development`; create and save the Django superuser separately with `make superuser`.
 Both generated files are ignored by Git.
 
 The schema, Swagger UI, and ReDoc entries are three optional infrastructure routes on the existing Django service.
@@ -440,8 +440,8 @@ so the email task does not retry or fail because live notification delivery is t
 
 | Mode | Command | Env file | Hostnames |
 | --- | --- | --- | --- |
-| Container | `./localforge.sh testing-test-container` | `.env.testing` | container names on the testing networks |
-| Host | `./localforge.sh testing-test-host` | `.env.testing.host` | `127.0.0.1` and the published ports above |
+| Container | `make testing-test-container` | `.env.testing` | container names on the testing networks |
+| Host | `make testing-test-host` | `.env.testing.host` | `127.0.0.1` and the published ports above |
 
 Both modes temporarily start Mailpit before collection and run the same complete internal Poe task, which keeps
 their collection arithmetic and stage timings comparable. Mailpit is accepted only during the complete run and is
@@ -472,7 +472,7 @@ uses the same parallel load-group runner while excluding timing cases, so shared
 process isolation. `test-security-timing` remains the internal focused timing interface. Pytest warnings are errors,
 and the controller fails the session if any report is skipped. A bare
 `uv run --project backend --directory backend pytest` remains the same complete collection in one process, and
-`./localforge.sh test-serial` is the documented way to read the stack of a test
+`make test-serial` is the documented way to read the stack of a test
 that timed out.
 
 Both parallel stages set `--max-worker-restart=0`. A timed-out or crashed worker therefore fails the gate
@@ -492,10 +492,10 @@ and total duration. Exit `10` means container only failed, `11` host only, `12` 
 passed but complete collection counts differed. Standalone mode commands preserve the underlying failed child
 status.
 
-`./localforge.sh testing-verify` is the complete operator workflow: rebuild the source-matched test image, recreate and
+`make testing-verify` is the complete operator workflow: rebuild the source-matched test image, recreate and
 verify the dependency stack, run container mode followed by host mode and its five-pass registration timing
 stability gate, then stop the testing environment while preserving its named volumes. It leaves a failed stack
-running so status and logs remain available. `./localforge.sh testing-registration-timing-stability` exposes the same
+running so status and logs remain available. `make testing-registration-timing-stability` exposes the same
 host stability gate without rerunning the complete suite.
 
 ## 5. Image pins

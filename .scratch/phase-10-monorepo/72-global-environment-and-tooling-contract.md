@@ -24,6 +24,6 @@ backend-first monorepo.
 - [x] Preserve both existing environments, secret names, and SOPS decrypt/encrypt workflows.
 
 Evidence: root environment ownership remains limited to `.env.example`, `.env.development.sops`,
-`.env.testing.sops`, and `.sops.yaml`. `localforge.ps1` and `localforge.sh` select the current project root or future
+`.env.testing.sops`, and `.sops.yaml`. The root `Makefile` selects the backend project and
 `backend/` project from any caller directory. The inventory and ADR record the path and secret contract.
 Ignore rules anchor encrypted-file exceptions at repository root, so nested backend environment files remain ignored.

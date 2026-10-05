@@ -2,7 +2,8 @@
 
 This inventory records the repository boundary before any Phase 10 file move. It is the authoritative input for
 Tickets 72–78. Snapshot date: 2026-10-04. Unqualified `src/`, `tests/`, and `scripts/` names in the snapshot are
-historical; current ownership is the `Phase 10 target` column and current commands use root wrappers or `backend/` explicitly.
+historical; current ownership is the `Phase 10 target` column and current commands use root Makefile targets or
+`backend/` explicitly.
 
 ## Repository state
 
@@ -22,7 +23,7 @@ security policy, or environment contract:
 | Environment and secrets | `.env.example`, `.env.development.sops`, `.env.testing.sops`, `.sops.yaml` |
 | Compose and image ignore rules | `compose.yaml`, `compose.development.yaml`, `compose.testing.yaml`, `compose.proxy-only.yaml`, `.dockerignore` |
 | Repository policy | `.editorconfig`, `.gitattributes`, `.gitignore`, `.gitleaks.toml`, `.gitmessage`, `.markdownlint-cli2.jsonc`, `.markdownlint.json`, `.pre-commit-config.yaml`, `.yamllint.yml` |
-| Root command entry points | `localforge.ps1`, `localforge.sh` |
+| Root command entry points | `Makefile` |
 | Agent and project governance | `AGENTS.md`, `CONTEXT.md`, `CONTRIBUTING.md`, `GOVERNANCE.md`, `CODE_OF_CONDUCT.md`, `COMMIT_CONVENTION.md`, `SECURITY.md`, `SUPPORT.md`, `CHANGELOG.md`, `LICENSE`, `README.md`, `skills-lock.json` |
 | CI coordination | `.github/` |
 
@@ -88,7 +89,7 @@ test-integration-stages, test-parallel, test-core, test-core-fresh, test-securit
 The root hook inventory is:
 
 - `.pre-commit-config.yaml` runs backend-scoped Ruff, documentation, type, and pytest tasks with
-  `uv run --project backend poe -C backend ...`; the commit-message hook runs
+  `uv run --project backend --directory backend poe ...`; the commit-message hook runs
   `uv run --project backend python .github/scripts/validate_commit_message.py`. These commands keep backend tooling
   explicit while `.github/scripts/` remains root-global policy.
 - The same file runs root `.github/scripts/validate_commit_message.py` on the `commit-msg` stage. This path remains
