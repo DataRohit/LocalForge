@@ -35,4 +35,4 @@ project's Python version, so later tickets never stop to argue about a package.
 - [x] The schema generator's offline asset package is present, because the platform has no internet at runtime and
       both documentation UIs would otherwise render blank.
 - [x] Importing every new top-level package succeeds under the project interpreter.
-- [x] `uv run poe check` is green.
+- [x] `./localforge.sh check` is green.

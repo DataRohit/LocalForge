@@ -179,8 +179,7 @@ python-version = "3.14"
 root = ["src", ".."]
 
 [tool.ty.src]
-include = ["src", "tests", "scripts", "../.github/scripts"]
-exclude = ["../.agents/**"]
+include = ["src", "tests", "scripts"]
 
 [tool.ty.rules]
 all = "error"
@@ -451,7 +450,7 @@ cmd = "mypy"
 
 [tool.poe.tasks.types-ty]
 help = "Run strict ty type checking"
-cmd = "uvx ty@0.0.78 check --force-exclude"
+cmd = "uvx ty@0.0.78 check --force-exclude src tests scripts ../.github/scripts"
 
 [tool.poe.tasks.typecheck]
 help = "Run all type checkers"

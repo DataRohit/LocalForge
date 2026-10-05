@@ -91,7 +91,7 @@ those imports behind another wrapper without improving substitution, tests, or l
 
 | Area | Included |
 | --- | --- |
-| Application code | All project-owned modules under `src/accounts`, `src/config`, and `src/notifications` |
+| Application code | All project-owned modules under `backend/src/accounts`, `backend/src/config`, and `backend/src/notifications` |
 | Operator code | Project-owned Python scripts and their Poe command interfaces |
 | Test architecture | Shared fixtures, factories, communicators, runtime probes, helpers, and tests as interface clients |
 | Cross-module design | Import direction, composition roots, shared policies, adapters, framework coupling, and cycles |
@@ -160,15 +160,15 @@ module shape is still wrong.
 Ticket 62 reruns the full supported verification sequence after all area audits:
 
 ```console
-uv sync --all-groups --frozen
-uv run poe development-health
-uv run poe testing-health
-uv run poe docker-audit
-uv run poe testing-test-both
-uv run poe testing-integration-audit
-uv run poe check
-uv run poe convention-audit
-uv run poe security-audit
+uv sync --project backend --all-groups --frozen
+./localforge.sh development-health
+./localforge.sh testing-health
+./localforge.sh docker-audit
+./localforge.sh testing-test-both
+./localforge.sh testing-integration-audit
+./localforge.sh check
+./localforge.sh convention-audit
+./localforge.sh security-audit
 ```
 
 Any runtime-affecting change also requires the affected environment rebuild, deployed seam exercise, project-scoped

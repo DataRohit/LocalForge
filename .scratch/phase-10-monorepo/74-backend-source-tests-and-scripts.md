@@ -20,7 +20,8 @@ imports, test discovery, and script contracts.
 - [x] Preserve structured docstrings, no-comment policy, strict types, branch coverage, and parallel test execution.
 - [x] Prove no duplicate backend source or script tree remains at root.
 
-Evidence: Git moves `src/`, `tests/`, and `scripts/` into `backend/`. Backend-relative Ruff, mypy, ty, pytest,
+Evidence: Git moves root `src/`, `tests/`, and `scripts/` ownership into `backend/src/`, `backend/tests/`, and
+`backend/scripts/`. Backend-relative Ruff, mypy, ty, pytest,
 coverage, and Poe paths now resolve from the moved project; repository-root settings, operator scripts, test harnesses,
 and subprocess `PYTHONPATH` values resolve through `backend/`. Root wrappers select the backend project and preserve
 caller-independent execution. `localforge.ps1 lint`, `localforge.ps1 docs-standard`, `localforge.ps1 help`,

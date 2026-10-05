@@ -6,10 +6,10 @@ host Python environment and Poe exposes the supported operator commands.
 
 ## Phase 10 monorepo target
 
-Phase 10 plans a backend-first monorepo. Until tickets 71–78 are implemented, the current root commands and paths
-remain active. The accepted target keeps environment files, Compose orchestration, documentation, and repository
-policy global at the root, and moves Python metadata, the virtual environment, source, tests, and scripts under
-`backend/`. No frontend is created in this phase. See
+Phase 10 is migrating LocalForge to a backend-first monorepo. Tickets 71–75 have moved Python metadata, the virtual
+environment, source, tests, and scripts under `backend/`; tickets 76–78 finish the root contract and verification.
+Environment files, Compose orchestration, documentation, and repository policy remain global at the root. No frontend
+is created in this phase. See
 [the Phase 10 architecture](docs/architecture/phase-10-monorepo.md) and
 [the Phase 10 ticket set](.scratch/phase-10-monorepo/71-monorepo-boundary-and-inventory.md).
 
@@ -30,7 +30,13 @@ uv sync --project backend --all-groups --frozen
 ./localforge.sh environments-setup
 ```
 
-On Windows, or whenever another process owns port 8000, use the first-run variant:
+On Windows, including when another process owns port 8000, use the PowerShell wrapper for the first-run variant:
+
+```powershell
+.\localforge.ps1 environments-setup --proxy-only
+```
+
+On POSIX shells, use:
 
 ```console
 ./localforge.sh environments-setup --proxy-only
@@ -41,8 +47,9 @@ verification enabled. The lockfile records this feed's artifact URLs so `uv sync
 --frozen` does not attempt direct downloads from `files.pythonhosted.org`, which fails TLS negotiation on this managed
 network.
 
-Changing the default index alone does not redirect URLs already recorded in `uv.lock`. After an approved index change,
-run `uv lock` and then `uv sync --project backend --all-groups --frozen`. Do not disable TLS certificate verification.
+Changing the default index alone does not redirect URLs already recorded in `backend/uv.lock`. After an approved index
+change, run `uv lock --project backend` and then `uv sync --project backend --all-groups --frozen`. Do not disable TLS
+certificate verification.
 
 `environments-setup` prepares environment files, pulls missing pinned external images, rebuilds all three local
 images through cached deterministic layers, starts both Compose projects with `--no-build`, waits for readiness, and
@@ -61,21 +68,21 @@ Restore the existing encrypted environment only when the original age private ke
 ```powershell
 $env:SOPS_AGE_KEY_FILE = 'C:\secure\localforge-age-key.txt'
 uv sync --project backend --all-groups --frozen
-./localforge.sh secrets-decrypt
-./localforge.sh environments-setup
+.\localforge.ps1 secrets-decrypt
+.\localforge.ps1 environments-setup
 ```
 
 Generate fresh local credentials only on a machine with no LocalForge Docker data to preserve:
 
 ```powershell
 uv sync --project backend --all-groups --frozen
-./localforge.sh docker-clean-check
+.\localforge.ps1 docker-clean-check
 Remove-Item -LiteralPath .env.development,.env.testing,.env.testing.host -Force -ErrorAction SilentlyContinue
-uv run --project backend python backend/scripts/gen_secrets.py --environment all
+.\localforge.ps1 secrets-generate
 notepad .env.development
-./localforge.sh secrets-generate
-./localforge.sh environments-setup
-./localforge.sh developer-access-export
+.\localforge.ps1 secrets-generate
+.\localforge.ps1 environments-setup
+.\localforge.ps1 developer-access-export
 ```
 
 In the editor, replace only the `TUNNEL_TOKEN` and `RESEND_API_KEY` placeholders with newly issued provider values.

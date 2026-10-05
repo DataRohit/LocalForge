@@ -31,9 +31,11 @@ while preserving the fixed application surface.
 
 Runtime evidence captured 2026-09-25:
 
-- `uv run python -m scripts.manage_platform development-health` passed after rebuilding and recreating Django.
-- `uv run python -m scripts.manage_platform docker-audit` passed.
-- `uv run python -m scripts.audit_security --scope runtime` passed; protected operator endpoints returned expected
+- `uv run --project backend --directory backend python -m scripts.manage_platform development-health` passed after
+  rebuilding and recreating Django.
+- `uv run --project backend --directory backend python -m scripts.manage_platform docker-audit` passed.
+- `uv run --project backend --directory backend python -m scripts.audit_security --scope runtime` passed; protected
+  operator endpoints returned expected
   denial responses and private host ports stayed closed.
 - Public HTTPS returned `200` for `/health/`, `/api/schema/`, Swagger UI, and ReDoc, each with
   `Strict-Transport-Security: max-age=31536000`.

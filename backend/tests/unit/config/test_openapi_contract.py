@@ -41,84 +41,84 @@ OPERATION_CONTRACT: Final = {
         "jwt_create",
         PUBLIC_SECURITY,
         {"200", "400", "401", "405", "406", "413", "415", "429", "500", "503"},
-        "tests/integration/accounts/test_jwt_authentication.py",
+        "backend/tests/integration/accounts/test_jwt_authentication.py",
         "test_jwt_create_observed_statuses_exactly_match_its_documented_contract",
     ),
     ("post", "/api/v1/jwt/refresh/"): (
         "jwt_refresh",
         PUBLIC_SECURITY,
         {"200", "400", "401", "405", "406", "413", "415", "429", "500", "503"},
-        "tests/integration/accounts/test_jwt_authentication.py",
+        "backend/tests/integration/accounts/test_jwt_authentication.py",
         "test_jwt_token_operation_statuses_match_their_documented_contracts[refresh]",
     ),
     ("post", "/api/v1/jwt/verify/"): (
         "jwt_verify",
         PUBLIC_SECURITY,
         {"200", "400", "401", "405", "406", "413", "415", "429", "500", "503"},
-        "tests/integration/accounts/test_jwt_authentication.py",
+        "backend/tests/integration/accounts/test_jwt_authentication.py",
         "test_jwt_token_operation_statuses_match_their_documented_contracts[verify]",
     ),
     ("post", "/api/v1/token/login/"): (
         "token_login",
         PUBLIC_SECURITY,
         {"200", "400", "401", "405", "406", "413", "415", "429", "500", "503"},
-        "tests/integration/accounts/test_token_authentication.py",
+        "backend/tests/integration/accounts/test_token_authentication.py",
         "test_login_observed_statuses_exactly_match_its_documented_contract",
     ),
     ("post", "/api/v1/token/logout/"): (
         "token_logout",
         TOKEN_ONLY_SECURITY,
         {"204", "400", "401", "405", "406", "413", "429", "500", "503"},
-        "tests/integration/accounts/test_token_authentication.py",
+        "backend/tests/integration/accounts/test_token_authentication.py",
         "test_logout_observed_statuses_exactly_match_its_documented_contract",
     ),
     ("post", "/api/v1/users/"): (
         "user_registration_or_activation",
         PUBLIC_SECURITY,
         {"201", "204", "400", "405", "406", "413", "415", "429", "500", "503"},
-        "tests/integration/accounts/test_user_profiles.py",
+        "backend/tests/integration/accounts/test_user_profiles.py",
         "test_registration_observed_statuses_exactly_match_its_documented_contract",
     ),
     ("get", "/api/v1/users/me/"): (
         "user_profile_retrieve",
         DUAL_TOKEN_SECURITY,
         {"200", "400", "401", "405", "406", "413", "429", "500", "503"},
-        "tests/integration/accounts/test_user_profiles.py",
+        "backend/tests/integration/accounts/test_user_profiles.py",
         "test_profile_observed_statuses_exactly_match_each_documented_contract[get]",
     ),
     ("head", "/api/v1/users/me/"): (
         "user_profile_head",
         DUAL_TOKEN_SECURITY,
         {"200", "400", "401", "406", "413", "429", "500", "503"},
-        "tests/integration/accounts/test_user_profiles.py",
+        "backend/tests/integration/accounts/test_user_profiles.py",
         "test_profile_head_observed_statuses_exactly_match_its_documented_contract",
     ),
     ("patch", "/api/v1/users/me/"): (
         "user_profile_update",
         DUAL_TOKEN_SECURITY,
         {"200", "400", "401", "405", "406", "413", "415", "429", "500", "503"},
-        "tests/integration/accounts/test_user_profiles.py",
+        "backend/tests/integration/accounts/test_user_profiles.py",
         "test_profile_observed_statuses_exactly_match_each_documented_contract[patch]",
     ),
     ("delete", "/api/v1/users/me/"): (
         "user_profile_delete",
         DUAL_TOKEN_SECURITY,
         {"204", "400", "401", "405", "406", "413", "415", "429", "500", "503"},
-        "tests/integration/accounts/test_user_profiles.py",
+        "backend/tests/integration/accounts/test_user_profiles.py",
         "test_profile_observed_statuses_exactly_match_each_documented_contract[delete]",
     ),
     ("post", "/api/v1/users/resend_activation/"): (
         "user_activation_resend",
         PUBLIC_SECURITY,
         {"202", "400", "405", "406", "413", "415", "429", "500", "503"},
-        "tests/integration/accounts/test_account_activation.py",
+        "backend/tests/integration/accounts/test_account_activation.py",
         "test_resend_observed_statuses_exactly_match_its_documented_contract",
     ),
     ("post", "/api/v1/users/reset_password/"): (
         "user_password_reset_request",
         PUBLIC_SECURITY,
         {"202", "400", "405", "406", "413", "415", "429", "500", "503"},
-        "tests/integration/accounts/test_password_management.py",
+        "backend/tests/integration/accounts/test_password_management.py",
         (
             "test_password_operation_observed_statuses_exactly_match_its_documented_contract"
             "[reset-password]"
@@ -128,7 +128,7 @@ OPERATION_CONTRACT: Final = {
         "user_password_reset_confirm",
         PUBLIC_SECURITY,
         {"204", "400", "405", "406", "413", "415", "429", "500", "503"},
-        "tests/integration/accounts/test_password_management.py",
+        "backend/tests/integration/accounts/test_password_management.py",
         (
             "test_password_operation_observed_statuses_exactly_match_its_documented_contract"
             "[reset-password-confirm]"
@@ -138,7 +138,7 @@ OPERATION_CONTRACT: Final = {
         "user_username_reset_request",
         PUBLIC_SECURITY,
         {"202", "400", "405", "406", "413", "415", "429", "500", "503"},
-        "tests/integration/accounts/test_username_management.py",
+        "backend/tests/integration/accounts/test_username_management.py",
         (
             "test_username_operation_observed_statuses_exactly_match_its_documented_contract"
             "[reset-username]"
@@ -148,7 +148,7 @@ OPERATION_CONTRACT: Final = {
         "user_username_reset_confirm",
         PUBLIC_SECURITY,
         {"204", "400", "405", "406", "413", "415", "429", "500", "503"},
-        "tests/integration/accounts/test_username_management.py",
+        "backend/tests/integration/accounts/test_username_management.py",
         (
             "test_username_operation_observed_statuses_exactly_match_its_documented_contract"
             "[reset-username-confirm]"
@@ -158,7 +158,7 @@ OPERATION_CONTRACT: Final = {
         "user_password_change",
         DUAL_TOKEN_SECURITY,
         {"204", "400", "401", "405", "406", "413", "415", "429", "500", "503"},
-        "tests/integration/accounts/test_password_management.py",
+        "backend/tests/integration/accounts/test_password_management.py",
         (
             "test_password_operation_observed_statuses_exactly_match_its_documented_contract"
             "[set-password]"
@@ -168,7 +168,7 @@ OPERATION_CONTRACT: Final = {
         "user_username_change",
         DUAL_TOKEN_SECURITY,
         {"204", "400", "401", "405", "406", "413", "415", "429", "500", "503"},
-        "tests/integration/accounts/test_username_management.py",
+        "backend/tests/integration/accounts/test_username_management.py",
         (
             "test_username_operation_observed_statuses_exactly_match_its_documented_contract"
             "[set-username]"
@@ -178,14 +178,14 @@ OPERATION_CONTRACT: Final = {
         "health_readiness",
         HEALTH_SECURITY,
         {"200", "400", "405", "406", "500", "503"},
-        "tests/integration/config/test_readiness.py",
+        "backend/tests/integration/config/test_readiness.py",
         "test_health_observed_statuses_exactly_match_its_documented_contract",
     ),
     ("head", "/health/"): (
         "health_readiness_head",
         HEALTH_SECURITY,
         {"200", "400", "406", "500", "503"},
-        "tests/integration/config/test_readiness.py",
+        "backend/tests/integration/config/test_readiness.py",
         "test_health_head_observed_statuses_exactly_match_its_documented_contract",
     ),
 }
@@ -457,7 +457,7 @@ def test_openapi_contract_is_complete_and_bound_to_observed_evidence() -> None:
             "request_id": "00000000-0000-4000-8000-000000000000",
         }
         assert (
-            "tests/integration/config/test_api.py::"
+            "backend/tests/integration/config/test_api.py::"
             f"test_fixed_operation_invalid_host_returns_correlated_bad_request[{operation_id}]"
             in responses["400"]["x-localforge-observed-by"]
         )
@@ -505,15 +505,15 @@ def test_openapi_documents_boundary_only_statuses_with_observed_evidence() -> No
     boundary = cast("dict[str, Any]", schema["x-localforge-boundary-responses"])
     expected = {
         "204": (
-            "tests/integration/config/test_security.py",
+            "backend/tests/integration/config/test_security.py",
             "test_allowed_origin_preflight_bypasses_credentials_without_wildcards",
         ),
         "403": (
-            "tests/integration/config/test_api.py",
+            "backend/tests/integration/config/test_api.py",
             "test_session_authenticated_csrf_failure_uses_middleware_backed_authentication",
         ),
         "404": (
-            "tests/integration/config/test_api.py",
+            "backend/tests/integration/config/test_api.py",
             "test_unknown_path_returns_a_correlated_json_envelope",
         ),
     }
@@ -586,7 +586,7 @@ def test_every_published_evidence_node_id_collects() -> None:
             "--collect-only",
             "--no-cov",
             "-q",
-            *sorted(references),
+            *sorted(reference.removeprefix("backend/") for reference in references),
         ],
         cwd=REPOSITORY_ROOT / "backend"
         if (REPOSITORY_ROOT / "backend").is_dir()
@@ -598,7 +598,7 @@ def test_every_published_evidence_node_id_collects() -> None:
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert all(reference in result.stdout for reference in references)
+    assert all(reference.removeprefix("backend/") in result.stdout for reference in references)
 
 
 @pytest.mark.unit

@@ -1,13 +1,14 @@
 # Phase 10 monorepo inventory
 
 This inventory records the repository boundary before any Phase 10 file move. It is the authoritative input for
-Tickets 72–78. Snapshot date: 2026-10-04.
+Tickets 72–78. Snapshot date: 2026-10-04. Unqualified `src/`, `tests/`, and `scripts/` names in the snapshot are
+historical; current ownership is the `Phase 10 target` column and current commands use root wrappers or `backend/` explicitly.
 
 ## Repository state
 
 The repository contains one Django backend and no frontend implementation. There is no `frontend/` directory, frontend
-package manifest, frontend lockfile, or frontend build configuration. The current backend remains at the repository
-root until Ticket 73 and Ticket 74 move its ownership into `backend/`.
+package manifest, frontend lockfile, or frontend build configuration. Tickets 73 and 74 now place backend ownership
+under `backend/`; root environment, Compose, docs, and policy remain global.
 
 ## Ownership map
 
@@ -67,8 +68,8 @@ translation so later tickets do not infer paths from stale root examples.
 
 ## Exact command and hook inventory
 
-The Poe task names currently declared in `pyproject.toml` are listed below. Ticket 73 must preserve these names while
-changing their project root; Ticket 76 must make root invocation explicit:
+The Poe task names currently declared in `backend/pyproject.toml` are listed below. Ticket 73 must preserve these
+names while changing their project root; Ticket 76 must make root invocation explicit:
 
 ```text
 dev, help, setup, environments-setup, docker-audit, docker-clean-check, convention-audit,
@@ -86,10 +87,10 @@ test-integration-stages, test-parallel, test-core, test-core-fresh, test-securit
 
 The root hook inventory is:
 
-- `.pre-commit-config.yaml` runs local `ruff-check` (`uv run ruff check --fix`), `ruff-format` (`uv run ruff format`),
-  `docs-standard` (`uv run python scripts/check_docstrings.py`), `mypy` (`uv run mypy`), `ty` (`uvx ty@0.0.78
-  check --force-exclude`), and `pytest` (`uv run poe test`). These resolve the backend project configuration and
-  must gain explicit post-move working-directory or project arguments.
+- `.pre-commit-config.yaml` runs backend-scoped Ruff, documentation, type, and pytest tasks with
+  `uv run --project backend poe -C backend ...`; the commit-message hook runs
+  `uv run --project backend python .github/scripts/validate_commit_message.py`. These commands keep backend tooling
+  explicit while `.github/scripts/` remains root-global policy.
 - The same file runs root `.github/scripts/validate_commit_message.py` on the `commit-msg` stage. This path remains
   global policy and must not move with backend code.
 - `.gitmessage` supplies the global commit template; commit-message validation remains root policy.
@@ -98,8 +99,9 @@ The root hook inventory is:
 
 ## Exact path and import inventory
 
-The following code owns path calculations or subprocess import paths. Ticket 74 must update each group after moving
-the files; Ticket 75 must preserve the container paths or update them as one design:
+The following list records pre-move path calculations and subprocess import paths. Completed Tickets 74 and 75
+translated these surfaces; current source paths live under `backend/` while normalized container paths remain `/app/src`
+and `/app/scripts`:
 
 - Scripts defining `REPOSITORY_ROOT` from `Path(__file__)`: `scripts/audit_naming.py`, `scripts/audit_security.py`,
   `scripts/check_docstrings.py`, `scripts/export_developer_access.py`, `scripts/gen_secrets.py`,

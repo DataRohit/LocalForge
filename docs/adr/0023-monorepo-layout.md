@@ -15,7 +15,7 @@ No frontend is created in Phase 10.
 | Scope | Location | Rule |
 | --- | --- | --- |
 | Global environment and secrets | repository root | `.env.example`, `.env.*.sops`, `.sops.yaml`; Compose loads them from root |
-| Backend Python project | `backend/` | `pyproject.toml`, `uv.lock`, `.python-version`, `.venv`, `src/`, `tests/`, `scripts/` |
+| Backend Python project | `backend/` | `backend/pyproject.toml`, `backend/uv.lock`, `backend/.python-version`, `backend/.venv`, `backend/src/`, `backend/tests/`, `backend/scripts/` |
 | Docker orchestration | repository root | Compose files and Docker build contexts stay global |
 | Shared repository policy | repository root | `AGENTS.md`, commit policy, hooks, `.gitignore`, `.gitattributes`, CI metadata |
 | Product documentation | repository root | `docs/`, `CONTEXT.md`, and `.scratch/` remain global |

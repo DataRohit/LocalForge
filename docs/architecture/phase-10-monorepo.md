@@ -31,8 +31,8 @@ The pre-move ownership and path-sensitive inventory is
 
 | Root remains global | Backend moves under `backend/` |
 | --- | --- |
-| `.env.example`, `.env.development.sops`, `.env.testing.sops`, `.sops.yaml` | `pyproject.toml`, `uv.lock`, `.python-version` |
-| `compose*.yaml`, `docker/` | `.venv`, `src/`, `tests/`, `scripts/` |
+| `.env.example`, `.env.development.sops`, `.env.testing.sops`, `.sops.yaml` | `backend/pyproject.toml`, `backend/uv.lock`, `backend/.python-version` |
+| `compose*.yaml`, `docker/` | `backend/.venv`, `backend/src/`, `backend/tests/`, `backend/scripts/` |
 | `AGENTS.md`, `CONTEXT.md`, `docs/`, `.scratch/` | Python test and coverage configuration |
 | Git policy, hooks, license, governance, CI coordination | Backend-only Python tooling and package metadata |
 

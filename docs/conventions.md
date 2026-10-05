@@ -58,7 +58,7 @@ Adding a service means adding a row here first, in a documentation change, befor
 
 Character set: lowercase `a–z` plus digits `2–9`. Digits `0` and `1` are excluded, which removes the `0`/`o` and
 `1`/`l` transcription-ambiguity pairs without dropping the letters — so `lk3ny` and `al6wz` are valid and
-unambiguous. The matching validation pattern, used by `scripts/audit_naming.py` and by the audits in
+unambiguous. The matching validation pattern, used by `backend/scripts/audit_naming.py` and by the audits in
 [service-inventory.md](./service-inventory.md) Section 6, is `^[a-z][a-z-]*-[a-z2-9]{5}$`.
 
 Every ID is exactly five characters and unique across both environments: **29 containers and 8 networks, 37 IDs, no
@@ -177,7 +177,7 @@ Testing volumes exist so a restart does not lose state mid-debug. Discard them w
 2. One env file per environment: `.env.development` and `.env.testing`, plus `.env.testing.host` for host mode.
 3. No generated `.env` file is committed. `.gitignore` excludes `.env.development`, `.env.testing`, and
    `.env.testing.host`, and explicitly does **not** exclude `.env.example` or the `.sops` files.
-4. Secrets come only from `scripts/gen_secrets.py`. The placeholder everywhere in documentation is `<GENERATED>`.
+4. Secrets come only from `backend/scripts/gen_secrets.py`. The placeholder everywhere in documentation is `<GENERATED>`.
 5. Django reads variables through `django-environ`, never `os.environ` directly in settings.
 6. A required variable that is missing raises at startup. Silent defaults for required values turn a configuration
    error into a runtime mystery.
@@ -451,18 +451,19 @@ report the testing one ready while it was dead.
 ## 4. Planned scripts
 
 Each is a **separate file**. Nothing here is inlined into a Compose file, a Dockerfile `RUN`, or a settings module.
-None exists yet.
-Implementation language is Python, run as `uv run python scripts/<name>.py`, except where a script runs inside an
+None exists yet. Host paths use `backend/scripts/`; container paths keep `/app/scripts/` because the image working
+directory is the backend project. Implementation language is Python, run as
+`uv run --project backend --directory backend python scripts/<name>.py`, except where a script runs inside an
 image with no Python. The development machine is Windows, so a `.sh` entrypoint would not run on the host.
 
-### 4.1 `scripts/gen_secrets.py`
+### 4.1 `backend/scripts/gen_secrets.py`
 
 | Property | Value |
 | --- | --- |
 | Responsibility | Create or top up `.env.development`, `.env.testing`, `.env.testing.host` |
 | Inputs | `--environment {development,testing,all}`, `--force`; `.env.example` is the variable manifest |
 | Generation | Independent `secrets.token_urlsafe(64)` values for `DJANGO_SECRET_KEY`, `DJANGO_JWT_SIGNING_KEY`, and `DJANGO_API_THROTTLE_IDENTITY_HMAC_KEY`; independent `token_urlsafe(32)` values for passwords and the persistent SeaweedFS SSE-S3 key-encryption-key passphrase; `token_hex(20)` for S3 keys; bcrypt at cost 12 for `TRAEFIK_DASHBOARD_AUTH`, which is **composed from** `TRAEFIK_DASHBOARD_PASSWORD` rather than from a password thrown away at generation, because a dashboard credential nobody holds cannot be used to log in. `FLOWER_BASIC_AUTH` and `MP_UI_AUTH` are **plaintext** `user:password` pairs, because those services compare their configured values literally — hashing one would make the digest itself the password. `FLOWER_BROKER_API` is composed from the existing RabbitMQ credential and management endpoint, so queue-depth access creates no second broker secret. Generated plaintext files remain comment-free and use blank lines between logical service groups; encrypted SOPS dotenv files cannot preserve those separators. |
-| HMAC startup validation | Requires the exact unpadded textual alphabet `[A-Za-z0-9_-]+`, rejecting standard Base64 `+` and `/` plus `=` padding, then decodes at least 32 bytes and rejects clearly degenerate repeated bytes or known placeholder text. The decoded bytes, not their encoded text, are the runtime HMAC key. The encoded value must remain distinct from both signing keys. These structural checks do not prove randomness; `scripts/gen_secrets.py` remains the only supported source and uses `secrets.token_urlsafe(64)` |
+| HMAC startup validation | Requires the exact unpadded textual alphabet `[A-Za-z0-9_-]+`, rejecting standard Base64 `+` and `/` plus `=` padding, then decodes at least 32 bytes and rejects clearly degenerate repeated bytes or known placeholder text. The decoded bytes, not their encoded text, are the runtime HMAC key. The encoded value must remain distinct from both signing keys. These structural checks do not prove randomness; `backend/scripts/gen_secrets.py` remains the only supported source and uses `secrets.token_urlsafe(64)` |
 | Quoting | A value containing `$` is written single-quoted. Compose expands unquoted values in **both** `env_file:` and `--env-file`, so a bare bcrypt hash loses everything from its third `$` onward and yields a credential that cannot authenticate. Verified against Compose v5.5.1 on 2026-09-13 |
 | Idempotency | Default run **never overwrites an existing value**, and never discards one it does not recognise; it appends only absent variables, so adding an inventory row fills the gap without invalidating a running stack. A composed value is derived when absent and **refused when present but disagreeing** with the variables it is built from, because the generator cannot prove whether such a value is stale or a deliberate edit. `--force` regenerates everything and warns that credential-derived volumes must be recreated |
 | Forcing against a live stack | **`--force` silently desynchronises a running stack.** The files get new credentials; every running service keeps the one it started with, and PostgreSQL and RabbitMQ keep theirs inside their data directories, where recreating the container does not reach them. Nothing detects it — every health check still passes, because each probe authenticates with the credential the service itself holds. **A `docker exec … psql -U …` probe proves nothing either**: `initdb` writes a default `pg_hba.conf` that trusts loopback inside the container, so an in-container connection succeeds whatever the role's password is. Measured 2026-09-14, when `postgres-tp8vn` accepted every in-container probe while rejecting the password in its own environment file from the published port. Verify a credential **from the host, over the published port**. Measured 2026-09-14, when a forced run left the primary, the standby, both brokers and all four cache instances rejecting the passwords in their own environment files. The refusal messages recommend `--force`, so this is easy to walk into: take the stack down first, and recreate the volumes the warning lists. To repair a stack already in this state without losing data, `ALTER ROLE … WITH PASSWORD` on PostgreSQL and `rabbitmqctl change_password` on RabbitMQ, then recreate every other service and re-bootstrap the standby, whose `primary_conninfo` still carries the old password |
@@ -471,13 +472,13 @@ image with no Python. The development machine is Windows, so a `.sh` entrypoint 
 | Exit codes | `0` ok; `1` refused because the existing files are in a state the generator will not silently resolve — a composed value disagreeing with its components, or two files that must share a credential holding different ones; `2` `.env.example` missing or unparsable; `3` refused to write a Git-tracked file, **or could not determine whether a file is tracked**; `4` `--force` without `--environment` |
 | Never | Prints a secret, logs a value, or writes into a `.sops` file |
 
-### 4.2 `scripts/preflight.py`
+### 4.2 `backend/scripts/preflight.py`
 
 Runs the checklist in [../build/prerequisites.md](../build/prerequisites.md) and prints a pass/fail table; `--json`
 for machine output. Exit `0` when every required check passes, `1` otherwise, with optional-check failures printed
 as warnings.
 
-### 4.3 `scripts/sops_env.py`
+### 4.3 `backend/scripts/sops_env.py`
 
 `--mode {encrypt,decrypt} --environment <name>`, age recipient from `.sops.yaml`. Exit `0` ok; `1` the operation
 failed — a missing source file, or `sops` itself refusing; `2` `sops` or `age` not on `PATH`; `3` no age key; `4`
@@ -488,13 +489,13 @@ decrypt would overwrite newer plaintext without `--force`.
 The tool's own error text is not reproduced in the output: it is written against a file of credentials, and nothing
 guarantees a future version will not quote the line it failed on.
 
-### 4.4 `scripts/wait_for_services.py`
+### 4.4 `backend/scripts/wait_for_services.py`
 
 Blocks until each named dependency answers a real readiness probe, not a TCP connect. `--timeout`, default 120.
 Probes: PostgreSQL `SELECT 1`; Valkey `PING`; RabbitMQ AMQP handshake; SeaweedFS `GET /healthz`; Mailpit
 `GET /readyz`. Exit `0` all ready; `1` timeout, naming the service and last error.
 
-### 4.5 `scripts/pg_replica_bootstrap.sh`
+### 4.5 `backend/scripts/pg_replica_bootstrap.sh`
 
 Waits for the primary, runs `pg_basebackup -R -X stream --slot="$POSTGRES_REPLICATION_SLOT"` into an empty `PGDATA`,
 then execs the normal Postgres entrypoint. Skips the base backup when `PGDATA/PG_VERSION` already exists. Exit `0`
@@ -502,7 +503,7 @@ started; `1` primary unreachable; `2` `PGDATA` non-empty but not a valid standby
 
 Shell, because it runs inside `postgres:18.6`, which has no Python.
 
-### 4.6 `scripts/pgbackrest_entrypoint.sh`
+### 4.6 `backend/scripts/pgbackrest_entrypoint.sh`
 
 Runs `stanza-create` unconditionally, which upstream documents as safe to repeat and which skips an existing
 stanza, then `check`, then the backup schedule loop. Exit `0` clean shutdown, on `TERM` or `INT`; `1` stanza
@@ -511,7 +512,7 @@ creation or the configuration check failed; `2` a scheduled backup failed. Shell
 An existence probe based on `pgbackrest info` was tried and is wrong: `info --stanza=X` echoes `stanza: X` even
 when the stanza is missing, so the probe always reported it present and the stanza was never created.
 
-### 4.7 `scripts/seed_storage.py`
+### 4.7 `backend/scripts/seed_storage.py`
 
 `--environment {development,testing}`, with `--endpoint` to override the gateway URL the environment file carries,
 which the host needs because that file names the container. `--process-environment` lets the Django entrypoint use
@@ -521,25 +522,25 @@ success. Exit `0` bucket present; `1` gateway unreachable or nothing configured;
 The access-key identity is applied by the identities file the container renders from the environment at start, not
 by this script: SeaweedFS reads `-s3.config` once at boot and exposes no API to install an identity afterwards.
 
-### 4.8 `scripts/audit_naming.py`
+### 4.8 `backend/scripts/audit_naming.py`
 
 Phase 8. Compares live Docker objects against Section 2, **scoped by the Compose project label** so unrelated
 containers on this shared machine are ignored. Checks: every expected container exists and no unexpected one does;
 every name matches `^[a-z][a-z-]*-[a-z2-9]{5}$`; no anonymous volumes in the project; no `_default` network; every
 published port matches [service-inventory.md](./service-inventory.md); every bind is registered and read-only; every
 network carries its registered `internal` flag; and a disposable pinned probe proves each internal network cannot
-resolve an external name. Invoke `uv run python -m scripts.audit_naming` with
+resolve an external name. Invoke `uv run --project backend --directory backend python -m scripts.audit_naming` with
 `--environment {development,testing,all}`. Exit `0` clean; `1` violations, printed as
 `FAIL convention <check> <object> <detail>`.
 
-### 4.9 `scripts/prepare_broker.py`
+### 4.9 `backend/scripts/prepare_broker.py`
 
 Runs after RabbitMQ readiness and before Django, any Celery companion, or the persistent testing runner becomes
 healthy. Declares the 28 numbered native delayed-delivery exchanges and the terminal delivery exchange as durable
 topic exchanges. This is idempotent and non-destructive; it creates no queues or bindings and prevents Kombu's
 queue-before-next-exchange order from producing 28 missing dead-letter-exchange warnings on a fresh broker.
 
-### 4.10 `scripts/audit_security.py`
+### 4.10 `backend/scripts/audit_security.py`
 
 Runs the Phase 7 security gates without printing secret values. Scopes are `deployment`, `history`,
 `dependencies`, `images`, `runtime`, and `all`. The deployment scope requires exactly the four warnings created by
@@ -561,11 +562,11 @@ rejection, explicit TCP refusal on private ports, exact broker accounts, and abs
 credential from image history metadata and all retained required-container logs. Exit `0` all selected checks pass;
 `1` at least one named scope fails.
 
-### 4.11 `scripts/run_tests.py`
+### 4.11 `backend/scripts/run_tests.py`
 
 `--mode {container,host,both}`. Exit `0` both pass; `1` container failed; `2` host failed; `3` both failed.
 
-### 4.12 `scripts/check_docstrings.py`
+### 4.12 `backend/scripts/check_docstrings.py`
 
 Enforces the documentation standard in [documentation-standard.md](./documentation-standard.md), which is the part
 of [../adr/0020-no-comments-structured-docstrings.md](../adr/0020-no-comments-structured-docstrings.md) that the
@@ -577,15 +578,15 @@ Generated and vendored paths are excluded by name — `migrations`, `__pycache__
 file written by `makemigrations` cannot be held to a hand-written standard.
 
 Exit `0` clean; `1` violations, printed one per line as `FAIL <path>:<line> <rule> <detail>` followed by a count.
-Runs in `uv run poe check` and as a pre-commit hook.
+Runs in `./localforge.sh check` and as a pre-commit hook.
 
-### 4.13 `scripts/manage_platform.py`
+### 4.13 `backend/scripts/manage_platform.py`
 
-Cross-platform operator adapter exposed by the `uv run poe ...` tasks. It centralizes Compose file selection,
+Cross-platform operator adapter exposed by the `./localforge.sh ...` tasks. It centralizes Compose file selection,
 environment preparation, safe rebuilds, explicitly destructive resets, readiness checks, logs, and host/container
 test orchestration so onboarding documentation does not duplicate shell logic.
 
-The stable interface is listed by `uv run poe help`. Safe `down` and `rebuild` commands preserve named volumes;
+The stable interface is listed by `./localforge.sh help`. Safe `down` and `rebuild` commands preserve named volumes;
 `development-reset` and `testing-reset` are the only task names that delete them. `environments-setup` prepares,
 builds only missing local image tags once through representative services, starts with `--no-build`, times, and
 audits both environments without running application tests. Existing local image tags make setup a no-build,
@@ -606,7 +607,7 @@ work begins.
 Exit `0` means every requested step passed. A child command's non-zero status is returned unchanged; usage and
 missing-environment-file refusals return `2`.
 
-### 4.14 `scripts/celery_worker_health.py`
+### 4.14 `backend/scripts/celery_worker_health.py`
 
 Compose-only health command for `celery-worker-cw8rt`; it is not a host operator workflow. Inputs are
 `--destination celery@celery-worker-cw8rt` and `--timeout`, supplied from
@@ -621,17 +622,17 @@ transient reply queue before the full timeout. Closing the queue and connection 
 result-backend record exists on success, timeout, expiry, or revocation. Exit `0` means the exact reply arrived; `1`
 means identity, process-file, broker, worker, or reply readiness failed. It never prints credentials or payload data.
 
-### 4.15 `scripts/export_developer_access.py`
+### 4.15 `backend/scripts/export_developer_access.py`
 
 Creates repository-root `bookmarks.html` and `passwords.csv` files from `.env.development` through
-`uv run poe developer-access-export`. The bookmark file uses the Netscape exchange format accepted by major
+`./localforge.sh developer-access-export`. The bookmark file uses the Netscape exchange format accepted by major
 browsers and groups every host-published application or operator UI from
 [service-inventory.md](./service-inventory.md) Section 3. The password file uses the browser import header
 `name,url,username,password` and includes Traefik, pgAdmin, RabbitMQ, Flower, Mailpit, and Grafana.
 
 The command validates every required value before writing, splits the generated Flower and Mailpit basic-auth
 pairs on their first colon, and never prints a credential. Django admin bookmarks are included, but Django
-superuser credentials are not: `uv run poe superuser` creates those interactively and no generated environment
+superuser credentials are not: `./localforge.sh superuser` creates those interactively and no generated environment
 variable holds them. Both generated files are ignored by Git. Exit `0` means both files were written; exit `1`
 means development configuration was missing or malformed, or an output file could not be written.
 

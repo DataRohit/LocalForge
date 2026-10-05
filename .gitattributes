@@ -20,6 +20,7 @@
 *.eot binary
 
 *.py text diff=python
+backend/**/*.py text diff=python
 *.md text diff=markdown
 
 *.lock -diff

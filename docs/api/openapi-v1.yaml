@@ -48,7 +48,7 @@ paths:
                   summary: Tokens issued
           description: Credentials were accepted and both token types are returned.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_create_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_create_observed_statuses_exactly_match_its_documented_contract
         '400':
           content:
             application/json:
@@ -81,8 +81,8 @@ paths:
           description: The request body is malformed or misses a required credential
             field.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_create_observed_statuses_exactly_match_its_documented_contract
-          - tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[jwt_create]
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_create_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[jwt_create]
         '401':
           content:
             application/json:
@@ -98,7 +98,7 @@ paths:
                   summary: Authentication failed
           description: Credentials were rejected without disclosing account state.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_create_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_create_observed_statuses_exactly_match_its_documented_contract
         '405':
           content:
             application/json:
@@ -114,7 +114,7 @@ paths:
                   summary: Method not allowed
           description: The JSON web token create endpoint accepts only POST.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_create_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_create_observed_statuses_exactly_match_its_documented_contract
         '406':
           content:
             application/json:
@@ -130,7 +130,7 @@ paths:
                   summary: Not acceptable
           description: The requested response representation is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_create_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_create_observed_statuses_exactly_match_its_documented_contract
         '413':
           content:
             application/json:
@@ -146,7 +146,7 @@ paths:
                   summary: Request too large
           description: The request body exceeds the environment-configured API limit.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_create_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_create_observed_statuses_exactly_match_its_documented_contract
         '415':
           content:
             application/json:
@@ -162,7 +162,7 @@ paths:
                   summary: Unsupported media type
           description: The submitted request representation is unsupported.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_create_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_create_observed_statuses_exactly_match_its_documented_contract
         '429':
           content:
             application/json:
@@ -191,7 +191,7 @@ paths:
                 type: string
                 format: uuid
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_create_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_create_observed_statuses_exactly_match_its_documented_contract
         '500':
           content:
             application/json:
@@ -207,7 +207,7 @@ paths:
                   summary: Internal server error
           description: An unexpected server failure was contained.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_create_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_create_observed_statuses_exactly_match_its_documented_contract
         '503':
           content:
             application/json:
@@ -224,9 +224,9 @@ paths:
           description: Authoritative account, login-admission, or token-persistence
             state is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_create_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_create_observed_statuses_exactly_match_its_documented_contract
       security: []
-      x-localforge-observed-by: tests/integration/accounts/test_jwt_authentication.py::test_jwt_create_observed_statuses_exactly_match_its_documented_contract
+      x-localforge-observed-by: backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_create_observed_statuses_exactly_match_its_documented_contract
   /api/v1/jwt/refresh/:
     post:
       operationId: jwt_refresh
@@ -262,7 +262,7 @@ paths:
                   summary: Tokens rotated
           description: The refresh credential was rotated.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[refresh]
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[refresh]
         '400':
           content:
             application/json:
@@ -294,8 +294,8 @@ paths:
                     request_id: 00000000-0000-4000-8000-000000000000
           description: The request body is malformed or misses the refresh field.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[refresh]
-          - tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[jwt_refresh]
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[refresh]
+          - backend/tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[jwt_refresh]
         '401':
           content:
             application/json:
@@ -312,7 +312,7 @@ paths:
           description: The refresh token is expired, malformed, has invalid protocol
             claims, is revoked or blacklisted, or has no active account.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[refresh]
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[refresh]
         '405':
           content:
             application/json:
@@ -328,7 +328,7 @@ paths:
                   summary: Method not allowed
           description: The JSON web token refresh endpoint accepts only POST.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[refresh]
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[refresh]
         '406':
           content:
             application/json:
@@ -344,7 +344,7 @@ paths:
                   summary: Not acceptable
           description: The requested response representation is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[refresh]
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[refresh]
         '413':
           content:
             application/json:
@@ -360,7 +360,7 @@ paths:
                   summary: Request too large
           description: The request body exceeds the environment-configured API limit.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[refresh]
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[refresh]
         '415':
           content:
             application/json:
@@ -376,7 +376,7 @@ paths:
                   summary: Unsupported media type
           description: The submitted request representation is unsupported.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[refresh]
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[refresh]
         '429':
           content:
             application/json:
@@ -405,7 +405,7 @@ paths:
                 type: string
                 format: uuid
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[refresh]
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[refresh]
         '500':
           content:
             application/json:
@@ -421,7 +421,7 @@ paths:
                   summary: Internal server error
           description: An unexpected server failure was contained.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[refresh]
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[refresh]
         '503':
           content:
             application/json:
@@ -438,9 +438,9 @@ paths:
           description: Authoritative account, outstanding-token, or blacklist state
             is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[refresh]
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[refresh]
       security: []
-      x-localforge-observed-by: tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[refresh]
+      x-localforge-observed-by: backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[refresh]
   /api/v1/jwt/verify/:
     post:
       operationId: jwt_verify
@@ -475,7 +475,7 @@ paths:
                   summary: Token valid
           description: The token is valid; no token contents are returned.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[verify]
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[verify]
         '400':
           content:
             application/json:
@@ -507,8 +507,8 @@ paths:
                     request_id: 00000000-0000-4000-8000-000000000000
           description: The request body is malformed or misses the token field.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[verify]
-          - tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[jwt_verify]
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[verify]
+          - backend/tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[jwt_verify]
         '401':
           content:
             application/json:
@@ -525,7 +525,7 @@ paths:
           description: The token is expired, malformed, has invalid protocol claims,
             is revoked or blacklisted, or has no active account.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[verify]
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[verify]
         '405':
           content:
             application/json:
@@ -541,7 +541,7 @@ paths:
                   summary: Method not allowed
           description: The JSON web token verify endpoint accepts only POST.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[verify]
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[verify]
         '406':
           content:
             application/json:
@@ -557,7 +557,7 @@ paths:
                   summary: Not acceptable
           description: The requested response representation is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[verify]
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[verify]
         '413':
           content:
             application/json:
@@ -573,7 +573,7 @@ paths:
                   summary: Request too large
           description: The request body exceeds the environment-configured API limit.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[verify]
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[verify]
         '415':
           content:
             application/json:
@@ -589,7 +589,7 @@ paths:
                   summary: Unsupported media type
           description: The submitted request representation is unsupported.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[verify]
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[verify]
         '429':
           content:
             application/json:
@@ -618,7 +618,7 @@ paths:
                 type: string
                 format: uuid
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[verify]
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[verify]
         '500':
           content:
             application/json:
@@ -634,7 +634,7 @@ paths:
                   summary: Internal server error
           description: An unexpected server failure was contained.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[verify]
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[verify]
         '503':
           content:
             application/json:
@@ -650,9 +650,9 @@ paths:
                   summary: Service unavailable
           description: Authoritative account or blacklist state is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[verify]
+          - backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[verify]
       security: []
-      x-localforge-observed-by: tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[verify]
+      x-localforge-observed-by: backend/tests/integration/accounts/test_jwt_authentication.py::test_jwt_token_operation_statuses_match_their_documented_contracts[verify]
   /api/v1/token/login/:
     post:
       operationId: token_login
@@ -690,7 +690,7 @@ paths:
                   summary: Token issued
           description: Credentials were accepted and the account token is returned.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_token_authentication.py::test_login_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_token_authentication.py::test_login_observed_statuses_exactly_match_its_documented_contract
         '400':
           content:
             application/json:
@@ -723,8 +723,8 @@ paths:
           description: The request body is malformed or misses a required credential
             field.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_token_authentication.py::test_login_observed_statuses_exactly_match_its_documented_contract
-          - tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[token_login]
+          - backend/tests/integration/accounts/test_token_authentication.py::test_login_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[token_login]
         '401':
           content:
             application/json:
@@ -740,7 +740,7 @@ paths:
                   summary: Authentication failed
           description: Credentials were rejected without disclosing account state.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_token_authentication.py::test_login_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_token_authentication.py::test_login_observed_statuses_exactly_match_its_documented_contract
         '405':
           content:
             application/json:
@@ -756,7 +756,7 @@ paths:
                   summary: Method not allowed
           description: The token login endpoint accepts only POST.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_token_authentication.py::test_login_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_token_authentication.py::test_login_observed_statuses_exactly_match_its_documented_contract
         '406':
           content:
             application/json:
@@ -772,7 +772,7 @@ paths:
                   summary: Not acceptable
           description: The requested response representation is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_token_authentication.py::test_login_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_token_authentication.py::test_login_observed_statuses_exactly_match_its_documented_contract
         '413':
           content:
             application/json:
@@ -788,7 +788,7 @@ paths:
                   summary: Request too large
           description: The request body exceeds the environment-configured API limit.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_token_authentication.py::test_login_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_token_authentication.py::test_login_observed_statuses_exactly_match_its_documented_contract
         '415':
           content:
             application/json:
@@ -804,7 +804,7 @@ paths:
                   summary: Unsupported media type
           description: The submitted request representation is unsupported.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_token_authentication.py::test_login_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_token_authentication.py::test_login_observed_statuses_exactly_match_its_documented_contract
         '429':
           content:
             application/json:
@@ -833,7 +833,7 @@ paths:
                 type: string
                 format: uuid
           x-localforge-observed-by:
-          - tests/integration/accounts/test_token_authentication.py::test_login_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_token_authentication.py::test_login_observed_statuses_exactly_match_its_documented_contract
         '500':
           content:
             application/json:
@@ -849,7 +849,7 @@ paths:
                   summary: Internal server error
           description: An unexpected server failure was contained.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_token_authentication.py::test_login_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_token_authentication.py::test_login_observed_statuses_exactly_match_its_documented_contract
         '503':
           content:
             application/json:
@@ -866,9 +866,9 @@ paths:
           description: Authoritative account, login-admission, or token-persistence
             state is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_token_authentication.py::test_login_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_token_authentication.py::test_login_observed_statuses_exactly_match_its_documented_contract
       security: []
-      x-localforge-observed-by: tests/integration/accounts/test_token_authentication.py::test_login_observed_statuses_exactly_match_its_documented_contract
+      x-localforge-observed-by: backend/tests/integration/accounts/test_token_authentication.py::test_login_observed_statuses_exactly_match_its_documented_contract
   /api/v1/token/logout/:
     post:
       operationId: token_logout
@@ -884,7 +884,7 @@ paths:
         '204':
           description: The presented token was destroyed.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_token_authentication.py::test_logout_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_token_authentication.py::test_logout_observed_statuses_exactly_match_its_documented_contract
           x-localforge-examples:
             NoContent:
               summary: Successful response with no response body.
@@ -911,7 +911,7 @@ paths:
                   summary: Authentication failed
           description: A token was absent, malformed, unknown, or already revoked.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_token_authentication.py::test_logout_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_token_authentication.py::test_logout_observed_statuses_exactly_match_its_documented_contract
         '405':
           content:
             application/json:
@@ -927,7 +927,7 @@ paths:
                   summary: Method not allowed
           description: The token logout endpoint accepts only POST.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_token_authentication.py::test_logout_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_token_authentication.py::test_logout_observed_statuses_exactly_match_its_documented_contract
         '406':
           content:
             application/json:
@@ -943,7 +943,7 @@ paths:
                   summary: Not acceptable
           description: The requested response representation is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_token_authentication.py::test_logout_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_token_authentication.py::test_logout_observed_statuses_exactly_match_its_documented_contract
         '413':
           content:
             application/json:
@@ -959,7 +959,7 @@ paths:
                   summary: Request too large
           description: The request body exceeds the environment-configured API limit.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_token_authentication.py::test_logout_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_token_authentication.py::test_logout_observed_statuses_exactly_match_its_documented_contract
         '429':
           content:
             application/json:
@@ -987,7 +987,7 @@ paths:
                 type: string
                 format: uuid
           x-localforge-observed-by:
-          - tests/integration/accounts/test_token_authentication.py::test_logout_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_token_authentication.py::test_logout_observed_statuses_exactly_match_its_documented_contract
         '500':
           content:
             application/json:
@@ -1003,7 +1003,7 @@ paths:
                   summary: Internal server error
           description: An unexpected server failure was contained.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_token_authentication.py::test_logout_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_token_authentication.py::test_logout_observed_statuses_exactly_match_its_documented_contract
         '503':
           content:
             application/json:
@@ -1019,7 +1019,7 @@ paths:
                   summary: Service unavailable
           description: Authoritative token or account state is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_token_authentication.py::test_logout_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_token_authentication.py::test_logout_observed_statuses_exactly_match_its_documented_contract
         '400':
           description: Django rejected the Host header before the operation executed.
           content:
@@ -1035,9 +1035,9 @@ paths:
                     details: {}
                     request_id: 00000000-0000-4000-8000-000000000000
           x-localforge-observed-by:
-          - tests/integration/accounts/test_token_authentication.py::test_logout_observed_statuses_exactly_match_its_documented_contract
-          - tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[token_logout]
-      x-localforge-observed-by: tests/integration/accounts/test_token_authentication.py::test_logout_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_token_authentication.py::test_logout_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[token_logout]
+      x-localforge-observed-by: backend/tests/integration/accounts/test_token_authentication.py::test_logout_observed_statuses_exactly_match_its_documented_contract
   /api/v1/users/:
     post:
       operationId: user_registration_or_activation
@@ -1078,12 +1078,12 @@ paths:
           description: The registration was accepted; the account is inactive until
             activation.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_registration_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_user_profiles.py::test_registration_observed_statuses_exactly_match_its_documented_contract
         '204':
           description: The submitted account-bound token was valid, unused, and consumed
             while the account became active.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_registration_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_user_profiles.py::test_registration_observed_statuses_exactly_match_its_documented_contract
           x-localforge-examples:
             NoContent:
               summary: Successful response with no response body.
@@ -1173,8 +1173,8 @@ paths:
             undeclared field, has mismatched confirmation, or fails email or password
             validation.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_registration_observed_statuses_exactly_match_its_documented_contract
-          - tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[user_registration_or_activation]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_registration_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[user_registration_or_activation]
         '405':
           content:
             application/json:
@@ -1190,7 +1190,7 @@ paths:
                   summary: Method not allowed
           description: The user collection accepts only POST registration or activation.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_registration_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_user_profiles.py::test_registration_observed_statuses_exactly_match_its_documented_contract
         '406':
           content:
             application/json:
@@ -1206,7 +1206,7 @@ paths:
                   summary: Not acceptable
           description: The requested response representation is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_registration_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_user_profiles.py::test_registration_observed_statuses_exactly_match_its_documented_contract
         '413':
           content:
             application/json:
@@ -1222,7 +1222,7 @@ paths:
                   summary: Request too large
           description: The request body exceeds the environment-configured API limit.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_registration_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_user_profiles.py::test_registration_observed_statuses_exactly_match_its_documented_contract
         '415':
           content:
             application/json:
@@ -1238,7 +1238,7 @@ paths:
                   summary: Unsupported media type
           description: The submitted request representation is unsupported.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_registration_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_user_profiles.py::test_registration_observed_statuses_exactly_match_its_documented_contract
         '429':
           content:
             application/json:
@@ -1266,7 +1266,7 @@ paths:
                 type: string
                 format: uuid
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_registration_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_user_profiles.py::test_registration_observed_statuses_exactly_match_its_documented_contract
         '500':
           content:
             application/json:
@@ -1282,7 +1282,7 @@ paths:
                   summary: Internal server error
           description: An unexpected server failure was contained.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_registration_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_user_profiles.py::test_registration_observed_statuses_exactly_match_its_documented_contract
         '503':
           content:
             application/json:
@@ -1299,9 +1299,9 @@ paths:
           description: Authoritative account persistence or registration-admission
             state is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_registration_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_user_profiles.py::test_registration_observed_statuses_exactly_match_its_documented_contract
       security: []
-      x-localforge-observed-by: tests/integration/accounts/test_user_profiles.py::test_registration_observed_statuses_exactly_match_its_documented_contract
+      x-localforge-observed-by: backend/tests/integration/accounts/test_user_profiles.py::test_registration_observed_statuses_exactly_match_its_documented_contract
   /api/v1/users/me/:
     get:
       operationId: user_profile_retrieve
@@ -1329,7 +1329,7 @@ paths:
                   summary: Caller profile
           description: The authenticated caller's public profile.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[get]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[get]
         '401':
           content:
             application/json:
@@ -1352,7 +1352,7 @@ paths:
                   summary: Authentication failed
           description: A credential was absent, malformed, expired, revoked, or inactive.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[get]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[get]
         '405':
           content:
             application/json:
@@ -1368,7 +1368,7 @@ paths:
                   summary: Method not allowed
           description: The self-profile route supports only GET, PATCH, and DELETE.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[get]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[get]
         '406':
           content:
             application/json:
@@ -1384,7 +1384,7 @@ paths:
                   summary: Not acceptable
           description: The requested response representation is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[get]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[get]
         '413':
           content:
             application/json:
@@ -1400,7 +1400,7 @@ paths:
                   summary: Request too large
           description: The request body exceeds the environment-configured API limit.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[get]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[get]
         '429':
           content:
             application/json:
@@ -1429,7 +1429,7 @@ paths:
                 type: string
                 format: uuid
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[get]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[get]
         '500':
           content:
             application/json:
@@ -1445,7 +1445,7 @@ paths:
                   summary: Internal server error
           description: An unexpected server failure was contained.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[get]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[get]
         '503':
           content:
             application/json:
@@ -1461,7 +1461,7 @@ paths:
                   summary: Service unavailable
           description: Authoritative account or credential state is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[get]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[get]
         '400':
           description: Django rejected the Host header before the operation executed.
           content:
@@ -1477,9 +1477,9 @@ paths:
                     details: {}
                     request_id: 00000000-0000-4000-8000-000000000000
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[get]
-          - tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[user_profile_retrieve]
-      x-localforge-observed-by: tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[get]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[get]
+          - backend/tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[user_profile_retrieve]
+      x-localforge-observed-by: backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[get]
     patch:
       operationId: user_profile_update
       description: Partially updates only email. The account id, username, password,
@@ -1517,7 +1517,7 @@ paths:
                   summary: Profile updated
           description: The caller's profile after applying the submitted email change.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[patch]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[patch]
         '400':
           content:
             application/json:
@@ -1559,8 +1559,8 @@ paths:
           description: The body is malformed, email is invalid or occupied, or a forbidden
             field was submitted.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[patch]
-          - tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[user_profile_update]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[patch]
+          - backend/tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[user_profile_update]
         '401':
           content:
             application/json:
@@ -1583,7 +1583,7 @@ paths:
                   summary: Authentication failed
           description: A credential was absent, malformed, expired, revoked, or inactive.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[patch]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[patch]
         '405':
           content:
             application/json:
@@ -1599,7 +1599,7 @@ paths:
                   summary: Method not allowed
           description: The self-profile route supports only GET, PATCH, and DELETE.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[patch]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[patch]
         '406':
           content:
             application/json:
@@ -1615,7 +1615,7 @@ paths:
                   summary: Not acceptable
           description: The requested response representation is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[patch]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[patch]
         '413':
           content:
             application/json:
@@ -1631,7 +1631,7 @@ paths:
                   summary: Request too large
           description: The request body exceeds the environment-configured API limit.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[patch]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[patch]
         '415':
           content:
             application/json:
@@ -1647,7 +1647,7 @@ paths:
                   summary: Unsupported media type
           description: The submitted request representation is unsupported.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[patch]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[patch]
         '429':
           content:
             application/json:
@@ -1675,7 +1675,7 @@ paths:
                 type: string
                 format: uuid
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[patch]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[patch]
         '500':
           content:
             application/json:
@@ -1691,7 +1691,7 @@ paths:
                   summary: Internal server error
           description: An unexpected server failure was contained.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[patch]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[patch]
         '503':
           content:
             application/json:
@@ -1707,8 +1707,8 @@ paths:
                   summary: Service unavailable
           description: Authoritative account or credential state is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[patch]
-      x-localforge-observed-by: tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[patch]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[patch]
+      x-localforge-observed-by: backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[patch]
     delete:
       operationId: user_profile_delete
       description: Requires the current password and irreversibly deletes the authenticated
@@ -1726,7 +1726,7 @@ paths:
             remain until scheduled cleanup; operational logs and backups remain under
             their documented retention policies.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[delete]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[delete]
           x-localforge-examples:
             NoContent:
               summary: Successful response with no response body.
@@ -1772,8 +1772,8 @@ paths:
           description: The body is malformed, misses current_password, carries another
             field, or supplies an incorrect current password.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[delete]
-          - tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[user_profile_delete]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[delete]
+          - backend/tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[user_profile_delete]
         '401':
           content:
             application/json:
@@ -1796,7 +1796,7 @@ paths:
                   summary: Authentication failed
           description: A credential was absent, malformed, expired, revoked, or inactive.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[delete]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[delete]
         '405':
           content:
             application/json:
@@ -1812,7 +1812,7 @@ paths:
                   summary: Method not allowed
           description: The self-profile route supports only GET, PATCH, and DELETE.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[delete]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[delete]
         '406':
           content:
             application/json:
@@ -1828,7 +1828,7 @@ paths:
                   summary: Not acceptable
           description: The requested response representation is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[delete]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[delete]
         '413':
           content:
             application/json:
@@ -1844,7 +1844,7 @@ paths:
                   summary: Request too large
           description: The request body exceeds the environment-configured API limit.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[delete]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[delete]
         '415':
           content:
             application/json:
@@ -1860,7 +1860,7 @@ paths:
                   summary: Unsupported media type
           description: The submitted request representation is unsupported.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[delete]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[delete]
         '429':
           content:
             application/json:
@@ -1888,7 +1888,7 @@ paths:
                 type: string
                 format: uuid
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[delete]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[delete]
         '500':
           content:
             application/json:
@@ -1904,7 +1904,7 @@ paths:
                   summary: Internal server error
           description: An unexpected server failure was contained.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[delete]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[delete]
         '503':
           content:
             application/json:
@@ -1920,7 +1920,7 @@ paths:
                   summary: Service unavailable
           description: Authoritative account or credential state is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[delete]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[delete]
       requestBody:
         content:
           application/json:
@@ -1933,7 +1933,7 @@ paths:
             schema:
               $ref: '#/components/schemas/UserProfileDeletion'
         required: true
-      x-localforge-observed-by: tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[delete]
+      x-localforge-observed-by: backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[delete]
     head:
       operationId: user_profile_head
       description: Runs the same authentication, authorization, dependency, negotiation,
@@ -1949,7 +1949,7 @@ paths:
         '200':
           description: The authenticated caller's public profile.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_head_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_head_observed_statuses_exactly_match_its_documented_contract
           x-localforge-examples:
             NoContent:
               summary: Response with no response body.
@@ -1957,7 +1957,7 @@ paths:
         '401':
           description: A credential was absent, malformed, expired, revoked, or inactive.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_head_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_head_observed_statuses_exactly_match_its_documented_contract
           x-localforge-examples:
             NoContent:
               summary: Response with no response body.
@@ -1965,7 +1965,7 @@ paths:
         '406':
           description: The requested response representation is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_head_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_head_observed_statuses_exactly_match_its_documented_contract
           x-localforge-examples:
             NoContent:
               summary: Response with no response body.
@@ -1973,7 +1973,7 @@ paths:
         '413':
           description: The request body exceeds the environment-configured API limit.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_head_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_head_observed_statuses_exactly_match_its_documented_contract
           x-localforge-examples:
             NoContent:
               summary: Response with no response body.
@@ -1994,7 +1994,7 @@ paths:
                 type: string
                 format: uuid
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_head_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_head_observed_statuses_exactly_match_its_documented_contract
           x-localforge-examples:
             NoContent:
               summary: Response with no response body.
@@ -2002,7 +2002,7 @@ paths:
         '500':
           description: An unexpected server failure was contained.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_head_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_head_observed_statuses_exactly_match_its_documented_contract
           x-localforge-examples:
             NoContent:
               summary: Response with no response body.
@@ -2010,7 +2010,7 @@ paths:
         '503':
           description: Authoritative account or credential state is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_head_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_head_observed_statuses_exactly_match_its_documented_contract
           x-localforge-examples:
             NoContent:
               summary: Response with no response body.
@@ -2026,13 +2026,13 @@ paths:
                 details: {}
                 request_id: 00000000-0000-4000-8000-000000000000
           x-localforge-observed-by:
-          - tests/integration/accounts/test_user_profiles.py::test_profile_head_observed_statuses_exactly_match_its_documented_contract
-          - tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[user_profile_head]
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_head_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[user_profile_head]
           x-localforge-examples:
             NoContent:
               summary: Response with no response body.
               value: null
-      x-localforge-observed-by: tests/integration/accounts/test_user_profiles.py::test_profile_head_observed_statuses_exactly_match_its_documented_contract
+      x-localforge-observed-by: backend/tests/integration/accounts/test_user_profiles.py::test_profile_head_observed_statuses_exactly_match_its_documented_contract
   /api/v1/users/resend_activation/:
     post:
       operationId: user_activation_resend
@@ -2069,7 +2069,7 @@ paths:
           description: The resend request was accepted without disclosing whether
             an account matched.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_account_activation.py::test_resend_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_account_activation.py::test_resend_observed_statuses_exactly_match_its_documented_contract
         '400':
           content:
             application/json:
@@ -2102,8 +2102,8 @@ paths:
           description: The body is malformed, misses the email field, carries an undeclared
             field, or contains an invalid email address.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_account_activation.py::test_resend_observed_statuses_exactly_match_its_documented_contract
-          - tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[user_activation_resend]
+          - backend/tests/integration/accounts/test_account_activation.py::test_resend_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[user_activation_resend]
         '405':
           content:
             application/json:
@@ -2119,7 +2119,7 @@ paths:
                   summary: Method not allowed
           description: Activation resend accepts only POST.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_account_activation.py::test_resend_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_account_activation.py::test_resend_observed_statuses_exactly_match_its_documented_contract
         '406':
           content:
             application/json:
@@ -2135,7 +2135,7 @@ paths:
                   summary: Not acceptable
           description: The requested response representation is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_account_activation.py::test_resend_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_account_activation.py::test_resend_observed_statuses_exactly_match_its_documented_contract
         '413':
           content:
             application/json:
@@ -2151,7 +2151,7 @@ paths:
                   summary: Request too large
           description: The request body exceeds the environment-configured API limit.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_account_activation.py::test_resend_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_account_activation.py::test_resend_observed_statuses_exactly_match_its_documented_contract
         '415':
           content:
             application/json:
@@ -2167,7 +2167,7 @@ paths:
                   summary: Unsupported media type
           description: The submitted request representation is unsupported.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_account_activation.py::test_resend_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_account_activation.py::test_resend_observed_statuses_exactly_match_its_documented_contract
         '429':
           content:
             application/json:
@@ -2196,7 +2196,7 @@ paths:
                 type: string
                 format: uuid
           x-localforge-observed-by:
-          - tests/integration/accounts/test_account_activation.py::test_resend_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_account_activation.py::test_resend_observed_statuses_exactly_match_its_documented_contract
         '500':
           content:
             application/json:
@@ -2212,7 +2212,7 @@ paths:
                   summary: Internal server error
           description: An unexpected server failure was contained.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_account_activation.py::test_resend_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_account_activation.py::test_resend_observed_statuses_exactly_match_its_documented_contract
         '503':
           content:
             application/json:
@@ -2229,9 +2229,9 @@ paths:
           description: Authoritative account, token, or resend-admission state is
             unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_account_activation.py::test_resend_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/accounts/test_account_activation.py::test_resend_observed_statuses_exactly_match_its_documented_contract
       security: []
-      x-localforge-observed-by: tests/integration/accounts/test_account_activation.py::test_resend_observed_statuses_exactly_match_its_documented_contract
+      x-localforge-observed-by: backend/tests/integration/accounts/test_account_activation.py::test_resend_observed_statuses_exactly_match_its_documented_contract
   /api/v1/users/reset_password/:
     post:
       operationId: user_password_reset_request
@@ -2269,7 +2269,7 @@ paths:
                   summary: Password reset accepted
           description: The request was accepted without disclosing account state.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password]
         '400':
           content:
             application/json:
@@ -2302,8 +2302,8 @@ paths:
           description: The body is malformed, misses email, carries another field,
             or supplies an invalid email address.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password]
-          - tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[user_password_reset_request]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password]
+          - backend/tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[user_password_reset_request]
         '405':
           content:
             application/json:
@@ -2319,7 +2319,7 @@ paths:
                   summary: Method not allowed
           description: Password reset requests accept only POST.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password]
         '406':
           content:
             application/json:
@@ -2335,7 +2335,7 @@ paths:
                   summary: Not acceptable
           description: The requested response representation is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password]
         '413':
           content:
             application/json:
@@ -2351,7 +2351,7 @@ paths:
                   summary: Request too large
           description: The request body exceeds the environment-configured API limit.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password]
         '415':
           content:
             application/json:
@@ -2367,7 +2367,7 @@ paths:
                   summary: Unsupported media type
           description: The submitted request representation is unsupported.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password]
         '429':
           content:
             application/json:
@@ -2396,7 +2396,7 @@ paths:
                 type: string
                 format: uuid
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password]
         '500':
           content:
             application/json:
@@ -2412,7 +2412,7 @@ paths:
                   summary: Internal server error
           description: An unexpected server failure was contained.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password]
         '503':
           content:
             application/json:
@@ -2428,9 +2428,9 @@ paths:
                   summary: Service unavailable
           description: Authoritative account lookup or reset-admission state is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password]
       security: []
-      x-localforge-observed-by: tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password]
+      x-localforge-observed-by: backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password]
   /api/v1/users/reset_password_confirm/:
     post:
       operationId: user_password_reset_confirm
@@ -2459,7 +2459,7 @@ paths:
           description: The password changed, all reset links and existing identities
             were revoked, and a password-change notification was scheduled.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password-confirm]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password-confirm]
           x-localforge-examples:
             NoContent:
               summary: Successful response with no response body.
@@ -2524,8 +2524,8 @@ paths:
           description: The body or replacement is invalid, or the reset token is malformed,
             foreign, expired, or already used.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password-confirm]
-          - tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[user_password_reset_confirm]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password-confirm]
+          - backend/tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[user_password_reset_confirm]
         '405':
           content:
             application/json:
@@ -2541,7 +2541,7 @@ paths:
                   summary: Method not allowed
           description: Password reset confirmation accepts only POST.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password-confirm]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password-confirm]
         '406':
           content:
             application/json:
@@ -2557,7 +2557,7 @@ paths:
                   summary: Not acceptable
           description: The requested response representation is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password-confirm]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password-confirm]
         '413':
           content:
             application/json:
@@ -2573,7 +2573,7 @@ paths:
                   summary: Request too large
           description: The request body exceeds the environment-configured API limit.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password-confirm]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password-confirm]
         '415':
           content:
             application/json:
@@ -2589,7 +2589,7 @@ paths:
                   summary: Unsupported media type
           description: The submitted request representation is unsupported.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password-confirm]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password-confirm]
         '429':
           content:
             application/json:
@@ -2618,7 +2618,7 @@ paths:
                 type: string
                 format: uuid
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password-confirm]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password-confirm]
         '500':
           content:
             application/json:
@@ -2634,7 +2634,7 @@ paths:
                   summary: Internal server error
           description: An unexpected server failure was contained.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password-confirm]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password-confirm]
         '503':
           content:
             application/json:
@@ -2651,9 +2651,9 @@ paths:
           description: Authoritative account, credential, token, or admission state
             is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password-confirm]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password-confirm]
       security: []
-      x-localforge-observed-by: tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password-confirm]
+      x-localforge-observed-by: backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[reset-password-confirm]
   /api/v1/users/reset_username/:
     post:
       operationId: user_username_reset_request
@@ -2691,7 +2691,7 @@ paths:
                   summary: Username reset accepted
           description: The request was accepted without disclosing account state.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username]
         '400':
           content:
             application/json:
@@ -2724,8 +2724,8 @@ paths:
           description: The body is malformed, misses email, carries another field,
             or supplies an invalid email address.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username]
-          - tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[user_username_reset_request]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username]
+          - backend/tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[user_username_reset_request]
         '405':
           content:
             application/json:
@@ -2741,7 +2741,7 @@ paths:
                   summary: Method not allowed
           description: Username reset requests accept only POST.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username]
         '406':
           content:
             application/json:
@@ -2757,7 +2757,7 @@ paths:
                   summary: Not acceptable
           description: The requested response representation is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username]
         '413':
           content:
             application/json:
@@ -2773,7 +2773,7 @@ paths:
                   summary: Request too large
           description: The request body exceeds the environment-configured API limit.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username]
         '415':
           content:
             application/json:
@@ -2789,7 +2789,7 @@ paths:
                   summary: Unsupported media type
           description: The submitted request representation is unsupported.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username]
         '429':
           content:
             application/json:
@@ -2818,7 +2818,7 @@ paths:
                 type: string
                 format: uuid
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username]
         '500':
           content:
             application/json:
@@ -2834,7 +2834,7 @@ paths:
                   summary: Internal server error
           description: An unexpected server failure was contained.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username]
         '503':
           content:
             application/json:
@@ -2850,9 +2850,9 @@ paths:
                   summary: Service unavailable
           description: Authoritative account lookup or reset-admission state is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username]
       security: []
-      x-localforge-observed-by: tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username]
+      x-localforge-observed-by: backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username]
   /api/v1/users/reset_username_confirm/:
     post:
       operationId: user_username_reset_confirm
@@ -2880,7 +2880,7 @@ paths:
           description: The username changed, all username-reset links were consumed,
             existing credentials remained valid, and a notification was scheduled.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username-confirm]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username-confirm]
           x-localforge-examples:
             NoContent:
               summary: Successful response with no response body.
@@ -2955,8 +2955,8 @@ paths:
           description: The body or replacement username is invalid or unavailable,
             or the reset token is malformed, foreign, expired, or already used.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username-confirm]
-          - tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[user_username_reset_confirm]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username-confirm]
+          - backend/tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[user_username_reset_confirm]
         '405':
           content:
             application/json:
@@ -2972,7 +2972,7 @@ paths:
                   summary: Method not allowed
           description: Username reset confirmation accepts only POST.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username-confirm]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username-confirm]
         '406':
           content:
             application/json:
@@ -2988,7 +2988,7 @@ paths:
                   summary: Not acceptable
           description: The requested response representation is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username-confirm]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username-confirm]
         '413':
           content:
             application/json:
@@ -3004,7 +3004,7 @@ paths:
                   summary: Request too large
           description: The request body exceeds the environment-configured API limit.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username-confirm]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username-confirm]
         '415':
           content:
             application/json:
@@ -3020,7 +3020,7 @@ paths:
                   summary: Unsupported media type
           description: The submitted request representation is unsupported.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username-confirm]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username-confirm]
         '429':
           content:
             application/json:
@@ -3049,7 +3049,7 @@ paths:
                 type: string
                 format: uuid
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username-confirm]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username-confirm]
         '500':
           content:
             application/json:
@@ -3065,7 +3065,7 @@ paths:
                   summary: Internal server error
           description: An unexpected server failure was contained.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username-confirm]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username-confirm]
         '503':
           content:
             application/json:
@@ -3082,9 +3082,9 @@ paths:
           description: Authoritative account, token, uniqueness, or admission state
             is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username-confirm]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username-confirm]
       security: []
-      x-localforge-observed-by: tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username-confirm]
+      x-localforge-observed-by: backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[reset-username-confirm]
   /api/v1/users/set_password/:
     post:
       operationId: user_password_change
@@ -3115,7 +3115,7 @@ paths:
           description: The password changed and every existing credential and session
             was revoked, including the caller's.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[set-password]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[set-password]
           x-localforge-examples:
             NoContent:
               summary: Successful response with no response body.
@@ -3171,8 +3171,8 @@ paths:
             supplies an incorrect current password, repeats the current password,
             mismatches confirmation, or fails configured password validation.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[set-password]
-          - tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[user_password_change]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[set-password]
+          - backend/tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[user_password_change]
         '401':
           content:
             application/json:
@@ -3195,7 +3195,7 @@ paths:
                   summary: Authentication failed
           description: A credential was absent, malformed, expired, revoked, or inactive.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[set-password]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[set-password]
         '405':
           content:
             application/json:
@@ -3211,7 +3211,7 @@ paths:
                   summary: Method not allowed
           description: Password change accepts only POST.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[set-password]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[set-password]
         '406':
           content:
             application/json:
@@ -3227,7 +3227,7 @@ paths:
                   summary: Not acceptable
           description: The requested response representation is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[set-password]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[set-password]
         '413':
           content:
             application/json:
@@ -3243,7 +3243,7 @@ paths:
                   summary: Request too large
           description: The request body exceeds the environment-configured API limit.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[set-password]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[set-password]
         '415':
           content:
             application/json:
@@ -3259,7 +3259,7 @@ paths:
                   summary: Unsupported media type
           description: The submitted request representation is unsupported.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[set-password]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[set-password]
         '429':
           content:
             application/json:
@@ -3287,7 +3287,7 @@ paths:
                 type: string
                 format: uuid
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[set-password]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[set-password]
         '500':
           content:
             application/json:
@@ -3303,7 +3303,7 @@ paths:
                   summary: Internal server error
           description: An unexpected server failure was contained.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[set-password]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[set-password]
         '503':
           content:
             application/json:
@@ -3319,8 +3319,8 @@ paths:
                   summary: Service unavailable
           description: Authoritative account or credential state is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[set-password]
-      x-localforge-observed-by: tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[set-password]
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[set-password]
+      x-localforge-observed-by: backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[set-password]
   /api/v1/users/set_username/:
     post:
       operationId: user_username_change
@@ -3351,7 +3351,7 @@ paths:
             outstanding username-reset links were consumed, and a notification was
             scheduled.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[set-username]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[set-username]
           x-localforge-examples:
             NoContent:
               summary: Successful response with no response body.
@@ -3408,8 +3408,8 @@ paths:
             supplies an incorrect current password, or uses an invalid or unavailable
             username.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[set-username]
-          - tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[user_username_change]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[set-username]
+          - backend/tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[user_username_change]
         '401':
           content:
             application/json:
@@ -3432,7 +3432,7 @@ paths:
                   summary: Authentication failed
           description: A credential was absent, malformed, expired, revoked, or inactive.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[set-username]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[set-username]
         '405':
           content:
             application/json:
@@ -3448,7 +3448,7 @@ paths:
                   summary: Method not allowed
           description: Username change accepts only POST.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[set-username]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[set-username]
         '406':
           content:
             application/json:
@@ -3464,7 +3464,7 @@ paths:
                   summary: Not acceptable
           description: The requested response representation is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[set-username]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[set-username]
         '413':
           content:
             application/json:
@@ -3480,7 +3480,7 @@ paths:
                   summary: Request too large
           description: The request body exceeds the environment-configured API limit.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[set-username]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[set-username]
         '415':
           content:
             application/json:
@@ -3496,7 +3496,7 @@ paths:
                   summary: Unsupported media type
           description: The submitted request representation is unsupported.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[set-username]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[set-username]
         '429':
           content:
             application/json:
@@ -3524,7 +3524,7 @@ paths:
                 type: string
                 format: uuid
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[set-username]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[set-username]
         '500':
           content:
             application/json:
@@ -3540,7 +3540,7 @@ paths:
                   summary: Internal server error
           description: An unexpected server failure was contained.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[set-username]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[set-username]
         '503':
           content:
             application/json:
@@ -3556,8 +3556,8 @@ paths:
                   summary: Service unavailable
           description: Authoritative account, credential, or uniqueness state is unavailable.
           x-localforge-observed-by:
-          - tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[set-username]
-      x-localforge-observed-by: tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[set-username]
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[set-username]
+      x-localforge-observed-by: backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[set-username]
   /health/:
     get:
       operationId: health_readiness
@@ -3592,7 +3592,7 @@ paths:
                       mail: working
           description: Every required dependency is working.
           x-localforge-observed-by:
-          - tests/integration/config/test_readiness.py::test_health_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/config/test_readiness.py::test_health_observed_statuses_exactly_match_its_documented_contract
         '503':
           content:
             application/json:
@@ -3615,7 +3615,7 @@ paths:
                   summary: Not ready
           description: At least one required dependency is unavailable.
           x-localforge-observed-by:
-          - tests/integration/config/test_readiness.py::test_health_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/config/test_readiness.py::test_health_observed_statuses_exactly_match_its_documented_contract
         '405':
           content:
             application/json:
@@ -3631,7 +3631,7 @@ paths:
                   summary: Method not allowed
           description: The health endpoint accepts only safe read methods.
           x-localforge-observed-by:
-          - tests/integration/config/test_readiness.py::test_health_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/config/test_readiness.py::test_health_observed_statuses_exactly_match_its_documented_contract
         '406':
           content:
             application/json:
@@ -3647,7 +3647,7 @@ paths:
                   summary: Not acceptable
           description: The requested representation is not available.
           x-localforge-observed-by:
-          - tests/integration/config/test_readiness.py::test_health_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/config/test_readiness.py::test_health_observed_statuses_exactly_match_its_documented_contract
         '500':
           content:
             application/json:
@@ -3663,7 +3663,7 @@ paths:
                   summary: Internal server error
           description: An unexpected readiness failure was contained and correlated.
           x-localforge-observed-by:
-          - tests/integration/config/test_readiness.py::test_health_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/config/test_readiness.py::test_health_observed_statuses_exactly_match_its_documented_contract
         '400':
           description: Django rejected the Host header before the operation executed.
           content:
@@ -3679,9 +3679,9 @@ paths:
                     details: {}
                     request_id: 00000000-0000-4000-8000-000000000000
           x-localforge-observed-by:
-          - tests/integration/config/test_readiness.py::test_health_observed_statuses_exactly_match_its_documented_contract
-          - tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[health_readiness]
-      x-localforge-observed-by: tests/integration/config/test_readiness.py::test_health_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/config/test_readiness.py::test_health_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[health_readiness]
+      x-localforge-observed-by: backend/tests/integration/config/test_readiness.py::test_health_observed_statuses_exactly_match_its_documented_contract
     head:
       operationId: health_readiness_head
       description: Runs the same public readiness checks and negotiation boundaries
@@ -3696,7 +3696,7 @@ paths:
         '200':
           description: Every required dependency is working.
           x-localforge-observed-by:
-          - tests/integration/config/test_readiness.py::test_health_head_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/config/test_readiness.py::test_health_head_observed_statuses_exactly_match_its_documented_contract
           x-localforge-examples:
             NoContent:
               summary: Response with no response body.
@@ -3704,7 +3704,7 @@ paths:
         '503':
           description: At least one required dependency is unavailable.
           x-localforge-observed-by:
-          - tests/integration/config/test_readiness.py::test_health_head_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/config/test_readiness.py::test_health_head_observed_statuses_exactly_match_its_documented_contract
           x-localforge-examples:
             NoContent:
               summary: Response with no response body.
@@ -3712,7 +3712,7 @@ paths:
         '406':
           description: The requested representation is not available.
           x-localforge-observed-by:
-          - tests/integration/config/test_readiness.py::test_health_head_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/config/test_readiness.py::test_health_head_observed_statuses_exactly_match_its_documented_contract
           x-localforge-examples:
             NoContent:
               summary: Response with no response body.
@@ -3720,7 +3720,7 @@ paths:
         '500':
           description: An unexpected readiness failure was contained and correlated.
           x-localforge-observed-by:
-          - tests/integration/config/test_readiness.py::test_health_head_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/config/test_readiness.py::test_health_head_observed_statuses_exactly_match_its_documented_contract
           x-localforge-examples:
             NoContent:
               summary: Response with no response body.
@@ -3736,13 +3736,13 @@ paths:
                 details: {}
                 request_id: 00000000-0000-4000-8000-000000000000
           x-localforge-observed-by:
-          - tests/integration/config/test_readiness.py::test_health_head_observed_statuses_exactly_match_its_documented_contract
-          - tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[health_readiness_head]
+          - backend/tests/integration/config/test_readiness.py::test_health_head_observed_statuses_exactly_match_its_documented_contract
+          - backend/tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[health_readiness_head]
           x-localforge-examples:
             NoContent:
               summary: Response with no response body.
               value: null
-      x-localforge-observed-by: tests/integration/config/test_readiness.py::test_health_head_observed_statuses_exactly_match_its_documented_contract
+      x-localforge-observed-by: backend/tests/integration/config/test_readiness.py::test_health_head_observed_statuses_exactly_match_its_documented_contract
 components:
   schemas:
     ActivationConfirmation:
@@ -5019,7 +5019,7 @@ x-localforge-boundary-responses:
       NoContent:
         summary: Allowed CORS preflight response with no response body.
         value: null
-    x-localforge-observed-by: tests/integration/config/test_security.py::test_allowed_origin_preflight_bypasses_credentials_without_wildcards
+    x-localforge-observed-by: backend/tests/integration/config/test_security.py::test_allowed_origin_preflight_bypasses_credentials_without_wildcards
   '403':
     description: Session-authenticated writes rejected by Django CSRF middleware return
       the standard correlated error envelope before a REST operation runs.
@@ -5033,7 +5033,7 @@ x-localforge-boundary-responses:
               message: You do not have permission to perform this action.
               details: {}
               request_id: 00000000-0000-4000-8000-000000000000
-    x-localforge-observed-by: tests/integration/config/test_api.py::test_session_authenticated_csrf_failure_uses_middleware_backed_authentication
+    x-localforge-observed-by: backend/tests/integration/config/test_api.py::test_session_authenticated_csrf_failure_uses_middleware_backed_authentication
   '404':
     description: Unknown paths beneath the versioned API prefix return the standard
       correlated error envelope even though no OpenAPI operation matches them.
@@ -5047,4 +5047,4 @@ x-localforge-boundary-responses:
               message: The requested resource was not found.
               details: {}
               request_id: 00000000-0000-4000-8000-000000000000
-    x-localforge-observed-by: tests/integration/config/test_api.py::test_unknown_path_returns_a_correlated_json_envelope
+    x-localforge-observed-by: backend/tests/integration/config/test_api.py::test_unknown_path_returns_a_correlated_json_envelope

@@ -33,8 +33,8 @@ interfaces, and adapters remain coherent after every area audit.
 - [x] The complete module inventory has no missing, duplicate, or unresolved required finding.
 - [x] Targeted and full quality gates pass after every cross-module correction.
 
-**Targeted verification:** `uv run poe architecture-audit` passes seven focused tests. Strict mypy, ty, Ruff, and
-the structured documentation gate pass for the 189-module current graph. `uv run poe check` collects 2,132 tests
+**Targeted verification:** `./localforge.sh architecture-audit` passes seven focused tests. Strict mypy, ty, Ruff, and
+the structured documentation gate pass for the 189-module current graph. `./localforge.sh check` collects 2,132 tests
 and passes 2,109 core plus 23 timing tests at 100% branch coverage with zero warnings/skips, exact temporary Mailpit
 cleanup, health, ownership, residue, and bounded-log enforcement.
 

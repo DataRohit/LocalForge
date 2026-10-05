@@ -3,7 +3,8 @@
 Authoritative for: what must exist on the machine before phase 4, how to check each item, and what was actually
 observed here.
 
-Run this list first, via `backend/scripts/preflight.py`. Everything below was probed on **this machine on 2026-09-13**;
+Run this list first through `./localforge.ps1 preflight` or `./localforge.sh preflight`; the implementation lives in
+`backend/scripts/preflight.py`. Everything below was probed on **this machine on 2026-09-13**;
 re-verify, because the machine may have moved on.
 
 The supported first-run interface performs that check and prepares local environment files without replacing
@@ -54,13 +55,14 @@ getsops.sops` returns "No package found matching input criteria".
 
 ## 2. The Python gap
 
-`python` on `PATH` is **3.12.10**, while `pyproject.toml` requires `>=3.14` and `.python-version` pins `3.14.6`. The
-project virtualenv is correctly on 3.14.6, so this is a `PATH` ordering artefact, not a missing dependency.
+`python` on `PATH` is **3.12.10**, while `backend/pyproject.toml` requires `>=3.14` and
+`backend/.python-version` pins `3.14.6`. The project virtualenv is correctly on 3.14.6, so this is a `PATH`
+ordering artefact, not a missing dependency.
 
 It changes how every command is run:
 
-- Always use the backend project — `uv run --project backend pytest`, `./localforge.sh check`, and
-  `uv run --project backend python backend/scripts/gen_secrets.py`. These commands resolve to 3.14.6.
+- Always use the backend project — `uv run --project backend --directory backend pytest`, `./localforge.sh check`, and
+  `./localforge.ps1 secrets-generate` or `./localforge.sh secrets-generate`. These commands resolve to 3.14.6.
 - A bare `python backend/scripts/gen_secrets.py` silently runs under 3.12.10 and may fail on 3.14-only syntax, or worse,
   succeed while testing the wrong interpreter.
 - The container image uses `python:3.14-slim`, so container and virtualenv agree; only the host `PATH` disagrees.
@@ -96,8 +98,9 @@ After that, `docker compose up` must succeed with no external network. `internal
 development networks enforces it, and audit 6.5 in
 [../platform/service-inventory.md](../platform/service-inventory.md) proves it.
 
-`pyproject.toml` pins a Microsoft package feed as the default index and `uv.lock` records that feed's artifact URLs.
-Do not change the index and do not disable TLS verification. If resolution fails, run `uv lock` then
+`backend/pyproject.toml` pins a Microsoft package feed as the default index and `backend/uv.lock` records
+that feed's artifact URLs.
+Do not change the index and do not disable TLS verification. If resolution fails, run `uv lock --project backend` then
 `uv sync --project backend --all-groups --frozen`.
 
 ## 5. This machine is shared

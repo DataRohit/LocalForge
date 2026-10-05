@@ -63,7 +63,7 @@ delayed-delivery, warning, error, or critical records, and its bounded round-tri
 
 Kombu creates each native delayed-delivery queue before declaring the next exchange named by that queue's
 dead-letter configuration. A fresh RabbitMQ therefore records 28 missing-exchange warnings even though Kombu
-declares the exchanges immediately afterwards and the topology succeeds. `scripts/prepare_broker.py` idempotently
+declares the exchanges immediately afterwards and the topology succeeds. `backend/scripts/prepare_broker.py` idempotently
 declares all 29 durable topic exchanges after dependency readiness but before Django, any Celery companion, or the
 persistent test runner becomes healthy. The fresh-clone dual-mode gate therefore starts from an empty broker with
 zero delayed-delivery warning records instead of accepting successful setup logged as failure.

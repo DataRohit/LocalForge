@@ -43,84 +43,84 @@ STRICT_REQUEST_SCHEMA_NAMES = frozenset(
 
 OPENAPI_OPERATION_EVIDENCE = {
     "health_readiness": (
-        "tests/integration/config/test_readiness.py::"
+        "backend/tests/integration/config/test_readiness.py::"
         "test_health_observed_statuses_exactly_match_its_documented_contract"
     ),
     "health_readiness_head": (
-        "tests/integration/config/test_readiness.py::"
+        "backend/tests/integration/config/test_readiness.py::"
         "test_health_head_observed_statuses_exactly_match_its_documented_contract"
     ),
     "jwt_create": (
-        "tests/integration/accounts/test_jwt_authentication.py::"
+        "backend/tests/integration/accounts/test_jwt_authentication.py::"
         "test_jwt_create_observed_statuses_exactly_match_its_documented_contract"
     ),
     "jwt_refresh": (
-        "tests/integration/accounts/test_jwt_authentication.py::"
+        "backend/tests/integration/accounts/test_jwt_authentication.py::"
         "test_jwt_token_operation_statuses_match_their_documented_contracts[refresh]"
     ),
     "jwt_verify": (
-        "tests/integration/accounts/test_jwt_authentication.py::"
+        "backend/tests/integration/accounts/test_jwt_authentication.py::"
         "test_jwt_token_operation_statuses_match_their_documented_contracts[verify]"
     ),
     "token_login": (
-        "tests/integration/accounts/test_token_authentication.py::"
+        "backend/tests/integration/accounts/test_token_authentication.py::"
         "test_login_observed_statuses_exactly_match_its_documented_contract"
     ),
     "token_logout": (
-        "tests/integration/accounts/test_token_authentication.py::"
+        "backend/tests/integration/accounts/test_token_authentication.py::"
         "test_logout_observed_statuses_exactly_match_its_documented_contract"
     ),
     "user_activation_resend": (
-        "tests/integration/accounts/test_account_activation.py::"
+        "backend/tests/integration/accounts/test_account_activation.py::"
         "test_resend_observed_statuses_exactly_match_its_documented_contract"
     ),
     "user_password_change": (
-        "tests/integration/accounts/test_password_management.py::"
+        "backend/tests/integration/accounts/test_password_management.py::"
         "test_password_operation_observed_statuses_exactly_match_its_documented_contract"
         "[set-password]"
     ),
     "user_password_reset_confirm": (
-        "tests/integration/accounts/test_password_management.py::"
+        "backend/tests/integration/accounts/test_password_management.py::"
         "test_password_operation_observed_statuses_exactly_match_its_documented_contract"
         "[reset-password-confirm]"
     ),
     "user_password_reset_request": (
-        "tests/integration/accounts/test_password_management.py::"
+        "backend/tests/integration/accounts/test_password_management.py::"
         "test_password_operation_observed_statuses_exactly_match_its_documented_contract"
         "[reset-password]"
     ),
     "user_profile_delete": (
-        "tests/integration/accounts/test_user_profiles.py::"
+        "backend/tests/integration/accounts/test_user_profiles.py::"
         "test_profile_observed_statuses_exactly_match_each_documented_contract[delete]"
     ),
     "user_profile_retrieve": (
-        "tests/integration/accounts/test_user_profiles.py::"
+        "backend/tests/integration/accounts/test_user_profiles.py::"
         "test_profile_observed_statuses_exactly_match_each_documented_contract[get]"
     ),
     "user_profile_head": (
-        "tests/integration/accounts/test_user_profiles.py::"
+        "backend/tests/integration/accounts/test_user_profiles.py::"
         "test_profile_head_observed_statuses_exactly_match_its_documented_contract"
     ),
     "user_profile_update": (
-        "tests/integration/accounts/test_user_profiles.py::"
+        "backend/tests/integration/accounts/test_user_profiles.py::"
         "test_profile_observed_statuses_exactly_match_each_documented_contract[patch]"
     ),
     "user_registration_or_activation": (
-        "tests/integration/accounts/test_user_profiles.py::"
+        "backend/tests/integration/accounts/test_user_profiles.py::"
         "test_registration_observed_statuses_exactly_match_its_documented_contract"
     ),
     "user_username_change": (
-        "tests/integration/accounts/test_username_management.py::"
+        "backend/tests/integration/accounts/test_username_management.py::"
         "test_username_operation_observed_statuses_exactly_match_its_documented_contract"
         "[set-username]"
     ),
     "user_username_reset_confirm": (
-        "tests/integration/accounts/test_username_management.py::"
+        "backend/tests/integration/accounts/test_username_management.py::"
         "test_username_operation_observed_statuses_exactly_match_its_documented_contract"
         "[reset-username-confirm]"
     ),
     "user_username_reset_request": (
-        "tests/integration/accounts/test_username_management.py::"
+        "backend/tests/integration/accounts/test_username_management.py::"
         "test_username_operation_observed_statuses_exactly_match_its_documented_contract"
         "[reset-username]"
     ),
@@ -352,7 +352,7 @@ def _complete_operation_metadata(paths: dict[str, dict[str, Any]]) -> None:
             responses = cast("dict[str, dict[str, Any]]", operation["responses"])
             for status, response in responses.items():
                 invalid_host_evidence = (
-                    "tests/integration/config/test_api.py::"
+                    "backend/tests/integration/config/test_api.py::"
                     "test_fixed_operation_invalid_host_returns_correlated_bad_request"
                     f"[{operation_id}]"
                 )
@@ -748,7 +748,7 @@ def _boundary_response_contract() -> dict[str, object]:
                 }
             },
             "x-localforge-observed-by": (
-                "tests/integration/config/test_security.py::"
+                "backend/tests/integration/config/test_security.py::"
                 "test_allowed_origin_preflight_bypasses_credentials_without_wildcards"
             ),
         },
@@ -773,7 +773,7 @@ def _boundary_response_contract() -> dict[str, object]:
                 }
             },
             "x-localforge-observed-by": (
-                "tests/integration/config/test_api.py::"
+                "backend/tests/integration/config/test_api.py::"
                 "test_session_authenticated_csrf_failure_uses_middleware_backed_authentication"
             ),
         },
@@ -798,7 +798,7 @@ def _boundary_response_contract() -> dict[str, object]:
                 }
             },
             "x-localforge-observed-by": (
-                "tests/integration/config/test_api.py::"
+                "backend/tests/integration/config/test_api.py::"
                 "test_unknown_path_returns_a_correlated_json_envelope"
             ),
         },

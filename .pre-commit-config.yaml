@@ -100,7 +100,7 @@ repos:
 
       - id: validate-commit-message
         name: validate commit message
-        entry: python .github/scripts/validate_commit_message.py
+        entry: uv run --project backend python .github/scripts/validate_commit_message.py
         language: system
         stages:
           - commit-msg

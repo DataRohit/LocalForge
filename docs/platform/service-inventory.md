@@ -401,7 +401,7 @@ The runner's Compose command is an idle Python process with a local filesystem h
 `compose up`; explicit container-mode test commands use `compose exec`. This keeps the registered container inside
 the `localforge-test` project and prevents generated `*-run-*` one-off containers.
 
-WebSocket integration tests use the repository's ASGI queue communicator from `tests/websocket.py`. They do not
+WebSocket integration tests use the repository's ASGI queue communicator from `backend/tests/websocket.py`. They do not
 import `channels.testing`, so Daphne and its deprecated Windows event-loop-policy side effect are absent from the
 development dependency group.
 
@@ -434,8 +434,8 @@ so the email task does not retry or fail because live notification delivery is t
 
 | Mode | Command | Env file | Hostnames |
 | --- | --- | --- | --- |
-| Container | `uv run poe testing-test-container` | `.env.testing` | container names on the testing networks |
-| Host | `uv run poe testing-test-host` | `.env.testing.host` | `127.0.0.1` and the published ports above |
+| Container | `./localforge.sh testing-test-container` | `.env.testing` | container names on the testing networks |
+| Host | `./localforge.sh testing-test-host` | `.env.testing.host` | `127.0.0.1` and the published ports above |
 
 Both modes temporarily start Mailpit before collection and run the same complete internal Poe task, which keeps
 their collection arithmetic and stage timings comparable. Mailpit is accepted only during the complete run and is
@@ -464,8 +464,9 @@ file in five independent host pytest processes. Any failed attempt blocks the ho
 Their internal `*-stages` tasks run only after dependencies and temporary Mailpit are ready. Focused integration
 uses the same parallel load-group runner while excluding timing cases, so shared-state tests keep their required
 process isolation. `test-security-timing` remains the internal focused timing interface. Pytest warnings are errors,
-and the controller fails the session if any report is skipped. A bare `uv run pytest` remains the same
-complete collection in one process, and `uv run poe test-serial` is the documented way to read the stack of a test
+and the controller fails the session if any report is skipped. A bare
+`uv run --project backend --directory backend pytest` remains the same complete collection in one process, and
+`./localforge.sh test-serial` is the documented way to read the stack of a test
 that timed out.
 
 Both parallel stages set `--max-worker-restart=0`. A timed-out or crashed worker therefore fails the gate
@@ -485,10 +486,10 @@ and total duration. Exit `10` means container only failed, `11` host only, `12` 
 passed but complete collection counts differed. Standalone mode commands preserve the underlying failed child
 status.
 
-`uv run poe testing-verify` is the complete operator workflow: rebuild the source-matched test image, recreate and
+`./localforge.sh testing-verify` is the complete operator workflow: rebuild the source-matched test image, recreate and
 verify the dependency stack, run container mode followed by host mode and its five-pass registration timing
 stability gate, then stop the testing environment while preserving its named volumes. It leaves a failed stack
-running so status and logs remain available. `uv run poe testing-registration-timing-stability` exposes the same
+running so status and logs remain available. `./localforge.sh testing-registration-timing-stability` exposes the same
 host stability gate without rerunning the complete suite.
 
 ## 5. Image pins

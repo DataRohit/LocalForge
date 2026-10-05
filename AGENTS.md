@@ -167,7 +167,7 @@ means adding a registry row in a documentation change first.
 
 1. One env file per environment, loaded through `env_file:`. **Nothing is hardcoded inline in Compose** —
    `environment:` silently overrides `env_file:`, so an inline literal wins over the generated value.
-2. `scripts/gen_secrets.py` is the only source of secret values. Never invent one, type one, or paste one into a
+2. `backend/scripts/gen_secrets.py` is the only source of secret values. Never invent one, type one, or paste one into a
    document, commit message, or log. Documentation uses `<GENERATED>`.
 3. Committed: `.env.example` with placeholders, and the age-encrypted `.env.*.sops` files. Nothing else.
 4. `detect-private-key` is an active pre-commit hook. Leave it enabled.
@@ -226,7 +226,7 @@ These predate this work.
 | Area         | Rule                                                                                      |
 | ------------ | ----------------------------------------------------------------------------------------- |
 | Dependencies | `uv` with `[dependency-groups]`; use `uv add`. **Never create a `requirements.txt`**      |
-| Tasks        | `poethepoet`; `uv run poe check` is the full local gate                                   |
+| Tasks        | `poethepoet`; full gate: `./localforge.ps1 check` or `./localforge.sh check`              |
 | Linting      | Ruff, `select = ["ALL"]`, line length 100                                                 |
 | Types        | mypy `strict` plus `ty`; both must pass                                                   |
 | Tests        | pytest, 100% branch coverage enforced, `xfail_strict`, markers `unit` and `integration`   |
