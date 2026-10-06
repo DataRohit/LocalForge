@@ -1673,6 +1673,18 @@ def test_testing_runtime_helpers_cover_each_mode_and_failure(tmp_path: Path) -> 
     assert platform.testing_smtp_integration_tests(tmp_path, smtp_host, "host") == 0
     assert smtp_host.calls[0][1] is not None
     assert smtp_host.calls[0][1]["EMAIL_BACKEND"] == platform.SMTP_BACKEND
+    assert smtp_host.calls[0][0] == (
+        "uv",
+        "run",
+        "--project",
+        str(tmp_path / "backend"),
+        "--directory",
+        str(tmp_path / "backend"),
+        "pytest",
+        *platform.SMTP_INTEGRATION_TESTS,
+        "--no-cov",
+        "-q",
+    )
     assert platform.testing_smtp_integration_tests(tmp_path, smtp_container, "container") == 0
     assert f"EMAIL_BACKEND={platform.SMTP_BACKEND}" in smtp_container.calls[0][0]
     with pytest.raises(ValueError, match="unsupported SMTP integration mode"):

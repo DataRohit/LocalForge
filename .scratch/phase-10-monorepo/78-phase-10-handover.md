@@ -17,11 +17,15 @@ next phase that may add a frontend.
 
 **Status:** done
 
+Revalidated on **2026-10-06** from a clean Docker state. The complete supported testing gate passed in
+both host and container modes, the integration audit passed, and deployment, image, runtime, health, and
+bounded log gates passed after fixing immutable-image audit references.
+
 - [x] Record final root/global and backend ownership, every command-path compatibility decision, and no-frontend scope.
 - [x] Record clean-checkout dependency, quality, SOPS, Docker, runtime, security, and log evidence.
 - [x] Record rollback steps and any follow-up needed before frontend work begins.
-- [x] Confirm Phase 10 gate passes and all Phase 10 tickets are done.
+- [x] Confirm Phase 10 gate passes and all Phase 10 tickets are done after the reopened validation.
 
 Evidence: [Phase 10 handover](../../docs/handover/phase-10.md) records the final ownership map, Makefile command
-compatibility, clean-checkout and runtime gates, SOPS parity, rollback, and frontend follow-up. Tickets 71–77 are
+compatibility, clean-checkout and runtime gates, SOPS parity, rollback, and frontend follow-up. Tickets 71–78 are
 done, the phase gate passes, and no frontend implementation was added.

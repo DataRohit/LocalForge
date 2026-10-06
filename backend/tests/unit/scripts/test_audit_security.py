@@ -33,6 +33,7 @@ pytestmark = pytest.mark.unit
 PAIR_COUNT = 2
 TRANSIENT_SCAN_ATTEMPTS = 2
 TEST_IMAGE_ID = f"sha256:{'1' * 64}"
+OTHER_IMAGE_ID = f"sha256:{'2' * 64}"
 TEST_ARTIFACT_ID = f"sha256:{'2' * 64}"
 
 
@@ -756,6 +757,44 @@ def test_vulnerability_records_normalize_scanner_fields() -> None:
     ]
 
 
+def test_local_image_vulnerability_digest_ignores_only_its_os_target_identity() -> None:
+    """Keep rebuilt image identities out of local vulnerability digests.
+
+    Preserves the OS label and every vulnerability field while allowing an identical package set
+    in a rebuilt image to retain its reviewed security digest. Secret paths remain exact.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If identity changes affect findings or meaningful drift is hidden.
+    """
+    document = json.loads(trivy_payload(1, artifact_name=TEST_IMAGE_ID))
+    result = document["Results"][0]
+    result["Class"] = "os-pkgs"
+    result["Target"] = f"{TEST_IMAGE_ID} (debian 13.7)"
+    original = audit.vulnerability_policy_entry(json.dumps(document), normalize_image_target=True)
+    document["ArtifactName"] = OTHER_IMAGE_ID
+    result["Target"] = f"{OTHER_IMAGE_ID} (debian 13.7)"
+    rebuilt = audit.vulnerability_policy_entry(json.dumps(document), normalize_image_target=True)
+    assert original["digest"] == rebuilt["digest"]
+    assert original["artifact_id"] == rebuilt["artifact_id"]
+    result["Target"] = f"{OTHER_IMAGE_ID} (debian 14)"
+    changed_os = audit.vulnerability_policy_entry(json.dumps(document), normalize_image_target=True)
+    assert changed_os["digest"] != original["digest"]
+    result["Target"] = f"{OTHER_IMAGE_ID} (debian 13.7)"
+    result["Vulnerabilities"][0]["InstalledVersion"] = "changed"
+    changed_package = audit.vulnerability_policy_entry(
+        json.dumps(document), normalize_image_target=True
+    )
+    assert changed_package["digest"] != original["digest"]
+    external = audit.vulnerability_policy_entry(json.dumps(document))
+    assert external["digest"] != changed_package["digest"]
+
+
 def test_load_image_policy_validates_top_level(tmp_path: Path) -> None:
     """Load only object-shaped image policy documents.
 
@@ -807,7 +846,10 @@ def test_image_check_scans_unique_images_and_rejects_findings(tmp_path: Path) ->
     assert all(
         "--parallel" in call and call[call.index("--parallel") + 1] == "1" for call in scan_calls
     )
-    assert all("--cache-backend" not in call for call in scan_calls)
+    assert all(
+        "--cache-backend" in call and call[call.index("--cache-backend") + 1] == "memory"
+        for call in scan_calls
+    )
     cache_mounts = {
         argument
         for call in scan_calls
@@ -856,6 +898,27 @@ def test_image_scan_retries_one_transient_scanner_failure() -> None:
     assert entry == audit.vulnerability_policy_entry(payload, image_id=TEST_IMAGE_ID)
     assert len(runner.calls) == TRANSIENT_SCAN_ATTEMPTS
     assert runner.calls[0][0] == runner.calls[1][0]
+
+
+def test_postgres_identity_inspection_uses_the_reviewed_immutable_reference() -> None:
+    """Resolve the mutable registry tag through the reviewed Postgres digest.
+
+    Records the exact Docker inspect argument so a registry tag refresh cannot silently change the
+    image audited against the reviewed vulnerability snapshot.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If inspection uses the mutable tag directly.
+    """
+    runner = FakeRunner([audit.CommandResult(0, f"{TEST_IMAGE_ID}\n")])
+
+    assert audit.inspected_image_id(runner, "postgres:18.6") == TEST_IMAGE_ID
+    assert runner.calls[0][0][-1] == audit.PINNED_IMAGE_REFERENCES["postgres:18.6"]
 
 
 def test_image_scan_ignores_docker_pull_progress_on_standard_error() -> None:
@@ -1405,6 +1468,11 @@ def test_runtime_secret_check_rejects_command_and_secret_failures(tmp_path: Path
     assert "development-tunnel-token" in values
     assert "development-resend-key" in values
     assert audit.runtime_secret_check(clean, tmp_path)
+    history_commands = [call[0] for call in clean.calls if call[0][0:2] == ("docker", "history")]
+    assert any(
+        command[-1] == audit.PINNED_IMAGE_REFERENCES["postgres:18.6"]
+        for command in history_commands
+    )
     log_commands = [call[0] for call in clean.calls if call[0][0:2] == ("docker", "logs")]
     assert all("--since" not in command for command in log_commands)
 

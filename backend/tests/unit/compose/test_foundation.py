@@ -1204,7 +1204,8 @@ def test_every_image_is_pinned_to_a_tag_the_inventory_records(
             assert definition.get("build"), name
             continue
 
-        repository, _, tag = image.rpartition(":")
+        image_tag = image.split("@", 1)[0]
+        repository, _, tag = image_tag.rpartition(":")
         if repository.startswith("localforge/"):
             assert f"| `{repository}` |" in document, image
             assert definition.get("build"), name
@@ -1705,7 +1706,7 @@ BROKER_INSTANCES = {
 }
 
 BROKER_NETWORKS = {
-    "development": {"app-net-na6hy", "access-net-ha4mz"},
+    "development": {"app-net-na6hy", "obsv-net-nb4xt", "access-net-ha4mz"},
     "testing": {"app-net-nt5rk", "access-net-ht6pn"},
 }
 

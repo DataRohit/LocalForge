@@ -49,6 +49,11 @@ GITLEAKS_IMAGE = "zricethezav/gitleaks:v8.28.0"
 PIP_AUDIT_VERSION = "2.10.1"
 LOCAL_IMAGE_PREFIX = "localforge/"
 LOCAL_IMAGE_VOLATILE_POLICY_FIELDS = frozenset({"artifact_id", "image_id"})
+PINNED_IMAGE_REFERENCES = {
+    "postgres:18.6": (
+        "postgres:18.6@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722"
+    ),
+}
 HTTP_BODY_LIMIT_BYTES = 4096
 EXPECTED_DEPLOYMENT_WARNINGS = frozenset(
     {"security.W004", "security.W008", "security.W012", "security.W016"}
@@ -516,7 +521,11 @@ def trivy_results(payload: str) -> list[dict[str, object]]:
     return cast("list[dict[str, object]]", document["Results"])
 
 
-def vulnerability_records(payload: str) -> list[dict[str, str]]:
+def vulnerability_records(
+    payload: str,
+    *,
+    normalize_image_target: bool = False,
+) -> list[dict[str, str]]:
     """Normalize Trivy vulnerability records for stable policy comparison.
 
     Retains the target, identifier, package, installed version, fixed version, and severity while
@@ -524,6 +533,7 @@ def vulnerability_records(payload: str) -> list[dict[str, str]]:
 
     Arguments:
         payload: Trivy JSON output.
+        normalize_image_target: Remove the immutable local image ID from OS target labels.
 
     Returns:
         Sorted normalized vulnerability records.
@@ -535,6 +545,8 @@ def vulnerability_records(payload: str) -> list[dict[str, str]]:
     records: list[dict[str, str]] = []
     for result in trivy_results(payload):
         target = str(result.get("Target", ""))
+        if normalize_image_target and str(result.get("Class", "")) == "os-pkgs":
+            target = re.sub(r"^sha256:[0-9a-f]{64} ", "", target)
         vulnerabilities = result.get("Vulnerabilities", [])
         if vulnerabilities is None:
             vulnerabilities = []
@@ -601,6 +613,7 @@ def vulnerability_policy_entry(
     payload: str,
     *,
     image_id: str | None = None,
+    normalize_image_target: bool = False,
 ) -> dict[str, object]:
     """Summarize one exact scanner result without duplicating every package row.
 
@@ -610,12 +623,13 @@ def vulnerability_policy_entry(
     Arguments:
         payload: Trivy JSON output.
         image_id: Immutable Docker image identity requested from Trivy.
+        normalize_image_target: Remove rebuilt local image IDs from OS target labels.
 
     Returns:
         Stable policy entry for one image.
     """
     document = trivy_document(payload)
-    records = vulnerability_records(payload)
+    records = vulnerability_records(payload, normalize_image_target=normalize_image_target)
     canonical = json.dumps(records, separators=(",", ":"), sort_keys=True).encode()
     return {
         "artifact_id": document["ArtifactID"],
@@ -664,7 +678,8 @@ def inspected_image_id(runner: AuditRunner, image: str) -> str | None:
     Returns:
         Immutable image ID, or None.
     """
-    inspected = runner.run(("docker", "image", "inspect", "--format", "{{.Id}}", image))
+    reference = PINNED_IMAGE_REFERENCES.get(image, image)
+    inspected = runner.run(("docker", "image", "inspect", "--format", "{{.Id}}", reference))
     image_id = inspected.output.strip()
     if inspected.code != 0 or IMAGE_ID_PATTERN.fullmatch(image_id) is None:
         return None
@@ -705,6 +720,8 @@ def scanned_image_policy_entry(
     runner: AuditRunner,
     image_id: str,
     cache: str,
+    *,
+    normalize_image_target: bool = False,
 ) -> dict[str, object] | None:
     """Scan one immutable image and normalize its security policy entry.
 
@@ -715,6 +732,7 @@ def scanned_image_policy_entry(
         runner: Command execution boundary.
         image_id: Immutable Docker image identity.
         cache: Docker-compatible temporary cache path.
+        normalize_image_target: Remove rebuilt local image IDs from OS target labels.
 
     Returns:
         Normalized policy entry, or None on scanner or schema failure.
@@ -731,6 +749,8 @@ def scanned_image_policy_entry(
         "image",
         "--parallel",
         "1",
+        "--cache-backend",
+        "memory",
         "--scanners",
         "vuln,secret",
         "--severity",
@@ -749,7 +769,11 @@ def scanned_image_policy_entry(
         result = runner.run(command)
     try:
         document = trivy_document(result.output)
-        entry = vulnerability_policy_entry(result.output, image_id=image_id)
+        entry = vulnerability_policy_entry(
+            result.output,
+            image_id=image_id,
+            normalize_image_target=normalize_image_target,
+        )
     except json.JSONDecodeError, TypeError:
         return None
     if result.code != 0 or document["ArtifactName"] != image_id:
@@ -839,7 +863,12 @@ def image_matches_policy(
     elif not live_containers_use_image(runner, image, image_id):
         failure = f"image-live-identity image={image} expected={image_id}"
     else:
-        scanned = scanned_image_policy_entry(runner, image_id, cache)
+        scanned = scanned_image_policy_entry(
+            runner,
+            image_id,
+            cache,
+            normalize_image_target=image.startswith(LOCAL_IMAGE_PREFIX),
+        )
         if scanned is None:
             failure = f"image-scan unavailable-or-invalid image={image} id={image_id}"
         else:
@@ -1110,7 +1139,14 @@ def runtime_secret_check(runner: AuditRunner, root: Path = REPOSITORY_ROOT) -> b
     values = generated_sensitive_values(root)
 
     commands: list[tuple[str, ...]] = [
-        ("docker", "history", "--no-trunc", "--format", "{{.CreatedBy}}", image)
+        (
+            "docker",
+            "history",
+            "--no-trunc",
+            "--format",
+            "{{.CreatedBy}}",
+            PINNED_IMAGE_REFERENCES.get(image, image),
+        )
         for image in sorted(set(CONTAINER_IMAGES.values()))
     ]
     commands.extend(("docker", "logs", container) for container in sorted(REQUIRED_CONTAINERS))

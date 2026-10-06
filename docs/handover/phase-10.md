@@ -1,5 +1,11 @@
 # Phase 10 backend-first monorepo handover
 
+## Current acceptance status: GO
+
+Revalidated on **2026-10-06** from a clean Docker state. The complete supported gate passes in both host and
+container modes, and the integration audit passes. Immutable image references now govern convention, image,
+history, and runtime security checks during fresh setup.
+
 Handover completed **2026-10-05** after Tickets 71–78. The repository now has one global root and an explicit
 `backend/` Python project. The migration changed repository ownership and command paths while preserving the
 application surface, the two Compose environments, registered service names, ports, secrets, and dependency pins.
@@ -58,7 +64,8 @@ The following evidence closed Ticket 77 and was refreshed for this handover:
 - Fresh bounded logs for every container in `localforge-dev` and `localforge-test` contained no unexplained warning,
   error, critical, restart, or unhealthy finding after the environments stabilized.
 - Repository scans found no stale operational wrapper reference, duplicate backend project, untracked secret, or frontend
-  implementation. `git diff --check` and the final pre-commit hooks passed.
+  implementation. `make testing-integration-audit` passed its mail persistence, SMTP, cache degradation, and cleanup
+  checks. `git diff --check` and the final pre-commit hooks passed.
 
 ### Runtime command record
 
@@ -96,11 +103,11 @@ security and Docker audits pass for the selected revision.
 
 ## Frontend handoff and stop condition
 
-Phase 10 is closed. Before frontend work begins, a new ticket must define the frontend toolchain, lockfile, build
+After Phase 10 acceptance, frontend work requires a new ticket defining its toolchain, lockfile, build
 context, environment contract, Make targets, CI and pre-commit ownership, and any shared documentation or policy
 changes. The future frontend must not create a third environment, move global secrets, or change the fixed backend
 route and WebSocket surface without a separate governing decision.
 
 The Phase 10 gate passes: all tickets 71–78 are done, ownership matches the architecture and ADR, the root Makefile
-works independently of caller directory, both environments remain healthy, encrypted environments decrypt, backend
-quality and runtime truth gates pass, no stale root backend path remains, and no frontend files were added.
+works independently of caller directory, and both environments remain healthy. Encrypted environments decrypt,
+backend quality and runtime truth gates pass, no stale root backend path remains, and no frontend files were added.

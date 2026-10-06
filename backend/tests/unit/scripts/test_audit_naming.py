@@ -491,6 +491,10 @@ def test_offline_probe_requires_nonzero_and_empty_output() -> None:
     failures = audit.offline_failures(online, audit.TESTING_SPEC)
     assert len(failures) == PAIR_COUNT
     assert all("--rm" in command for command in online.calls)
+    assert all(
+        "--pull" in command and command[command.index("--pull") + 1] == "never"
+        for command in online.calls
+    )
 
 
 def test_audit_environment_sequences_every_gate_and_propagates_failures() -> None:

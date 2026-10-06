@@ -1163,6 +1163,7 @@ def normalize_image_name(image: str) -> str:
         Canonical comparison form.
     """
     normalized = image.removeprefix("docker.io/")
+    normalized = re.sub(r"@sha256:[0-9a-f]{64}$", "", normalized)
     return normalized.removeprefix("library/")
 
 
@@ -3177,7 +3178,16 @@ def testing_smtp_integration_tests(root: Path, runner: Runner, mode: str) -> int
         environment = load_environment(root, ".env.testing.host")
         environment["EMAIL_BACKEND"] = SMTP_BACKEND
         return runner.run(
-            (sys.executable, "-m", "pytest", *pytest_arguments),
+            (
+                "uv",
+                "run",
+                "--project",
+                str(root / "backend"),
+                "--directory",
+                str(root / "backend"),
+                "pytest",
+                *pytest_arguments,
+            ),
             environment,
         ).code
     if mode == "container":

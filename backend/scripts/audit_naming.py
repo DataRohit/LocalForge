@@ -24,6 +24,9 @@ REPOSITORY_ROOT = (
 )
 NAME_PATTERN = re.compile(r"^[a-z][a-z-]*-[a-z2-9]{5}$")
 GETENT_NOT_FOUND_EXIT = 2
+POSTGRES_OFFLINE_IMAGE = (
+    "postgres:18.6@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722"
+)
 WINDOWS_DRIVE_PREFIX_LENGTH = 2
 WILDCARD_HOSTS = frozenset({str(IPv4Address(0)), str(IPv6Address(0))})
 LOOPBACK_HOSTS = frozenset({"127.0.0.1"})
@@ -282,7 +285,7 @@ DEVELOPMENT_MEMBERSHIPS = {
     "pgadmin-pa7fe": frozenset({"data-net-nd9pc", "access-net-ha4mz"}),
     "valkey-cache-vc5tn": frozenset({"app-net-na6hy", "access-net-ha4mz"}),
     "valkey-channels-vh8dm": frozenset({"app-net-na6hy", "access-net-ha4mz"}),
-    "rabbitmq-rq4sx": frozenset({"app-net-na6hy", "access-net-ha4mz"}),
+    "rabbitmq-rq4sx": frozenset({"app-net-na6hy", "obsv-net-nb4xt", "access-net-ha4mz"}),
     "celery-worker-cw8rt": frozenset({"app-net-na6hy", "data-net-nd9pc", "edge-net-ne2vk"}),
     "celery-beat-cb4hq": frozenset({"app-net-na6hy", "data-net-nd9pc"}),
     "flower-fl9zd": frozenset({"app-net-na6hy", "access-net-ha4mz"}),
@@ -383,9 +386,9 @@ DEVELOPMENT_SPEC = ConventionSpec(
     memberships=DEVELOPMENT_MEMBERSHIPS,
     volume_mounts=DEVELOPMENT_VOLUME_MOUNTS,
     offline_probes={
-        "app-net-na6hy": "postgres:18.6",
-        "data-net-nd9pc": "postgres:18.6",
-        "obsv-net-nb4xt": "postgres:18.6",
+        "app-net-na6hy": POSTGRES_OFFLINE_IMAGE,
+        "data-net-nd9pc": POSTGRES_OFFLINE_IMAGE,
+        "obsv-net-nb4xt": POSTGRES_OFFLINE_IMAGE,
     },
 )
 TESTING_SPEC = ConventionSpec(
@@ -403,8 +406,8 @@ TESTING_SPEC = ConventionSpec(
     memberships=TESTING_MEMBERSHIPS,
     volume_mounts=TESTING_VOLUME_MOUNTS,
     offline_probes={
-        "app-net-nt5rk": "postgres:18.6",
-        "data-net-nt8fq": "postgres:18.6",
+        "app-net-nt5rk": POSTGRES_OFFLINE_IMAGE,
+        "data-net-nt8fq": POSTGRES_OFFLINE_IMAGE,
     },
 )
 SPECS = {
@@ -821,6 +824,8 @@ def offline_failures(runner: AuditRunner, spec: ConventionSpec) -> list[str]:
                 "docker",
                 "run",
                 "--rm",
+                "--pull",
+                "never",
                 "--network",
                 network,
                 image,
