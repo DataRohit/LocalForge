@@ -1,15 +1,16 @@
 # CONTEXT
 
-Domain glossary for the LocalForge local backend platform. One authoritative definition per term. When a document
+Domain glossary for the LocalForge full-stack project. One authoritative definition per term. When a document
 or a commit message uses one of these words, it means this and nothing else.
 
-Scope note: this platform is infrastructure around a Django project. It has **no application domain yet** — no
-models, no business entities, no API. Every term below is about the platform itself. When application work starts,
-its vocabulary belongs in this file too, in a separate section.
+Scope note: LocalForge is a Django backend and a React and Tailwind frontend on a local container platform. The
+terms below cover the platform, the application surface, and the browser client.
 
 ## Environments
 
-**development** — the full stack, every dashboard running, one Compose project named `localforge-dev`.
+**development** — the full stack, every dashboard running, one Compose project named `localforge-dev`. It serves
+the public deployment, so during the full-stack work it is treated as **live**: no read or write without the user's
+explicit permission.
 
 **testing** — the headless subset the test suite needs, Compose project `localforge-test`. Drops every dashboard and
 UI service. Not a staging environment and not a mirror of development.
@@ -80,7 +81,8 @@ cache instance so that cache eviction can never drop a WebSocket message.
 
 ## Application surface
 
-**surface** — the fixed set of routes this project exposes, listed in [AGENTS.md](./AGENTS.md). It is a closed set:
+**surface** — the fixed set of routes this project exposes, listed in [AGENTS.md](./AGENTS.md); it now includes the
+browser-auth group and the SPA. It is a closed set:
 adding to it is a documentation change before it is a code change.
 
 **envelope** — the single JSON error shape every non-2xx REST response returns, and every WebSocket error frame
@@ -95,6 +97,28 @@ most semantically precise status code, resistance wins, and the schema documents
 declaring the tickets that block it.
 
 **frontier** — the set of tickets whose blockers are all done, and therefore the set that can be picked up now.
+
+## Frontend
+
+**frontend** — the React and Tailwind CSS single-page application under `frontend/`, served as static files. It
+renders backend state and never decides it. Defined by [ADR 0026](./docs/adr/0026-react-and-tailwind-frontend.md).
+
+**single origin** — one hostname serving the SPA, the API, and the WebSocket, which is why the browser needs no CORS
+and `SameSite=Strict` cookies work. Routing is in
+[ADR 0027](./docs/adr/0027-frontend-hosting-and-edge-routing.md).
+
+**browser credentials** — the `HttpOnly` access and refresh cookies plus the readable CSRF cookie issued by the
+`/api/v1/browser/` routes. JavaScript never holds a credential. Defined in
+[ADR 0025](./docs/adr/0025-browser-authentication.md).
+
+**freeze** — the user's explicit acceptance of the backend contract at the end of Phase 11. After it, backend code
+changes only by reopening Phase 11.
+
+**inert candidate** — a file that describes a change to `development` but is never loaded by tooling. It is applied
+only when the user authorizes deployment.
+
+**Locally Verified** — proven in `testing`. It is never production verification; `development` runtime truth stays an
+unverified gate until the user authorizes inspection.
 
 ## External identities
 

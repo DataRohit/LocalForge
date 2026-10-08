@@ -5,7 +5,8 @@ Authoritative for: the ordered steps, and the pass/fail criterion for each.
 This records the ordered build phases and their gates. Read [../adr/README.md](../adr/README.md),
 [../platform/conventions.md](../platform/conventions.md),
 [../platform/service-inventory.md](../platform/service-inventory.md),
-[../platform/kubernetes-mapping.md](../platform/kubernetes-mapping.md), and
+[../platform/kubernetes-mapping.md](../platform/kubernetes-mapping.md),
+[../platform/frontend-standard.md](../platform/frontend-standard.md) for frontend work, and
 [prerequisites.md](./prerequisites.md) before starting.
 
 ## 1. Repository starting state
@@ -35,8 +36,8 @@ Two constraints that are easy to trip over:
 
 ## 2. Files this plan creates
 
-Listed so scope creep is recognisable. Rows from the completed build now exist; Phase 10 adds only the monorepo
-planning documents and handover named below.
+Listed so scope creep is recognisable. Rows from the completed build now exist; the final rows are the Phase 11
+and 12 full-stack documents and files, which exist only once their tickets create them.
 
 | Path | Purpose |
 | --- | --- |
@@ -76,6 +77,20 @@ planning documents and handover named below.
 | `docs/architecture/phase-10-monorepo.md` | Phase 10 scope, ownership boundary, and gate |
 | `docs/architecture/phase-10-monorepo-spec.md` | Phase 10 requirements and acceptance evidence |
 | `docs/architecture/phase-10-monorepo-inventory.md` | Pre-move file ownership and path-sensitive surface inventory |
+| `docs/adr/0024-full-stack-pivot.md` | Accepted full-stack pivot, environment classification, and notification scope |
+| `docs/adr/0025-browser-authentication.md` | Accepted HttpOnly cookie, CSRF, and WebSocket browser authentication decision |
+| `docs/adr/0026-react-and-tailwind-frontend.md` | Accepted React and Tailwind CSS mandate and its boundaries |
+| `docs/adr/0027-frontend-hosting-and-edge-routing.md` | Accepted static frontend container and single-origin edge routing |
+| `docs/adr/0028-frontend-toolchain.md` | Accepted supporting frontend toolchain and its evidence |
+| `docs/platform/frontend-standard.md` | Frontend layout, component, Tailwind, accessibility, state, API, and quality rules |
+| `docs/architecture/phase-11-backend-freeze.md` | Phase 11 cookie table, routes, authentication rules, contract gaps, threat model, and gate |
+| `docs/architecture/phase-12-frontend.md` | Phase 12 route map, commands, quality bars, browser support, delivery, and gate |
+| `.scratch/phase-11-backend-freeze/` | Tickets 79–86: isolation hardening, browser authentication, backend freeze |
+| `.scratch/phase-12-frontend/` | Tickets 87–99: frontend build, gates, container, deployment and rollback |
+| `frontend/` | The React, Tailwind, and TypeScript project; created by Ticket 87 with its own manifest and lockfile |
+| `docker/frontend/Dockerfile`, `docker/frontend/nginx.conf` | Digest-pinned build and static runtime image and its server configuration; created by Ticket 97 |
+| `docs/runbooks/frontend-deployment/` | Inert candidate Compose and Traefik files plus deploy and rollback procedure; never loaded by tooling; created by Tickets 97 and 99 |
+| `docs/handover/phase-11.md`, `docs/handover/phase-12.md` | Freeze Manifest and frontend handover records; created by Tickets 86 and 99 |
 | `docs/handover/phase-10.md` | Phase 10 final migration evidence and rollback record |
 | `Makefile` | Root command entry point; selects the backend project and runs Poe from its project directory |
 | `docs/platform/documentation-standard.md` | The worked reference for the docstring standard the checker enforces |
@@ -120,7 +135,7 @@ planning documents and handover named below.
 
 ## 3. Phases
 
-Ten phases. **A phase may not begin until the previous gate passes.** If a gate fails, stop and fix it. Never
+Twelve phases. **A phase may not begin until the previous gate passes.** If a gate fails, stop and fix it. Never
 weaken a gate to make it pass.
 
 Every phase gate that starts or changes a runtime service also applies the
@@ -407,9 +422,9 @@ implementation scope starts until the Phase 10 monorepo documents and ticket set
 ### Phase 10 — Backend-first monorepo restructure
 
 Phase 10 moves backend Python ownership into `backend/` while keeping environment files, Compose orchestration,
-documentation, repository policy, and future frontend ownership global at the root. It creates no frontend and no new
-runtime environment. The authoritative scope, ownership table, requirements, and decision are
-[phase-10-monorepo.md](../architecture/phase-10-monorepo.md),
+documentation, and repository policy global at the root. It created no frontend and no new runtime environment; the
+later full-stack pivot is [ADR 0024](../adr/0024-full-stack-pivot.md). The authoritative scope, ownership table,
+requirements, and decision are [phase-10-monorepo.md](../architecture/phase-10-monorepo.md),
 [phase-10-monorepo-spec.md](../architecture/phase-10-monorepo-spec.md), and
 [ADR 0023](../adr/0023-monorepo-layout.md).
 
@@ -420,6 +435,44 @@ record is [docs/handover/phase-10.md](../handover/phase-10.md).
 Phase 10 root command contract: run `make <task>` from the repository root. The Makefile runs from the selected Python
 project and selects `backend/` once its `backend/pyproject.toml` exists. Environment and Compose files remain
 addressed from the repository root.
+
+### Phase 11 — Backend freeze for browser use
+
+Phase 11 prepares the backend for a browser client and freezes it. `development` is live during this work
+([ADR 0024](../adr/0024-full-stack-pivot.md)), so every ticket is verified in `testing` only and reaches at most
+**Locally Verified**. Work tickets 79–86 in `.scratch/phase-11-backend-freeze/` in order. The authoritative scope,
+cookie table, routes, threat model, and gate are [phase-11-backend-freeze.md](../architecture/phase-11-backend-freeze.md).
+The plan is locked as of 2026-10-09: scope changes need an ADR update and the user's approval.
+
+Ticket 79 removes every path by which routine work could read `development` credentials or address
+`localforge-dev`. Tickets 80–83 implement the browser authentication of
+[ADR 0025](../adr/0025-browser-authentication.md) over REST and WebSocket. Ticket 84 closes the contract gaps the
+frontend needs. Ticket 85 proves non-browser clients are unchanged and no credential leaks. Ticket 86 regenerates
+the contract documents and publishes the Freeze Manifest in `docs/handover/phase-11.md`.
+
+Gate: the complete `testing` gate passes in container and host mode, every frontend capability maps to a tested
+backend contract, every ticket's verification record is complete, and the user explicitly accepts the freeze.
+Backend code is not changed afterwards without reopening Phase 11. Production runtime truth stays an unverified
+gate until the user authorizes inspection.
+
+### Phase 12 — Frontend
+
+Phase 12 builds the React and Tailwind frontend ([ADR 0026](../adr/0026-react-and-tailwind-frontend.md),
+[ADR 0028](../adr/0028-frontend-toolchain.md)) against the frozen backend, to
+[the frontend standard](../platform/frontend-standard.md). Work tickets 87–99 in `.scratch/phase-12-frontend/`.
+The authoritative route map, commands, quality bars, browser support, and gate are
+[phase-12-frontend.md](../architecture/phase-12-frontend.md). The plan is locked as of 2026-10-09: scope changes
+need an ADR update and the user's approval.
+
+Tickets 87–93 build the toolchain, API client, shell, and the authentication, recovery, profile, and notification
+workflows. Tickets 94–96 audit accessibility, test the units, and drive real browsers against the `testing`
+backend. Tickets 97–99 produce the pinned container, the inert edge candidate of
+[ADR 0027](../adr/0027-frontend-hosting-and-edge-routing.md), the security audit, and the deployment and rollback
+procedures.
+
+Gate: every frontend quality gate passes, the container and candidate files are verified standalone, and the
+handover in `docs/handover/phase-12.md` is delivered. Deployment into `development` waits for the user's explicit
+authorization.
 
 ## 4. Rollback
 

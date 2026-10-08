@@ -5,6 +5,10 @@ date: 2026-09-13
 
 # WebSocket authentication over the subprotocol header
 
+> Amended 2026-10-08 by [0025](./0025-browser-authentication.md): browsers now authenticate the handshake with the
+> access cookie. This record keeps the subprotocol path for non-browser clients, and its rejection of cookies
+> describes the situation before a browser client existed.
+
 WebSocket connections authenticate with the same JWT the REST API issues, carried in the **WebSocket subprotocol
 header**, validated by custom ASGI middleware. The query string is not used.
 

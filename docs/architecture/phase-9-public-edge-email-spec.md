@@ -52,7 +52,8 @@ canonical apex and `www` redirects, secret rotation, and external runtime verifi
 ## Out of Scope
 
 - A separate production Compose environment.
-- A public Cloudflare Pages or frontend application.
+- A public Cloudflare Pages or frontend application. This was Phase 9 scope only; the Phase 12 frontend is served
+  by the existing edge, not by Cloudflare Pages ([ADR 0027](../adr/0027-frontend-hosting-and-edge-routing.md)).
 - Inbound receiving on the Resend sending domain.
 - Public dashboards, Mailpit, databases, brokers, object storage, metrics, or log viewers.
 - Marketing mail, bulk sending, or a mailbox for the no-reply sender.

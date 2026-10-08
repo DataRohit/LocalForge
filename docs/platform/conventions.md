@@ -59,9 +59,9 @@ Character set: lowercase `a–z` plus digits `2–9`. Digits `0` and `1` are exc
 unambiguous. The matching validation pattern, used by `backend/scripts/audit_naming.py` and by the audits in
 [service-inventory.md](./service-inventory.md) Section 6, is `^[a-z][a-z-]*-[a-z2-9]{5}$`.
 
-Every ID is exactly five characters and unique across both environments: **30 containers and 8 networks, 38 IDs, no
-duplicates.** The additional development container is the Phase 9 Cloudflare Tunnel client; it reuses the existing
-public edge network and does not create a third environment.
+Every ID is exactly five characters and unique across both environments: **31 containers and 8 networks, 39 IDs, no
+duplicates.** The additional development containers are the Phase 9 Cloudflare Tunnel client and the Phase 12
+frontend; both reuse the existing edge network and neither creates a third environment.
 
 ### 2.2 Development
 
@@ -69,6 +69,7 @@ public edge network and does not create a third environment.
 | --- | --- | --- | --- |
 | `traefik-tk2jp` | `tk2jp` | reverse proxy | `docker.io/library/traefik:v3.7.13` |
 | `cloudflared-cf7q2` | `cf7q2` | Cloudflare Tunnel public edge client | pinned Cloudflare cloudflared release, selected by Ticket 66 |
+| `frontend-fe6vn` | `fe6vn` | static React single-page application | built, `docker/frontend/Dockerfile`, registered by [ADR 0027](../adr/0027-frontend-hosting-and-edge-routing.md); created by Ticket 97 |
 | `django-uv5n2` | `uv5n2` | Django ASGI app | built, `docker/django/Dockerfile` |
 | `postgres-pg3ka` | `pg3ka` | PostgreSQL primary | built, `docker/pgbackrest/Dockerfile` |
 | `postgres-replica-pg6vy` | `pg6vy` | PostgreSQL hot standby | `docker.io/library/postgres:18.6` |
@@ -493,6 +494,20 @@ unmatched hosts; no dashboard, data service, direct Django port, or testing serv
 records and preserves the provider-issued `RESEND_API_KEY` and `TUNNEL_TOKEN`. Both are mounted
 through `env_file` and never appear in Compose
 literals, images, logs, browser responses, or documentation.
+
+### 3.5 Browser authentication and frontend (planned, Phase 11)
+
+Three non-secret variables, owned by `django-uv5n2`. Ticket 80 adds them to `.env.example`, the secret generator,
+and the `testing` files; `.env.development` and its encrypted counterpart change only as inert candidates until the
+user authorizes it. The cookie flags, paths, and lifetimes are not variables: they are fixed in
+[the Phase 11 architecture](../architecture/phase-11-backend-freeze.md) Section 2. The frontend has no environment
+variables of any kind; every URL in the built application is relative.
+
+| Variable | Owning service | Purpose | Example | Sec | Req |
+| --- | --- | --- | --- | --- | --- |
+| `DJANGO_BROWSER_ACCESS_COOKIE_NAME` | `django-uv5n2` | name of the `HttpOnly` access cookie; must carry the `__Host-` prefix | `__Host-lf-access` | no | yes |
+| `DJANGO_BROWSER_REFRESH_COOKIE_NAME` | `django-uv5n2` | name of the `HttpOnly` refresh cookie; must carry the `__Secure-` prefix | `__Secure-lf-refresh` | no | yes |
+| `DJANGO_BROWSER_CSRF_COOKIE_NAME` | `django-uv5n2` | name of the readable CSRF cookie; must carry the `__Host-` prefix | `__Host-lf-csrf` | no | yes |
 
 ## 4. Planned scripts
 

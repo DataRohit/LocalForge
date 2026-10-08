@@ -47,6 +47,9 @@ ignored build output. They are not source ownership and are recreated under the 
 
 ### Future frontend reservation
 
+> Historical: `frontend/` became a live subtree under [ADR 0024](../adr/0024-full-stack-pivot.md); Ticket 87
+> creates it.
+
 `frontend/` is reserved as a future product subtree. Ticket 71 creates no directory or frontend file. A future
 frontend ticket must define its own metadata, lockfile, toolchain, and environment contract before implementation.
 

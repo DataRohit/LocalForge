@@ -1,17 +1,26 @@
 # LocalForge
 
-LocalForge is a fully local Django backend platform. Docker Compose runs the database, cache, channel layer, broker,
-object storage, mail capture, reverse proxy, monitoring, logging, backup, and application services; `uv` manages the
-host Python environment and Poe exposes the supported operator commands.
+LocalForge is a full-stack project: a Django backend and a React and Tailwind CSS frontend, running on a fully local
+container platform. Docker Compose runs the database, cache, channel layer, broker, object storage, mail capture,
+reverse proxy, monitoring, logging, backup, and application services; `uv` manages the host Python environment and
+Poe exposes the supported operator commands. The frontend lives under `frontend/` once Phase 12 creates it.
 
-## Phase 10 monorepo target
+## Repository layout and full-stack phases
 
-Phase 10 is migrating LocalForge to a backend-first monorepo. Tickets 71–75 have moved Python metadata, the virtual
-environment, source, tests, and scripts under `backend/`; tickets 76–78 finish the root contract and verification.
-Environment files, Compose orchestration, documentation, and repository policy remain global at the root. No frontend
-is created in this phase. See
-[the Phase 10 architecture](docs/architecture/phase-10-monorepo.md) and
-[the Phase 10 ticket set](.scratch/phase-10-monorepo/71-monorepo-boundary-and-inventory.md).
+`backend/` holds the Django project, Python metadata, tests, and operator scripts. Environment files, Compose
+orchestration, documentation, and repository policy are global at the root, and `frontend/` joins them as a
+product subtree. Phase 10 completed the backend move; see
+[the Phase 10 architecture](docs/architecture/phase-10-monorepo.md).
+
+The full-stack pivot ([ADR 0024](docs/adr/0024-full-stack-pivot.md)) adds two phases:
+
+- **Phase 11** hardens test isolation, adds browser cookie authentication
+  ([ADR 0025](docs/adr/0025-browser-authentication.md)), and freezes the backend contract.
+- **Phase 12** builds the frontend to [the frontend standard](docs/platform/frontend-standard.md) and prepares its
+  container and edge routing as inert candidates ([ADR 0027](docs/adr/0027-frontend-hosting-and-edge-routing.md)).
+
+The tickets are in [.scratch/](.scratch/README.md). During this work `development` is live: nothing is read from or
+deployed to it without explicit permission.
 
 ## Requirements
 

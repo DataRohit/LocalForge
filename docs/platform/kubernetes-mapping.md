@@ -42,6 +42,7 @@ Design consequences already applied to the Compose stack:
 | Compose service | Primitive | Stateful? | Kubernetes Service | Storage | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `traefik-tk2jp` | `D` + `IngressClass` | no | `LoadBalancer` | none | Becomes the ingress controller. Docker label routing becomes `Ingress` or `IngressRoute` objects. RBAC for the Kubernetes provider replaces the Docker socket. |
+| `frontend-fe6vn` | `D` | no | `ClusterIP` behind `Ingress` | none | Planned, not yet deployed. Static files only, so it scales by replicas with no state. The path-prefix routing becomes `Ingress` rules; a CDN would replace it at real scale. |
 | `django-uv5n2` | `D` | no | `ClusterIP` behind `Ingress` | none | The scale target. `HorizontalPodAutoscaler` on CPU and on request rate. `PodDisruptionBudget` with `minAvailable: 1`. |
 | `postgres-pg3ka` | `SS`, 1 replica | **yes** | headless `ClusterIP` | `PVC` from `volumeClaimTemplates`, `ReadWriteOnce` | At real scale this is replaced by an operator — CloudNativePG or the Zalando operator — which owns primary election. Do not hand-roll failover. |
 | `postgres-replica-pg6vy` | part of the same `SS` | **yes** | second headless `Service` selecting non-primary pods | `PVC` per pod | In Compose this is a separate container. Under an operator it becomes replica `N` of one cluster resource, and the Django `replica` alias points at the read-only Service. |

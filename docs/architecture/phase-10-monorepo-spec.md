@@ -1,5 +1,8 @@
 # Phase 10 monorepo specification
 
+> Historical record. Phase 10 is complete; the frontend it deferred is now governed by
+> [ADR 0024](../adr/0024-full-stack-pivot.md).
+
 ## Problem
 
 LocalForge currently stores backend code, Python metadata, tests, scripts, and global deployment material in one flat

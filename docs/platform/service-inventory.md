@@ -109,6 +109,19 @@ process is perfectly healthy:
 run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data /etc/alloy/config.alloy
 ```
 
+### 1.4 Planned: frontend
+
+`frontend-fe6vn` is registered but **not deployed**. Ticket 97 builds its image and writes its candidate files; it
+joins the stack only after the user authorizes deployment, which makes the count 24.
+
+| Container name | Role | Host ports | Internal | Networks |
+| --- | --- | --- | --- | --- |
+| `frontend-fe6vn` | static React single-page application, non-root, read-only filesystem | none | 8080 app and health | `edge-net-ne2vk` |
+
+Traefik routes `/api/`, `/ws/`, `/health/`, `/admin/`, and `/static/` to `django-uv5n2` and every other path here, per
+[ADR 0027](../adr/0027-frontend-hosting-and-edge-routing.md). It waits for nothing and nothing waits for it, so a
+frontend failure cannot block the API. `testing` has no frontend container.
+
 ## 2. Dependency order
 
 `depends_on` with `condition: service_healthy`. Every service another service connects to declares a real

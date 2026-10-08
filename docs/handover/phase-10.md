@@ -103,10 +103,12 @@ security and Docker audits pass for the selected revision.
 
 ## Frontend handoff and stop condition
 
-After Phase 10 acceptance, frontend work requires a new ticket defining its toolchain, lockfile, build
+After Phase 10 acceptance, frontend work required a new ticket defining its toolchain, lockfile, build
 context, environment contract, Make targets, CI and pre-commit ownership, and any shared documentation or policy
-changes. The future frontend must not create a third environment, move global secrets, or change the fixed backend
-route and WebSocket surface without a separate governing decision.
+changes. [ADR 0024](../adr/0024-full-stack-pivot.md) is that decision: Phase 11 (tickets 79–86) freezes the backend
+for browser use, and Phase 12 (tickets 87–99) builds the frontend. The frontend must not create a third environment
+or move global secrets, and the backend route and WebSocket surface changes only by the documented browser-auth
+group in [ADR 0025](../adr/0025-browser-authentication.md).
 
 The Phase 10 gate passes: all tickets 71–78 are done, ownership matches the architecture and ADR, the root Makefile
 works independently of caller directory, and both environments remain healthy. Encrypted environments decrypt,

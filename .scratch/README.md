@@ -1,7 +1,8 @@
 # LocalForge build tickets
 
-78 tracer-bullet tickets across 10 ticket phases, numbered globally in dependency order. Each ticket is sized to fit one
-fresh context window and is verifiable on its own.
+99 tracer-bullet tickets across 12 ticket phases, numbered globally in dependency order. Each ticket is sized to fit one
+fresh context window and is verifiable on its own. Phases 11 and 12 turn LocalForge into a full-stack project
+([ADR 0024](../docs/adr/0024-full-stack-pivot.md)).
 
 Format follows [the ticket-writing skill](../.agents/skills/to-tickets/SKILL.md). Ticket files avoid implementation
 paths and code snippets because those go stale. Blockers and governing sources are exact links: navigation must be
@@ -40,6 +41,8 @@ the application surface is built on top.
 | 8 | [phase-8-solid-architecture](./phase-8-solid-architecture) | 53–63 | Evidence-led SOLID audit, focused improvements, final verification |
 | 9 | [phase-9-public-edge-email](./phase-9-public-edge-email) | 64–70 | Cloudflare Tunnel edge, Resend development email, DNS security, public runtime verification |
 | 10 | [phase-10-monorepo](./phase-10-monorepo) | 71–78 | Backend-first monorepo layout, global environment contract, path migration, clean-checkout verification |
+| 11 | [phase-11-backend-freeze](./phase-11-backend-freeze) | 79–86 | Test-isolation hardening, browser cookie authentication, frontend contract gaps, backend freeze |
+| 12 | [phase-12-frontend](./phase-12-frontend) | 87–99 | React and Tailwind frontend, quality gates, container and edge candidate, deployment and rollback |
 
 ## Ticket index
 
@@ -126,6 +129,27 @@ search; its title is never used to predict its filename.
 | 76 | [76: CI, hooks, and documentation path migration](./phase-10-monorepo/76-ci-hooks-and-documentation-paths.md) |
 | 77 | [77: Clean checkout and runtime verification](./phase-10-monorepo/77-clean-checkout-and-runtime-verification.md) |
 | 78 | [78: Phase 10 handover](./phase-10-monorepo/78-phase-10-handover.md) |
+| 79 | [79: Test-isolation hardening](./phase-11-backend-freeze/79-test-isolation-hardening.md) |
+| 80 | [80: Browser session endpoints](./phase-11-backend-freeze/80-browser-session-endpoints.md) |
+| 81 | [81: CSRF, cookie attributes, and origin policy](./phase-11-backend-freeze/81-csrf-cookie-attributes-and-origin-policy.md) |
+| 82 | [82: Cookie-authenticated REST](./phase-11-backend-freeze/82-cookie-authenticated-rest.md) |
+| 83 | [83: WebSocket cookie authentication](./phase-11-backend-freeze/83-websocket-cookie-authentication.md) |
+| 84 | [84: Frontend contract gaps](./phase-11-backend-freeze/84-frontend-contract-gaps.md) |
+| 85 | [85: Non-browser regression and credential hygiene](./phase-11-backend-freeze/85-non-browser-regression-and-credential-hygiene.md) |
+| 86 | [86: Backend freeze manifest](./phase-11-backend-freeze/86-backend-freeze-manifest.md) |
+| 87 | [87: Frontend scaffold and toolchain](./phase-12-frontend/87-frontend-scaffold-and-toolchain.md) |
+| 88 | [88: API client and query layer](./phase-12-frontend/88-api-client-and-query-layer.md) |
+| 89 | [89: App shell, routing, and session](./phase-12-frontend/89-app-shell-routing-and-session.md) |
+| 90 | [90: Authentication workflows](./phase-12-frontend/90-authentication-workflows.md) |
+| 91 | [91: Account recovery and credential changes](./phase-12-frontend/91-account-recovery-and-credential-changes.md) |
+| 92 | [92: Profile management](./phase-12-frontend/92-profile-management.md) |
+| 93 | [93: Notifications client](./phase-12-frontend/93-notifications-client.md) |
+| 94 | [94: Accessibility and responsive audit](./phase-12-frontend/94-accessibility-and-responsive-audit.md) |
+| 95 | [95: Frontend unit and integration tests](./phase-12-frontend/95-frontend-unit-and-integration-tests.md) |
+| 96 | [96: Browser end-to-end against the testing backend](./phase-12-frontend/96-browser-e2e-against-testing-backend.md) |
+| 97 | [97: Frontend container and edge candidate](./phase-12-frontend/97-frontend-container-and-edge-candidate.md) |
+| 98 | [98: Frontend security and supply-chain audit](./phase-12-frontend/98-frontend-security-and-supply-chain-audit.md) |
+| 99 | [99: Deployment, rollback, and handover](./phase-12-frontend/99-deployment-rollback-and-handover.md) |
 
 ## Dependency graph
 
@@ -176,6 +200,14 @@ Arrows point from blocker to blocked. Tickets on the same line can run in parall
             │         └──> 66 ──┤
             └──────────────> 66 ─┤
                      66,67 ──> 68 ──> 69 ──> 70 ──> 71 ──> 72 ──> 73 ──> 74 ──> 75 ──> 76 ──> 77 ──> 78
+
+78 ──> 79 ──> 80 ──> 81 ──> 82 ──┬──> 83 ──┬──> 85 ──> 86  (Gate 3: backend freeze)
+                                 └──> 84 ──┘
+
+86 ──> 87 ──> 88 ──> 89 ──> 90 ──┬──> 91 ──┬──> 94 ──┬──> 96 ──┬──> 98 ──> 99  (Gate 4)
+                                 ├──> 92 ──┤         │         │
+                                 └──> 93 ──┴──> 95 ──┴──> 97 ──┘
+                                   (93 also 89)
 ```
 
 ## Standards every ticket inherits
@@ -195,7 +227,9 @@ Stated once here so no ticket restates them.
 **Tests run in parallel.** Every suite is safe under `pytest -n auto`. A test that needs serial execution must say so
 with a marker and justify it in its docstring. No suite may hang: every network-touching test carries a timeout.
 
-**Both environments, always.** A ticket that changes runtime behaviour updates `development` and `testing` together.
+**Both environments, always.** A ticket that changes runtime behaviour updates `testing` and keeps `development`
+consistent in source. While `development` is live ([ADR 0024](../docs/adr/0024-full-stack-pivot.md)), nothing is
+deployed to it, and no ticket reads or changes its containers, volumes, or env file, without the user's authorization.
 
 **Nothing is hardcoded.** Configuration comes from the environment variable inventory in
 [docs/platform/conventions.md](../docs/platform/conventions.md).
@@ -217,4 +251,10 @@ silently accept them because the response or tests succeeded.
 - Every confirmed SOLID violation is fixed without changing the bounded application surface.
 - `make check` is green.
 - Phase 10 leaves global environment and Compose ownership at the root, places backend Python ownership under
-  `backend/`, passes the clean-checkout and runtime gates, has no stale root backend paths, and creates no frontend.
+  `backend/`, passes the clean-checkout and runtime gates, and has no stale root backend paths. It created no
+  frontend; the pivot to a full-stack project is [ADR 0024](../docs/adr/0024-full-stack-pivot.md).
+- Phase 11 hardens test isolation, adds the browser cookie-authentication group, and ends with the user's explicit
+  acceptance of the backend Freeze Manifest.
+- Phase 12 delivers the React and Tailwind frontend through every frontend quality gate, a pinned container and
+  inert edge candidate, and deployment and rollback procedures. Nothing reaches `development` without the user's
+  authorization.

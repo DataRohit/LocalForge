@@ -1,5 +1,9 @@
 # Phase 10: Backend-first monorepo restructure
 
+> Historical record. Phase 10 is complete. Its "no frontend" statements describe that phase only; LocalForge became
+> a full-stack project on 2026-10-08 under [ADR 0024](../adr/0024-full-stack-pivot.md), and `frontend/` is built in
+> Phase 12.
+
 Phase 10 moves the existing Python backend into `backend/` while preserving one repository-wide Compose deployment,
 global environment files, global documentation, and global repository policy. It prepares a future `frontend/`
 directory without creating frontend code or a second environment.

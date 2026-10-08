@@ -117,6 +117,12 @@ violation, including a commented-out line of code.
 Both run in `make check` and in the pre-commit hooks. The checker's contract is in
 [conventions.md](./conventions.md) Section 4.10.
 
+## 5.1 Frontend files
+
+The same rule applies to `frontend/`: no comments, and a TSDoc block on every module, component, hook, and exported
+function carrying the same sections. The frontend checker and ESLint enforce it; the details are in
+[frontend-standard.md](./frontend-standard.md) Section 9.
+
 ## 6. What is out of scope
 
 Generated and vendored code, excluded by path: anything under a `migrations/` directory, `__pycache__`, `.venv`,

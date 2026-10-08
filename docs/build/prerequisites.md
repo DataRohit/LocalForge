@@ -47,6 +47,8 @@ Use `make secrets-generate` to create or top up machine-local values without dec
 | 12 | age | `age --version` | 1.3 | **1.3.1** — pass | `winget install --id FiloSottile.age --exact` |
 | 13 | `psql` on the host | `psql --version` | 16 | **NOT PRESENT** — optional | `docker exec -it postgres-pg3ka psql` needs no host client |
 | 14 | GNU Make | `make --version` | 3.81 | **4.4.1 — pass** | Install GNU Make and add its executable to `PATH` |
+| 15 | Node.js, for the frontend | `node --version` | 24 LTS | **v24.20.0** (observed 2026-10-08) — pass; needed from Ticket 87 | Install Node 24 LTS; the repository pins the exact version in `frontend/.node-version` |
+| 16 | npm, for the frontend | `npm --version` | bundled with Node 24 | **12.0.2** (observed 2026-10-08) — pass; needed from Ticket 87 | Ships with Node |
 
 Items 1 through 9 and 14 pass, and SOPS and age were installed during ticket 02. Nothing blocks phase 4.
 

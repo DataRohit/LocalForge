@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Operating instructions for the agent building the local backend platform.
+Operating instructions for the agent building LocalForge, a full-stack project.
 
 This file is the entry point and stays in context every turn, so it holds only what every run needs: the shape of
 the work, the rules that are easy to break, and where to find the rest. It does not restate the documents it points
@@ -10,7 +10,8 @@ at.
 
 1. **Reach for a skill before improvising.** Run **`/ask-matt`** whenever you are unsure which workflow fits — it
    routes across every skill in `.agents/skills/`. Do not invent a process a skill already defines.
-    - Building a ticket → **`/implement`**, which drives **`/tdd`** and closes with **`/code-review`**.
+    - Building a ticket → **`/implement`**, which drives **`/tdd`**. Run its closing diff review inline in the main
+      thread, never through sub-agents.
     - Something is broken → **`/diagnosing-bugs`**.
     - Terminology, or recording a decision → **`/domain-modeling`**.
     - Writing or editing `AGENTS.md`, `CONTEXT.md`, or a skill → **`/writing-for-agents`**.
@@ -32,48 +33,44 @@ at.
 
 ## Agent topology
 
-The thread receiving the user's messages is the **orchestrator and coder**. It owns all repository discovery,
-implementation, investigation, remediation, commands, verification, documentation, commits, sequencing, and
-reporting. Never launch or use a subagent for coding or any repository mutation.
+One agent does the work: the thread receiving the user's messages. It owns repository discovery, implementation,
+investigation, remediation, commands, verification, documentation, sequencing, and reporting. No audit agents, review
+agents, or delegated coding agents run in this repository.
 
-Use subagents only for independent, read-only ticket audits after the main thread has completed the ticket,
-passed its verification, and prepared a complete audit package:
+A ticket is done when the main thread has verified it itself:
 
-1. After the first package exists, launch exactly two audit agents concurrently and retain both IDs for the whole
-   run: one **GPT-5.6 Terra** (`gpt-5.6-terra`) and one standard **GPT-5.6 Sol** (`gpt-5.6-sol`), both with
-   `reasoning_effort: high` and `context_tier: long_context`.
-2. Send both auditors the identical complete package. They review the entire ticket, remain read-only, make no
-   edits, and do not communicate with each other.
-3. The main thread validates every finding against repository evidence, remediates every legitimate finding, and
-   reruns affected gates.
-4. When remediation materially changes behavior, security, routing, protocol, payloads, close codes, or integration,
-   resume the same two auditors concurrently with the revised identical package. Repeat until both reports contain
-   no legitimate findings.
-5. The main thread creates the ticket's single commit only after the audit loop is clean, then implements the next
-   ticket while the retained auditors stay idle.
+1. Walk every acceptance criterion and mark it only with evidence from the repository or a command run in `testing`.
+2. Rerun every gate the change affects, including the runtime-truth evidence in rule 9.
+3. Review the diff once against the ticket's criteria and the repository standards, inline, and remediate each
+   legitimate finding before rerunning the affected gates.
+4. Record the verification in the ticket: commands, window, findings, and disposition.
 
-Never run audit agents while the main thread is changing the repository. Replace a permanently failed auditor once
-and retain the replacement for the remainder of the run. All audit agents are OpenAI-only. Never use a Fast or
-non-OpenAI model.
+Commit only under rule 10.
 
 ## Project
 
-LocalForge is a Django project. This work builds a **local, fully offline, containerized backend platform** around
-it — database, cache, broker, WebSocket message layer, object storage, mail capture, reverse proxy, monitoring,
-logging, backups, read replication — running in Docker on one machine with no cloud dependency.
+LocalForge is a **full-stack project** ([ADR 0024](./docs/adr/0024-full-stack-pivot.md)): a Django backend under
+`backend/` and a React and Tailwind CSS single-page frontend under `frontend/`, on a **local, fully offline,
+containerized platform** — database, cache, broker, WebSocket message layer, object storage, mail capture, reverse
+proxy, monitoring, logging, backups, read replication — running in Docker on one machine with no cloud dependency.
 
-On top of that platform sits a deliberately bounded application surface: an authenticated REST API, WebSockets, and
-a health endpoint for the load balancer. Nothing else. Phase 10 prepares a backend-first monorepo and adds no
-frontend implementation.
+The backend serves a deliberately bounded application surface, and the frontend consumes it. The frontend is React
+and Tailwind CSS only, a static single-page application with no server-side rendering and no backend-for-frontend
+([ADR 0026](./docs/adr/0026-react-and-tailwind-frontend.md)). The backend stays the authority for validation,
+authorization, and state.
 
 ## Environments
 
 Exactly two, and there is no third.
 
-| Environment   | Purpose                         | Compose project   |
-| ------------- | ------------------------------- | ----------------- |
-| `development` | Full stack, every dashboard     | `localforge-dev`  |
-| `testing`     | Headless subset the suite needs | `localforge-test` |
+| Environment   | Purpose                         | Compose project   | Classification during full-stack work    |
+| ------------- | ------------------------------- | ----------------- | ---------------------------------------- |
+| `development` | Full stack, every dashboard     | `localforge-dev`  | **Live.** Serves the public deployment   |
+| `testing`     | Headless subset the suite needs | `localforge-test` | Isolated work; never reaches development |
+
+`development` takes no read or write — containers, volumes, networks, `.env.development`, bind-mounted files —
+without the user's explicit permission. Prepare changes for it as inert candidate files. Before running any
+environment-sensitive command, confirm from its Poe task or Make target that it addresses `testing` only.
 
 `testing` must pass **in a container and on the host**. One passing is not a pass.
 
@@ -90,7 +87,8 @@ Exactly two, and there is no third.
 6. Pinned versions only. `latest` is forbidden, including Dockerfile base images.
 7. Use `uv run` for every Python command. Bare `python` here is 3.12.10, not the required 3.14.6.
    Root operator commands use `make`; the root `Makefile` selects `backend/` after Ticket 73 moves the project and
-   runs Poe from the selected project.
+   runs Poe from the selected project. Frontend commands run through root `make frontend-*` targets once Ticket 87
+   adds them; use `npm ci`, never `npm install`.
 8. Keep the quality gate where it is: 100% branch coverage, Ruff `select = ["ALL"]`, mypy `strict`. Fix the code.
 9. **Runtime truth is a separate gate.** Tests prove controlled cases; they do not prove the running stack is
    healthy. After any runtime, integration, infrastructure, observability, or test-harness change:
@@ -100,23 +98,32 @@ Exactly two, and there is no third.
     - Inspect a bounded post-start/post-exercise log window for every affected container.
     - Treat any unexplained `WARNING`, `ERROR`, or `CRITICAL`, restart, unhealthy state, missing service, or
       success response logged as failure as a blocker.
-   A passing test suite never overrides contradictory live health or log evidence. Every audit package records the
-   exact health, behavior, log commands, time window, findings, and disposition.
+   A passing test suite never overrides contradictory live health or log evidence. Every ticket's verification record
+   lists the exact health, behavior, log commands, time window, findings, and disposition.
+   While `development` is live, this rule runs against `testing` only. Development runtime truth stays an explicit
+   unverified gate until the user authorizes inspection, and reported status never exceeds **Locally Verified**
+   (the ladder is Implemented, Locally Verified, Production-Ready, Production-Deployed).
+10. **Commits are the user's call.** Make no git commit, amend, or push until the user says "You may commit." This
+    overrides `/implement` and the per-ticket commit step. The permission covers the work the user named, not later
+    work.
 
 ## Scope
 
-In scope: the infrastructure, its configuration, the application surface below, and tests for all of it.
+In scope: the infrastructure, its configuration, the application surface below, the frontend that consumes it, and
+tests for all of it.
 
 **The application surface is fixed.** These routes and no others:
 
-| Group      | Routes                                                                                                                                                                                                                       |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Health     | `/health/` — what the load balancer polls                                                                                                                                                                                    |
-| Schema     | the OpenAPI document, Swagger UI, ReDoc                                                                                                                                                                                      |
-| Accounts   | `/users/`, `/users/me/`, `/users/resend_activation/`, `/users/set_password/`, `/users/reset_password/`, `/users/reset_password_confirm/`, `/users/set_username/`, `/users/reset_username/`, `/users/reset_username_confirm/` |
-| Token auth | `/token/login/`, `/token/logout/`                                                                                                                                                                                            |
-| JWT auth   | `/jwt/create/`, `/jwt/refresh/`, `/jwt/verify/`                                                                                                                                                                              |
-| WebSocket  | the authenticated notification socket                                                                                                                                                                                        |
+| Group        | Routes                                                                                                                                                                                                                       |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Health       | `/health/` — what the load balancer polls                                                                                                                                                                                    |
+| Schema       | the OpenAPI document, Swagger UI, ReDoc                                                                                                                                                                                      |
+| Accounts     | `/users/`, `/users/me/`, `/users/resend_activation/`, `/users/set_password/`, `/users/reset_password/`, `/users/reset_password_confirm/`, `/users/set_username/`, `/users/reset_username/`, `/users/reset_username_confirm/` |
+| Token auth   | `/token/login/`, `/token/logout/`                                                                                                                                                                                            |
+| JWT auth     | `/jwt/create/`, `/jwt/refresh/`, `/jwt/verify/`                                                                                                                                                                              |
+| Browser auth | `/browser/csrf/`, `/browser/login/`, `/browser/refresh/`, `/browser/logout/` — added by Phase 11, see [ADR 0025](./docs/adr/0025-browser-authentication.md)                                                                  |
+| WebSocket    | the authenticated notification socket                                                                                                                                                                                        |
+| Frontend     | the single-page application, every path outside `/api/`, `/ws/`, `/health/`, `/admin/`, `/static/` — see [ADR 0027](./docs/adr/0027-frontend-hosting-and-edge-routing.md)                                                    |
 
 Every one of these documents **every status code it can return**, with a response example for each — including
 codes raised by middleware, content negotiation, throttling, and CSRF, not only those raised in view code. See
@@ -124,8 +131,10 @@ codes raised by middleware, content negotiation, throttling, and CSRF, not only 
 
 Out of scope, stated positively so the boundary is unambiguous:
 
-- **Two environments only.** `development` and `testing`. No production environment.
+- **Two environments only.** `development` and `testing`. No third environment, and the frontend adds none.
 - **No route beyond the table above.** Adding one is a documentation change first.
+- **No frontend server runtime.** No server-side rendering, no backend-for-frontend, no hosted runtime dependency,
+  external authentication provider, telemetry, or CDN, and no UI or CSS framework other than React and Tailwind CSS.
 - **One container per service.** Replica counts belong to an orchestrator; see
   [docs/platform/kubernetes-mapping.md](./docs/platform/kubernetes-mapping.md) Section 1 for the full list of
   scaling logic that stays out of the code.
@@ -146,6 +155,9 @@ and shown at the call site. Docstrings are structured at three levels:
 This applies to application code and tests alike, and is enforced by the linter and a checker in the quality gate.
 The reasoning is in
 [docs/adr/0020-no-comments-structured-docstrings.md](./docs/adr/0020-no-comments-structured-docstrings.md).
+
+**Frontend code follows [docs/platform/frontend-standard.md](./docs/platform/frontend-standard.md)** — layout,
+components, Tailwind, accessibility, state ownership, API access — and the same no-comments rule, with TSDoc blocks.
 
 **Tests run in parallel.** Every suite must pass under the parallel runner, and every test that touches a service
 carries a timeout — a suite that hangs is a defect, not an inconvenience. A test needing serial execution is marked
@@ -175,25 +187,29 @@ means adding a registry row in a documentation change first.
 
 ## Phase order
 
-Ten sequential ticket phases with explicit gates, in [docs/build/plan.md](./docs/build/plan.md) Section 3 and
-the 78-ticket index in [.scratch/](./.scratch/README.md):
+Twelve sequential ticket phases with explicit gates, in [docs/build/plan.md](./docs/build/plan.md) Section 3 and
+the 99-ticket index in [.scratch/](./.scratch/README.md):
 
-| Ticket phase | Delivers                                                                             |
-| ------------ | ------------------------------------------------------------------------------------ |
-| 1            | Infrastructure: every development service running and healthy                        |
-| 2            | Project foundation: dependencies, settings split, standards, test layout, user model |
-| 3            | Integration: Django wired to every service, `/health` live behind the proxy          |
-| 4            | REST API: the fixed route surface with every status code documented                  |
-| 5            | WebSockets: authenticated sockets over the channel layer                             |
-| 6            | Async services: worker, scheduler, dashboard, async email, event fan-out             |
-| 7            | Testing and audit: both modes in parallel, convention and security audits            |
-| 8            | SOLID architecture: evidence-led audit, focused improvements, final verification     |
-| 9            | Public edge/email: Cloudflare, Resend, DNS, runtime verification                     |
-| 10           | Monorepo restructure: global root contract, backend subtree, clean-checkout gate     |
+| Ticket phase | Delivers                                                                                 |
+| ------------ | ---------------------------------------------------------------------------------------- |
+| 1            | Infrastructure: every development service running and healthy                            |
+| 2            | Project foundation: dependencies, settings split, standards, test layout, user model     |
+| 3            | Integration: Django wired to every service, `/health` live behind the proxy              |
+| 4            | REST API: the fixed route surface with every status code documented                      |
+| 5            | WebSockets: authenticated sockets over the channel layer                                 |
+| 6            | Async services: worker, scheduler, dashboard, async email, event fan-out                 |
+| 7            | Testing and audit: both modes in parallel, convention and security audits                |
+| 8            | SOLID architecture: evidence-led audit, focused improvements, final verification         |
+| 9            | Public edge/email: Cloudflare, Resend, DNS, runtime verification                         |
+| 10           | Monorepo restructure: global root contract, backend subtree, clean-checkout gate         |
+| 11           | Backend freeze: test isolation, browser cookie auth, contract gaps, user-accepted freeze |
+| 12           | Frontend: React and Tailwind app, quality gates, container and edge candidate, rollback  |
 
 Infrastructure comes first, then the project is brought up to meet it, then Django is wired to each running
 service, then the application is built on top. Do not build the application against services that are not yet
-verified healthy.
+verified healthy. The frontend starts only after the user accepts the Phase 11 backend freeze; backend code changes
+after that reopen Phase 11. The Phase 11 and 12 plans are locked (2026-10-09): changing their scope needs an ADR
+update and the user's approval.
 
 **A phase may not begin until the previous gate passes.** If a gate fails, stop and fix it. Weakening a gate to make
 it pass is the one move that is never available.
@@ -223,35 +239,39 @@ serves under Uvicorn without it.
 
 These predate this work.
 
-| Area         | Rule                                                                                      |
-| ------------ | ----------------------------------------------------------------------------------------- |
-| Dependencies | `uv` with `[dependency-groups]`; use `uv add`. **Never create a `requirements.txt`**      |
-| Tasks        | `poethepoet`; full gate: `make check`                                                     |
-| Linting      | Ruff, `select = ["ALL"]`, line length 100                                                 |
-| Types        | mypy `strict` plus `ty`; both must pass                                                   |
-| Tests        | pytest, 100% branch coverage enforced, `xfail_strict`, markers `unit` and `integration`   |
-| Markdown     | markdownlint-cli2, 120-character lines outside tables and code                            |
-| Line endings | LF, enforced by pre-commit                                                                |
-| Commits      | `COMMIT_CONVENTION.md`; a `commit-msg` hook validates the format                          |
-| `.agents/`   | Read-only installed skills; never create, update, move, rename, or delete them            |
-| ADRs         | `docs/adr/NNNN-slug.md`, per `.agents/skills/domain-modeling/ADR-FORMAT.md`               |
+| Area         | Rule                                                                                        |
+| ------------ | ------------------------------------------------------------------------------------------- |
+| Dependencies | `uv` with `[dependency-groups]`; use `uv add`. **Never create a `requirements.txt`**        |
+| Tasks        | `poethepoet`; full gate: `make check`                                                       |
+| Linting      | Ruff, `select = ["ALL"]`, line length 100                                                   |
+| Types        | mypy `strict` plus `ty`; both must pass                                                     |
+| Tests        | pytest, 100% branch coverage enforced, `xfail_strict`, markers `unit` and `integration`     |
+| Frontend     | `npm` with exact pins and a committed lockfile; ESLint, Prettier, `tsc`, Vitest, Playwright |
+| Markdown     | markdownlint-cli2, 120-character lines outside tables and code                              |
+| Line endings | LF, enforced by pre-commit                                                                  |
+| Commits      | `COMMIT_CONVENTION.md`; a `commit-msg` hook validates the format                            |
+| `.agents/`   | Read-only installed skills; never create, update, move, rename, or delete them              |
+| ADRs         | `docs/adr/NNNN-slug.md`, per `.agents/skills/domain-modeling/ADR-FORMAT.md`                 |
 
 ## Where things live
 
-| Question                                                      | File                                                                                 |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Which workflow or skill fits this task                        | **`/ask-matt`**, the router over `.agents/skills/`                                   |
-| What do the words mean                                        | [CONTEXT.md](./CONTEXT.md)                                                           |
-| What should I work on next                                    | [.scratch/README.md](./.scratch/README.md) — 78 tickets in 10 sequential phases      |
-| Which tool, and why that one                                  | [docs/adr/](./docs/adr/README.md) — one decision per file, indexed                   |
-| How SOLID applies to this Python project                      | [docs/architecture/solid-audit-plan.md](./docs/architecture/solid-audit-plan.md)     |
-| Names, IDs, variables, secrets, script contracts              | [docs/platform/conventions.md](./docs/platform/conventions.md)                       |
-| What a docstring must contain, and which comments are allowed | [docs/platform/documentation-standard.md](./docs/platform/documentation-standard.md) |
-| Ports, startup order, health checks, dashboards, audits       | [docs/platform/service-inventory.md](./docs/platform/service-inventory.md)           |
-| How this becomes Kubernetes later                             | [docs/platform/kubernetes-mapping.md](./docs/platform/kubernetes-mapping.md)         |
-| What must be installed first                                  | [docs/build/prerequisites.md](./docs/build/prerequisites.md)                         |
-| What to run, in what order                                    | [docs/build/plan.md](./docs/build/plan.md)                                           |
-| Monorepo ownership                                            | [docs/architecture/phase-10-monorepo.md](./docs/architecture/phase-10-monorepo.md)   |
+| Question                                                      | File                                                                                                                                           |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Which workflow or skill fits this task                        | **`/ask-matt`**, the router over `.agents/skills/`                                                                                             |
+| What do the words mean                                        | [CONTEXT.md](./CONTEXT.md)                                                                                                                     |
+| What should I work on next                                    | [.scratch/README.md](./.scratch/README.md) — 99 tickets in 12 sequential phases                                                                |
+| Which tool, and why that one                                  | [docs/adr/](./docs/adr/README.md) — one decision per file, indexed                                                                             |
+| How SOLID applies to this Python project                      | [docs/architecture/solid-audit-plan.md](./docs/architecture/solid-audit-plan.md)                                                               |
+| Names, IDs, variables, secrets, script contracts              | [docs/platform/conventions.md](./docs/platform/conventions.md)                                                                                 |
+| What a docstring must contain, and which comments are allowed | [docs/platform/documentation-standard.md](./docs/platform/documentation-standard.md)                                                           |
+| Ports, startup order, health checks, dashboards, audits       | [docs/platform/service-inventory.md](./docs/platform/service-inventory.md)                                                                     |
+| How this becomes Kubernetes later                             | [docs/platform/kubernetes-mapping.md](./docs/platform/kubernetes-mapping.md)                                                                   |
+| What must be installed first                                  | [docs/build/prerequisites.md](./docs/build/prerequisites.md)                                                                                   |
+| What to run, in what order                                    | [docs/build/plan.md](./docs/build/plan.md)                                                                                                     |
+| Monorepo ownership                                            | [docs/architecture/phase-10-monorepo.md](./docs/architecture/phase-10-monorepo.md)                                                             |
+| Phase 11 and 12 scope, contracts, quality bars, gates         | [phase-11-backend-freeze.md](./docs/architecture/phase-11-backend-freeze.md), [phase-12-frontend.md](./docs/architecture/phase-12-frontend.md) |
+| Frontend rules: layout, Tailwind, accessibility, state, API   | [docs/platform/frontend-standard.md](./docs/platform/frontend-standard.md)                                                                     |
+| Why full-stack, browser auth, edge routing, frontend tools    | ADRs [0024](./docs/adr/0024-full-stack-pivot.md)–[0028](./docs/adr/0028-frontend-toolchain.md)                                                 |
 
 When two documents disagree, the more specific wins: `conventions.md` for a name, `service-inventory.md` for a port.
 Fix the disagreement rather than choosing silently.

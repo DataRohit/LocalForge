@@ -5,6 +5,10 @@ date: 2026-10-04
 
 # Backend-first monorepo layout
 
+> Amended 2026-10-08 by [0024](./0024-full-stack-pivot.md): `frontend/` is now a live product subtree built in
+> Phase 12. The ownership table below still holds; "reserved", "No frontend is created in Phase 10", and the
+> rejection of creating the frontend describe Phase 10 only.
+
 LocalForge becomes a monorepo with one repository root and a reserved future frontend. Backend source, Python
 metadata, the backend virtual environment, tests, and Python operator scripts live under `backend/`. Global
 environment files, Compose orchestration, repository policy, documentation, and shared automation remain at the root.
