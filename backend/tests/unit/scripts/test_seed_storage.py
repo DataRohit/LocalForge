@@ -566,8 +566,9 @@ def test_the_script_guard_runs_the_helper(
 ) -> None:
     """Run the helper through its script guard.
 
-    Executes the module under the name Python assigns to a directly executed script with nothing
-    configured, which exercises the guard an ordinary import never reaches.
+    Executes the module under the name Python assigns to a directly executed script with the process
+    environment and an unusable endpoint, which exercises the guard an ordinary import never
+    reaches without opening any environment file.
 
     Arguments:
         monkeypatch: Fixture used to clear the configuration and the arguments.
@@ -581,10 +582,12 @@ def test_the_script_guard_runs_the_helper(
     """
     module_path = Path(seed_storage.__file__)
     absent = Path(tempfile.gettempdir()) / "localforge-absent-root"
+    for name, value in SETTINGS.items():
+        monkeypatch.setenv(name, value)
     monkeypatch.setattr(
         sys,
         "argv",
-        ["seed_storage", "--environment", "development", "--endpoint", str(absent)],
+        ["seed_storage", "--process-environment", "--endpoint", str(absent)],
     )
     monkeypatch.chdir(absent.parent)
 

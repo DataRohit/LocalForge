@@ -72,7 +72,6 @@ EXPECTED_BIND_MOUNTS: dict[str, dict[str, frozenset[str]]] = {
     "grafana-gf7qv": {"/etc/grafana/provisioning": frozenset({"docker/grafana/provisioning"})},
     "seaweedfs-ts3jd": {"/etc/seaweedfs/s3.json.template": frozenset({"docker/seaweedfs/s3.json"})},
     "django-test-dt5qx": {
-        "/app/.env.development": frozenset({".env.development"}),
         "/app/.env.testing": frozenset({".env.testing"}),
     },
 }

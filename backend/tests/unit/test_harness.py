@@ -1101,8 +1101,8 @@ def test_architecture_audit_is_a_quality_gate() -> None:
 def test_django_gate_runs_a_database_aware_system_check() -> None:
     """Catch database-specific model failures before the runtime entrypoint.
 
-    Requires the host-compatible testing settings check to include the primary database while the
-    development settings retain their container-hostname-independent configuration validation.
+    Requires the testing settings check to include the primary database and forbids any check under
+    the development settings, which would read the live environment file.
 
     Arguments:
         None.
@@ -1111,14 +1111,19 @@ def test_django_gate_runs_a_database_aware_system_check() -> None:
         None.
 
     Raises:
-        AssertionError: If the quality gate omits database-aware model checks.
+        AssertionError: If the quality gate omits database-aware model checks or selects the
+            development settings.
     """
     sequence = _configured_tasks()["django-check"]["sequence"]
     commands = [item["cmd"] for item in sequence]
 
+    assert all(
+        item.get("env", {}).get("DJANGO_SETTINGS_MODULE") != "config.settings.development"
+        for item in sequence
+    )
+
     assert commands == [
         "python -m scripts.manage_platform testing-health",
-        "python src/manage.py check",
         "python src/manage.py check --database default",
         "python src/manage.py makemigrations --check --dry-run",
     ]

@@ -36,6 +36,7 @@ DOCKER_RESOURCE_FIELD_COUNT = 2
 REPORTED_STORAGE_TYPES = ("Images", "Local Volumes")
 REQUIRED_NOW = "Required before the build starts."
 SECRETS_TOOLING_NOTE = "Needed before the first commit of an encrypted env file."
+FRONTEND_TOOLING_NOTE = "Needed from Ticket 87, the frontend scaffold."
 
 
 class Status(StrEnum):
@@ -481,6 +482,30 @@ TOOL_CHECKS: tuple[ToolCheck, ...] = (
         ),
         command=("make", "--version"),
         minimum=(3, 81),
+    ),
+    ToolCheck(
+        requirement=Requirement(
+            number=15,
+            title="Node.js, for the frontend",
+            minimum_label="24 LTS",
+            required=False,
+            remediation="winget install --id OpenJS.NodeJS.LTS --exact",
+            matters_when=FRONTEND_TOOLING_NOTE,
+        ),
+        command=("node", "--version"),
+        minimum=(24,),
+    ),
+    ToolCheck(
+        requirement=Requirement(
+            number=16,
+            title="npm, for the frontend",
+            minimum_label="bundled with Node 24",
+            required=False,
+            remediation="winget install --id OpenJS.NodeJS.LTS --exact",
+            matters_when=FRONTEND_TOOLING_NOTE,
+        ),
+        command=("npm", "--version"),
+        minimum=(11,),
     ),
 )
 

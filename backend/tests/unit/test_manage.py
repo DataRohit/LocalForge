@@ -43,12 +43,12 @@ def test_main_dispatches_arguments_to_django() -> None:
 
 
 @pytest.mark.unit
-def test_the_default_settings_module_is_the_development_environment() -> None:
-    """Select the development settings when none is named.
+def test_the_default_settings_module_is_the_testing_environment() -> None:
+    """Select the testing settings when none is named.
 
-    Confirms an invocation with no settings module selected falls back to the development module by
-    name, since a typo in that string would otherwise surface only outside the suite, where the
-    variable is always already set.
+    Confirms an invocation with no settings module selected falls back to the testing module by
+    name, never the live development one, since a typo in that string would otherwise surface only
+    outside the suite, where the variable is always already set.
 
     Arguments:
         None.
@@ -57,7 +57,7 @@ def test_the_default_settings_module_is_the_development_environment() -> None:
         None.
 
     Raises:
-        AssertionError: If the fallback does not name the development settings module.
+        AssertionError: If the fallback does not name the testing settings module.
     """
     environment = dict(os.environ)
     environment.pop("DJANGO_SETTINGS_MODULE", None)
@@ -69,7 +69,7 @@ def test_the_default_settings_module_is_the_development_environment() -> None:
     ):
         manage.main()
 
-        assert os.environ["DJANGO_SETTINGS_MODULE"] == "config.settings.development"
+        assert os.environ["DJANGO_SETTINGS_MODULE"] == "config.settings.testing"
 
 
 @pytest.mark.unit

@@ -404,11 +404,17 @@ every testing service publishes a host port and Docker drops a publication made 
 Published host ports are loopback-only. Testing ports are the development port plus 20000 where a development
 publication remains; SeaweedFS master and filer are intentionally internal in both environments.
 
-`django-test-dt5qx` bind-mounts `.env.development` and `.env.testing` read-only. The suite asserts that each
-environment file carries the credentials its services were started with — a distinct password per Valkey instance,
-a broker user that matches the compose definition — and without the files those assertions skip, which would make
-container mode report a different result from host mode for an environmental reason. The files stay on the
-machine, out of the image, and out of version control.
+`django-test-dt5qx` bind-mounts only `.env.testing`, read-only. It never mounts `.env.development`, so a testing run
+cannot read the credentials of the live `development` stack ([Ticket 79](../../.scratch/phase-11-backend-freeze/79-test-isolation-hardening.md)).
+The suite asserts that the testing file carries the credentials its services were started with — a distinct password
+per Valkey instance, a broker user that matches the compose definition. The same assertions run for development over
+generator output built in a temporary directory, so container mode and host mode report the same result. The testing
+file stays on the machine, out of the image, and out of version control.
+
+Django entry points (`manage.py`, ASGI, WSGI, Celery) default to `config.settings.testing` when no settings module is
+set. The Make targets `dev`, `migrate`, `migrations`, `superuser`, and `shell` require `ENVIRONMENT=development` or
+`ENVIRONMENT=testing` on the command line and refuse to default; `make check` and the `testing-*` targets never read
+`.env.development` or address `localforge-dev`.
 
 The runner's Compose command is an idle Python process with a local filesystem health check. Setup starts it with
 `compose up`; explicit container-mode test commands use `compose exec`. This keeps the registered container inside

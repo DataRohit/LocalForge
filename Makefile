@@ -21,7 +21,10 @@ POE_TASKS := \
   test-integration test-integration-stages test-parallel test-core test-core-fresh \
   test-security-timing check
 
-.PHONY: help sync preflight pre-commit-install pre-commit $(POE_TASKS)
+ENVIRONMENT_CHOICES := development testing
+ENVIRONMENT_TARGETS := dev migrate migrations superuser shell
+
+.PHONY: help sync preflight pre-commit-install pre-commit require-environment $(POE_TASKS)
 
 help:
 	@$(POE) help
@@ -37,6 +40,17 @@ pre-commit-install:
 
 pre-commit:
 	$(UV_RUN) pre-commit run --all-files
+
+$(ENVIRONMENT_TARGETS): require-environment
+$(ENVIRONMENT_TARGETS): export DJANGO_SETTINGS_MODULE = config.settings.$(ENVIRONMENT)
+
+require-environment:
+ifneq ($(origin ENVIRONMENT),command line)
+	$(error ENVIRONMENT=development or ENVIRONMENT=testing is required on the command line)
+endif
+ifeq ($(filter $(ENVIRONMENT),$(ENVIRONMENT_CHOICES)),)
+	$(error ENVIRONMENT must be one of: $(ENVIRONMENT_CHOICES))
+endif
 
 $(POE_TASKS):
 	$(POE) $@ $(ARGS)

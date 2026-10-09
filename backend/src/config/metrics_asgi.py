@@ -15,7 +15,7 @@ from config.logs import finalize_streaming_asgi
 if TYPE_CHECKING:
     from asgiref.typing import ASGI3Application
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.development")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.testing")
 settings.ROOT_URLCONF = "config.metrics_urls"
 
 application = finalize_streaming_asgi(

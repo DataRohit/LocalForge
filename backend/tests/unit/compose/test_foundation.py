@@ -1545,42 +1545,65 @@ def test_each_valkey_instance_requires_its_own_password(environment: str) -> Non
     assert len(referenced) == len(VALKEY_INSTANCES[environment])
 
 
-@pytest.mark.unit
-def test_the_two_valkey_passwords_hold_different_values() -> None:
-    """Keep distinct variables from carrying one shared secret.
+def environment_values(
+    environment: str,
+    fixture_environments: dict[str, dict[str, str]],
+) -> dict[str, str]:
+    """Read one environment's variables without opening the development file.
 
-    Confirms the generated environment files give the cache and the channel layer different
-    password values, because two variable names holding one value is the single leaked credential
-    the split exists to prevent.
+    Reads the generated testing file because that environment is isolated, and takes development
+    values from generator output built in a temporary directory so the live file is never opened.
 
     Arguments:
-        None.
+        environment: ``development`` or ``testing``.
+        fixture_environments: Generator output keyed by environment name.
+
+    Returns:
+        Parsed variables for the environment.
+
+    Raises:
+        Failed: If the testing file has not been generated in this checkout.
+    """
+    if environment != "testing":
+        return fixture_environments[environment]
+
+    source = REPOSITORY_ROOT / ".env.testing"
+    if not source.exists():
+        pytest.fail("this checkout has generated no testing environment file")
+
+    return {
+        line.partition("=")[0]: line.partition("=")[2]
+        for line in source.read_text(encoding="utf-8").splitlines()
+        if "=" in line
+    }
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("environment", sorted(VALKEY_INSTANCES))
+def test_the_two_valkey_passwords_hold_different_values(
+    environment: str,
+    fixture_environments: dict[str, dict[str, str]],
+) -> None:
+    """Keep distinct variables from carrying one shared secret.
+
+    Confirms the generated environment gives the cache and the channel layer different password
+    values, because two variable names holding one value is the single leaked credential the split
+    exists to prevent. Development is checked over generator output, never the live file.
+
+    Arguments:
+        environment: Environment whose credentials are inspected.
+        fixture_environments: Generator output keyed by environment name.
 
     Returns:
         None.
 
     Raises:
-        AssertionError: If any environment reuses one value for both instances.
+        AssertionError: If the environment reuses one value for both instances.
     """
-    checked = 0
+    values = environment_values(environment, fixture_environments)
+    secrets = {values[instance.password] for instance in VALKEY_INSTANCES[environment]}
 
-    for environment in sorted(VALKEY_INSTANCES):
-        source = REPOSITORY_ROOT / f".env.{environment}"
-        if not source.exists():
-            continue
-
-        values = {
-            line.partition("=")[0]: line.partition("=")[2]
-            for line in source.read_text(encoding="utf-8").splitlines()
-            if "=" in line
-        }
-        secrets = {values[instance.password] for instance in VALKEY_INSTANCES[environment]}
-
-        assert len(secrets) == len(VALKEY_INSTANCES[environment]), environment
-        checked += 1
-
-    if not checked:
-        pytest.fail("no environment file has been generated in this checkout")
+    assert len(secrets) == len(VALKEY_INSTANCES[environment]), environment
 
 
 @pytest.mark.unit
@@ -1859,6 +1882,7 @@ def test_every_broker_health_check_probes_infrequently(environment: str) -> None
 @pytest.mark.parametrize("environment", sorted(BROKER_INSTANCES))
 def test_each_broker_takes_its_credentials_and_virtual_host_from_the_environment(
     environment: str,
+    fixture_environments: dict[str, dict[str, str]],
 ) -> None:
     """Keep the broker identity out of the manifest.
 
@@ -1868,6 +1892,7 @@ def test_each_broker_takes_its_credentials_and_virtual_host_from_the_environment
 
     Arguments:
         environment: Environment whose overlay is inspected.
+        fixture_environments: Generator output keyed by environment name.
 
     Returns:
         None.
@@ -1882,15 +1907,7 @@ def test_each_broker_takes_its_credentials_and_virtual_host_from_the_environment
     assert definition["env_file"] == [f".env.{environment}"]
     assert "environment" not in definition
 
-    source = REPOSITORY_ROOT / f".env.{environment}"
-    if not source.exists():
-        pytest.fail("this checkout has generated no environment file")
-
-    values = {
-        line.partition("=")[0]: line.partition("=")[2]
-        for line in source.read_text(encoding="utf-8").splitlines()
-        if "=" in line
-    }
+    values = environment_values(environment, fixture_environments)
     for variable in variables:
         assert values.get(variable), variable
 
@@ -2234,7 +2251,10 @@ def test_every_mail_service_stores_messages_on_its_volume(environment: str) -> N
 
 @pytest.mark.unit
 @pytest.mark.parametrize("environment", sorted(MAIL_INSTANCES))
-def test_no_mail_service_is_allowed_to_forward(environment: str) -> None:
+def test_no_mail_service_is_allowed_to_forward(
+    environment: str,
+    fixture_environments: dict[str, dict[str, str]],
+) -> None:
     """Keep captured mail from reaching a real recipient.
 
     Confirms no forwarding, relay, or webhook route is configured by flag or by variable, which is
@@ -2243,6 +2263,7 @@ def test_no_mail_service_is_allowed_to_forward(environment: str) -> None:
 
     Arguments:
         environment: Environment whose overlay is inspected.
+        fixture_environments: Generator output keyed by environment name.
 
     Returns:
         None.
@@ -2253,18 +2274,14 @@ def test_no_mail_service_is_allowed_to_forward(environment: str) -> None:
     service, _, _ = MAIL_INSTANCES[environment]
     command = " ".join(merged(ENVIRONMENT_FILES[environment])["services"][service]["command"])
     manifest = (REPOSITORY_ROOT / ".env.example").read_text(encoding="utf-8")
-    generated = REPOSITORY_ROOT / f".env.{environment}"
+    generated = environment_values(environment, fixture_environments)
 
     for flag in MAIL_RELAY_FLAGS:
         assert flag not in command, flag
 
-    sources = [manifest]
-    if generated.exists():
-        sources.append(generated.read_text(encoding="utf-8"))
-
-    for source in sources:
-        for variable in MAIL_RELAY_VARIABLES:
-            assert variable not in source, variable
+    for variable in MAIL_RELAY_VARIABLES:
+        assert variable not in manifest, variable
+        assert variable not in generated, variable
 
 
 @pytest.mark.unit

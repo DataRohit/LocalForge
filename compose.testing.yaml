@@ -229,7 +229,6 @@ services:
       - data-net-nt8fq
 
     volumes:
-      - ./.env.development:/app/.env.development:ro
       - ./.env.testing:/app/.env.testing:ro
 
     depends_on:

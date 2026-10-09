@@ -74,12 +74,12 @@ def test_wsgi_module_exposes_a_wsgi_handler() -> None:
 
 @pytest.mark.unit
 @pytest.mark.parametrize("module_name", ["config.asgi", "config.wsgi"])
-def test_each_entry_point_defaults_to_the_development_settings(module_name: str) -> None:
-    """Select the development settings when none is named.
+def test_each_entry_point_defaults_to_the_testing_settings(module_name: str) -> None:
+    """Select the testing settings when none is named.
 
-    Reloads the entry point with no settings module selected and confirms it names the development
-    module, since the fallback is never exercised inside the suite, where the variable is always
-    set already.
+    Reloads the entry point with no settings module selected and confirms it names the testing
+    module and never the live development one, since the fallback is never exercised inside the
+    suite, where the variable is always set already.
 
     Arguments:
         module_name: The entry point module to reload.
@@ -88,7 +88,7 @@ def test_each_entry_point_defaults_to_the_development_settings(module_name: str)
         None.
 
     Raises:
-        AssertionError: If the fallback does not name the development settings module.
+        AssertionError: If the fallback does not name the testing settings module.
     """
     environment = dict(os.environ)
     environment.pop("DJANGO_SETTINGS_MODULE", None)
@@ -96,7 +96,7 @@ def test_each_entry_point_defaults_to_the_development_settings(module_name: str)
     with patch.dict(os.environ, environment, clear=True):
         importlib.reload(importlib.import_module(module_name))
 
-        assert os.environ["DJANGO_SETTINGS_MODULE"] == "config.settings.development"
+        assert os.environ["DJANGO_SETTINGS_MODULE"] == "config.settings.testing"
 
 
 @pytest.mark.unit

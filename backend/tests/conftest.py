@@ -4,11 +4,19 @@ Provides the per-worker namespace every externally allocated name is built from,
 running the same test in parallel cannot collide on a bucket, a queue, or a cache key.
 """
 
+import builtins
+import io
 import os
+from pathlib import Path
+from typing import Any
 
 import pytest
 
 SERIAL_GROUP = "serial"
+LIVE_DEVELOPMENT_FILES = frozenset(
+    os.path.normcase(Path(__file__).resolve().parents[depth] / ".env.development")
+    for depth in (1, 2)
+)
 _SKIPPED_TESTS: set[str] = set()
 
 
@@ -199,3 +207,81 @@ def worker_namespace(worker_id: str) -> str:
         None.
     """
     return f"localforge-test-{worker_id}"
+
+
+class LiveDevelopmentFileError(RuntimeError):
+    """Signal that a test tried to open the live development environment file.
+
+    Inherits from ``RuntimeError`` and carries a fixed message, so the offending test fails loudly
+    instead of silently reading credentials that belong to the live stack.
+
+    Attributes:
+        None beyond those the base exception defines.
+
+    Members:
+        None.
+    """
+
+
+def refuse_live_development_file(target: object) -> None:
+    """Reject an attempt to open the live development environment file.
+
+    Compares the resolved path with the repository's development file, so tests that build their
+    own copy in a temporary directory are unaffected.
+
+    Arguments:
+        target: Path-like or descriptor handed to an open call.
+
+    Returns:
+        None.
+
+    Raises:
+        LiveDevelopmentFileError: If the target is the live development environment file.
+    """
+    if isinstance(target, (str, bytes, os.PathLike)):
+        resolved = Path(os.fsdecode(target)).resolve()
+        if os.path.normcase(resolved) in LIVE_DEVELOPMENT_FILES:
+            message = "tests must never open the live .env.development file"
+            raise LiveDevelopmentFileError(message)
+
+
+@pytest.fixture(autouse=True)
+def _never_open_the_live_development_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Guard the live development environment file for the length of every test.
+
+    Wraps the open calls used by ``open`` and ``Path`` so any read of the live file fails the test,
+    which keeps routine work from ever touching credentials of the running stack.
+
+    Arguments:
+        monkeypatch: Patching fixture supplied by the test framework.
+
+    Returns:
+        None.
+
+    Raises:
+        None.
+    """
+    original = io.open
+
+    def guarded_open(file: Any, *arguments: Any, **keywords: Any) -> Any:  # noqa: ANN401
+        """Refuse the live file, otherwise delegate to the real open.
+
+        Applies the shared path check before every open and forwards all arguments unchanged.
+        Paths in temporary directories are never matched.
+
+        Arguments:
+            file: Path-like or descriptor being opened.
+            *arguments: Positional arguments of the real open.
+            **keywords: Keyword arguments of the real open.
+
+        Returns:
+            The file object produced by the real open.
+
+        Raises:
+            LiveDevelopmentFileError: If the live development file is targeted.
+        """
+        refuse_live_development_file(file)
+        return original(file, *arguments, **keywords)
+
+    monkeypatch.setattr(io, "open", guarded_open)
+    monkeypatch.setattr(builtins, "open", guarded_open)

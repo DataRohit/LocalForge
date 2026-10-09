@@ -33,6 +33,8 @@ PASSING_OUTPUTS: dict[tuple[str, ...], str] = {
     ("age", "--version"): "v1.3.2",
     ("psql", "--version"): "psql (PostgreSQL) 16.4",
     ("make", "--version"): "GNU Make 4.4.1",
+    ("node", "--version"): "v24.20.0",
+    ("npm", "--version"): "12.0.2",
     ("kind", "version"): "kind v0.33.0 go1.25.1 windows/amd64",
 }
 
@@ -40,7 +42,7 @@ HOST_PYTHON_COMMAND = ("python", "--version")
 PASSING_CPU_COUNT = 16
 PASSING_MEMORY_BYTES = 32 * preflight.GIBIBYTE
 PASSING_FREE_BYTES = 500 * preflight.GIBIBYTE
-EXPECTED_ROW_NUMBERS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
+EXPECTED_ROW_NUMBERS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
 CHECKLIST_DOCUMENT = preflight.REPOSITORY_ROOT / "docs" / "build" / "prerequisites.md"
 REPOSITORY_VOLUME = preflight.REPOSITORY_ROOT
 OTHER_VOLUME = preflight.REPOSITORY_ROOT / "another-volume"
@@ -306,10 +308,8 @@ def test_every_version_floor_matches_the_checklist_document() -> None:
 
     compared = 0
     for number, requirement in implemented.items():
-        documented_minimum = documented[number]
-        if re.fullmatch(r"[\d.]+", documented_minimum):
-            assert requirement.minimum_label == documented_minimum
-            compared += 1
+        assert requirement.minimum_label == documented[number]
+        compared += 1
 
     assert compared == len(implemented)
 
@@ -410,7 +410,7 @@ def test_a_bare_machine_fails_required_checks_and_reports_optional_ones() -> Non
     informational = [result.number for result in results if result.status is preflight.Status.INFO]
 
     assert failed == [1, 2, 3, 5, 6, 7, 8, 9, 14]
-    assert informational == [4, 10, 11, 12, 13]
+    assert informational == [4, 10, 11, 12, 13, 15, 16]
     assert preflight.exit_code(results) == 1
 
 
@@ -454,6 +454,8 @@ def test_every_failing_row_names_a_remediation() -> None:
         (12, "winget install --id FiloSottile.age --exact"),
         (13, "winget install --id PostgreSQL.PostgreSQL --exact"),
         (14, "Install GNU Make and add its executable to PATH"),
+        (15, "winget install --id OpenJS.NodeJS.LTS --exact"),
+        (16, "winget install --id OpenJS.NodeJS.LTS --exact"),
     ],
 )
 def test_installable_tools_name_an_executable_remediation(number: int, expected: str) -> None:
@@ -1238,7 +1240,7 @@ def test_the_summary_counts_failures_and_informational_items() -> None:
     results = preflight.build_report(failing_probes())
 
     assert preflight.summary_line(results) == (
-        "FAIL: 9 required check(s) failed, 5 informational item(s)."
+        "FAIL: 9 required check(s) failed, 7 informational item(s)."
     )
 
 

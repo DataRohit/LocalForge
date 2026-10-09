@@ -81,7 +81,7 @@ class DocumentationStaticFilesHandler(ASGIStaticFilesHandler):
             raise Http404 from error
 
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.development")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.testing")
 
 django_application = get_asgi_application()
 api_module = import_module("config.api")

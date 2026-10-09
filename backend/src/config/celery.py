@@ -18,7 +18,7 @@ from celery.worker.request import Request as CeleryRequest
 from kombu import Exchange, Producer, Queue
 from kombu.exceptions import KombuError
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.development")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.testing")
 
 logger = logging.getLogger(__name__)
 

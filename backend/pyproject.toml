@@ -237,7 +237,7 @@ directory = "htmlcov"
 output = "coverage.xml"
 
 [tool.poe.tasks.dev]
-help = "Start the ASGI development server (needs the development stack reachable)"
+help = "Start the ASGI server under ENVIRONMENT=development|testing (needs that stack reachable)"
 cmd = """uvicorn config.asgi:application
   --app-dir src
   --host 127.0.0.1
@@ -396,26 +396,25 @@ help = "Rebuild testing, run both complete modes, and stop after success"
 cmd = "python -m scripts.manage_platform testing-verify"
 
 [tool.poe.tasks.migrate]
-help = "Apply database migrations (development database; run from inside django-uv5n2)"
+help = "Apply database migrations under ENVIRONMENT=development|testing"
 cmd = "python src/manage.py migrate"
 
 [tool.poe.tasks.migrations]
-help = "Create database migrations"
+help = "Create database migrations under ENVIRONMENT=development|testing"
 cmd = "python src/manage.py makemigrations"
 
 [tool.poe.tasks.superuser]
-help = "Create a Django superuser (development database; run from inside django-uv5n2)"
+help = "Create a Django superuser under ENVIRONMENT=development|testing"
 cmd = "python src/manage.py createsuperuser"
 
 [tool.poe.tasks.shell]
-help = "Open the Django shell (development database; run from inside django-uv5n2)"
+help = "Open the Django shell under ENVIRONMENT=development|testing"
 cmd = "python src/manage.py shell"
 
 [tool.poe.tasks.django-check]
 help = "Run Django system and migration checks"
 sequence = [
     { cmd = "python -m scripts.manage_platform testing-health" },
-    { cmd = "python src/manage.py check", env = { DJANGO_SETTINGS_MODULE = "config.settings.development" } },
     { cmd = "python src/manage.py check --database default", env = { DJANGO_SETTINGS_MODULE = "config.settings.testing" } },
     { cmd = "python src/manage.py makemigrations --check --dry-run", env = { DJANGO_SETTINGS_MODULE = "config.settings.testing" } },
 ]

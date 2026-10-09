@@ -265,12 +265,6 @@ def test_mount_rules_reject_anonymous_writable_and_unregistered_mounts() -> None
         mounts=[
             {
                 "Type": "bind",
-                "Source": str(audit.REPOSITORY_ROOT / ".env.development"),
-                "Destination": "/app/.env.development",
-                "RW": False,
-            },
-            {
-                "Type": "bind",
                 "Source": str(audit.REPOSITORY_ROOT / ".env.testing"),
                 "Destination": "/app/.env.testing",
                 "RW": False,
@@ -328,7 +322,22 @@ def test_mount_rules_reject_anonymous_writable_and_unregistered_mounts() -> None
         mounts=[
             {
                 "Type": "bind",
-                "Source": "/foreign/.env.development",
+                "Source": "/foreign/.env.testing",
+                "Destination": "/app/.env.testing",
+                "RW": False,
+            },
+        ],
+    )
+    assert any(
+        "bind " in failure for failure in audit.mount_failures([foreign_source], audit.TESTING_SPEC)
+    )
+
+    development_mount = container_record(
+        "django-test-dt5qx",
+        mounts=[
+            {
+                "Type": "bind",
+                "Source": str(audit.REPOSITORY_ROOT / ".env.development"),
                 "Destination": "/app/.env.development",
                 "RW": False,
             },
@@ -341,7 +350,8 @@ def test_mount_rules_reject_anonymous_writable_and_unregistered_mounts() -> None
         ],
     )
     assert any(
-        "bind " in failure for failure in audit.mount_failures([foreign_source], audit.TESTING_SPEC)
+        failure.startswith("binds ") and "/app/.env.development" in failure
+        for failure in audit.mount_failures([development_mount], audit.TESTING_SPEC)
     )
 
 

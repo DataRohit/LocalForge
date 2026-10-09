@@ -46,7 +46,7 @@ FROM runtime-source-normalizer AS test-source-normalizer
 COPY --chmod=0555 backend/tests ./tests
 COPY --chmod=0555 docs ./docs
 COPY --chmod=0555 docker ./docker
-COPY --chmod=0444 .dockerignore .sops.yaml .gitleaks.toml ./
+COPY --chmod=0444 .dockerignore .sops.yaml .gitleaks.toml Makefile ./
 COPY --chmod=0444 compose.yaml compose.development.yaml compose.testing.yaml ./
 COPY --chmod=0444 .env.example .env.development.sops .env.testing.sops ./
 
@@ -108,7 +108,7 @@ COPY --from=test-builder /opt/venv /opt/venv
 COPY --from=test-source-normalizer --chown=root:root /normalized/tests ./tests
 COPY --from=test-source-normalizer --chown=root:root /normalized/docs ./docs
 COPY --from=test-source-normalizer --chown=root:root /normalized/docker ./docker
-COPY --from=test-source-normalizer --chown=root:root /normalized/pyproject.toml /normalized/uv.lock /normalized/.dockerignore /normalized/.sops.yaml /normalized/.gitleaks.toml ./
+COPY --from=test-source-normalizer --chown=root:root /normalized/pyproject.toml /normalized/uv.lock /normalized/.dockerignore /normalized/.sops.yaml /normalized/.gitleaks.toml /normalized/Makefile ./
 COPY --from=test-source-normalizer --chown=root:root /normalized/compose.yaml /normalized/compose.development.yaml /normalized/compose.testing.yaml ./
 COPY --from=test-source-normalizer --chown=root:root /normalized/.env.example /normalized/.env.development.sops /normalized/.env.testing.sops ./
 
