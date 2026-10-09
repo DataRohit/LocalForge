@@ -16,13 +16,18 @@ and publish the Freeze Manifest for the user's explicit acceptance at Gate 3.
 - [Build plan](../../docs/build/plan.md)
 - [Ticket index](../README.md)
 
-**Status:** pending
+**Status:** pending (awaiting the user's acceptance of the freeze)
 
-- [ ] The OpenAPI document and WebSocket contract are regenerated and committed-ready, with every status code and a
+- [x] The OpenAPI document and WebSocket contract are regenerated and committed-ready, with every status code and a
       response example for each route.
-- [ ] The Freeze Manifest lists every frozen route, payload, cookie, close code, and the test that proves each.
-- [ ] The capability matrix from Ticket 84 has a passing test for every row.
-- [ ] Tickets 79 to 85 each have a complete verification record, and every finding from their reviews is
+- [x] The Freeze Manifest lists every frozen route, payload, cookie, close code, and the test that proves each.
+- [x] The capability matrix from Ticket 84 has a passing test for every row.
+- [x] Tickets 79 to 85 each have a complete verification record, and every finding from their reviews is
       remediated.
 - [ ] The user has explicitly accepted the freeze; backend changes after acceptance reopen Phase 11.
-- [ ] Production runtime truth is listed as an unverified gate pending the user's authorization.
+- [x] Production runtime truth is listed as an unverified gate pending the user's authorization.
+
+**Verification (2026-10-09, `testing` only):** the OpenAPI and WebSocket documents are regenerated; the Freeze
+Manifest and capability matrix are published in `docs/handover/phase-11.md` and checked by
+`backend/tests/unit/test_freeze_manifest.py`. The acceptance criterion is **not** satisfied: the user has not accepted the
+freeze, so this ticket stays pending. Production runtime truth is listed as an unverified gate.
