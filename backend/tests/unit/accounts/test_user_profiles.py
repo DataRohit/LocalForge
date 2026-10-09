@@ -16,6 +16,7 @@ from rest_framework.exceptions import ValidationError
 from accounts.login_throttle import ThrottleDecision
 from accounts.models import ActivationToken, User
 from accounts.user_profiles import (
+    ACCOUNT_CAPABILITIES,
     ActivationResendResponseSerializer,
     RegistrationResponseSerializer,
     RegistrationSerializer,
@@ -314,13 +315,20 @@ def test_profile_serializers_expose_and_accept_only_declared_fields() -> None:
     Raises:
         AssertionError: If public or mutable profile fields drift.
     """
-    account = build_user(username="profile-user", email="profile-user@localforge.invalid")
+    account = build_user(
+        username="profile-user",
+        email="profile-user@localforge.invalid",
+        is_active=True,
+    )
 
     assert UserProfileSerializer(account).data == {
         "id": str(account.pk),
         "username": "profile-user",
         "email": "profile-user@localforge.invalid",
+        "capabilities": list(ACCOUNT_CAPABILITIES),
     }
+    inactive = build_user(username="inactive-user", email="inactive-user@localforge.invalid")
+    assert UserProfileSerializer(inactive).data["capabilities"] == []
 
     update = UserProfileUpdateSerializer(
         data={"email": "Changed@LOCALFORGE.Invalid", "username": "forbidden"}

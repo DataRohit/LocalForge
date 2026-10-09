@@ -443,6 +443,39 @@ def test_deployment_check_requires_exact_accepted_warnings(tmp_path: Path) -> No
     )
 
 
+def test_browser_contract_check_requires_the_program_and_the_hygiene_tests(
+    tmp_path: Path,
+) -> None:
+    """Pass only when both the configuration program and the hygiene tests succeed.
+
+    Feeds a fake runner every success and failure combination and asserts the program runs first,
+    the tests are skipped after a program failure, and the tests receive the explicit node ids.
+
+    Arguments:
+        tmp_path: Temporary repository root.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a failure is masked or the commands drift.
+    """
+    write_environment(tmp_path)
+    ok = audit.CommandResult(0, "")
+    bad = audit.CommandResult(1, "")
+
+    passing = FakeRunner([ok, ok])
+    assert audit.browser_contract_check(passing, tmp_path)
+    assert passing.calls[0][0][1] == "-c"
+    assert passing.calls[1][0][2] == "pytest"
+    assert all("::test_" in node for node in passing.calls[1][0][-3:])
+    assert not audit.browser_contract_check(FakeRunner([ok, bad]), tmp_path)
+
+    skipped = FakeRunner([bad, ok])
+    assert not audit.browser_contract_check(skipped, tmp_path)
+    assert len(skipped.calls) == 1
+
+
 def test_history_secret_check_scans_history_and_current_files(tmp_path: Path) -> None:
     """Scan full history plus tracked and untracked current files.
 
@@ -1498,11 +1531,15 @@ def test_runtime_secret_check_rejects_command_and_secret_failures(tmp_path: Path
     ("scope", "expected_calls"),
     [
         ("deployment", ["deployment"]),
+        ("browser", ["browser"]),
         ("history", ["history"]),
         ("dependencies", ["dependencies"]),
         ("images", ["images"]),
         ("runtime", ["exposure", "secrets"]),
-        ("all", ["deployment", "history", "dependencies", "images", "exposure", "secrets"]),
+        (
+            "all",
+            ["deployment", "browser", "history", "dependencies", "images", "exposure", "secrets"],
+        ),
     ],
 )
 def test_main_runs_selected_checks(
@@ -1545,6 +1582,7 @@ def test_main_runs_selected_checks(
 
     with (
         patch.object(audit, "deployment_check", side_effect=lambda *_args: record("deployment")),
+        patch.object(audit, "browser_contract_check", side_effect=lambda *_args: record("browser")),
         patch.object(audit, "history_secret_check", side_effect=lambda *_args: record("history")),
         patch.object(audit, "dependency_check", side_effect=lambda *_args: record("dependencies")),
         patch.object(audit, "image_check", side_effect=lambda *_args: record("images")),

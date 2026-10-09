@@ -21,11 +21,18 @@ from drf_spectacular.utils import (
     OpenApiResponse,
     PolymorphicProxySerializer,
     extend_schema,
+    extend_schema_field,
 )
 from rest_framework.exceptions import AuthenticationFailed, ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.serializers import CharField, EmailField, Serializer, UUIDField
+from rest_framework.serializers import (
+    CharField,
+    EmailField,
+    Serializer,
+    SerializerMethodField,
+    UUIDField,
+)
 from rest_framework.throttling import BaseThrottle
 from rest_framework.views import APIView
 
@@ -192,24 +199,61 @@ class ActivationResendResponseSerializer(Serializer):
     detail = CharField(read_only=True)
 
 
+ACCOUNT_CAPABILITIES = (
+    "account:read",
+    "account:update",
+    "account:delete",
+    "credentials:change",
+    "notifications:receive",
+)
+
+
 class UserProfileSerializer(Serializer):
     """Describe the authenticated caller's public profile.
 
-    Inherits from DRF's ``Serializer`` and exposes the immutable key and two public identifiers,
-    omitting activation, permission, password, token, and operational timestamp state.
+    Inherits from DRF's ``Serializer`` and exposes the immutable key, two public identifiers, and
+    the closed capability list, omitting activation, permission, password, token, and operational
+    timestamp state.
 
     Attributes:
         id: Immutable account identifier.
         username: Public account name changed only through its dedicated route.
         email: Public address and the sole mutable profile field.
+        capabilities: Read-only registry entries a client may use to shape navigation.
 
     Members:
-        None beyond those inherited from ``Serializer``.
+        get_capabilities: Derive the capability list from the account.
     """
 
     id = UUIDField(read_only=True)
     username = CharField(read_only=True)
     email = EmailField(read_only=True)
+    capabilities = SerializerMethodField()
+
+    @extend_schema_field(
+        {
+            "type": "array",
+            "items": {"type": "string", "enum": list(ACCOUNT_CAPABILITIES)},
+            "readOnly": True,
+            "description": (
+                "Closed registry guarding client navigation only; every route still enforces "
+                "authorization itself."
+            ),
+        }
+    )
+    def get_capabilities(self, account: User) -> list[str]:
+        """Derive the capability list for one account.
+
+        An active account holds every registry entry and an inactive one holds none, because the
+        account endpoints never serialize an inactive caller.
+
+        Arguments:
+            account: Account being serialized.
+
+        Returns:
+            The capability names held by the account.
+        """
+        return list(ACCOUNT_CAPABILITIES) if account.is_active else []
 
 
 class UserProfileUpdateSerializer(StrictRequestSerializer):
@@ -478,6 +522,7 @@ class UserRegistrationView(APIView):
                         value={
                             "username": "river",
                             "email": "river@localforge.invalid",
+                            "capabilities": list(ACCOUNT_CAPABILITIES),
                         },
                         response_only=True,
                     )
@@ -779,6 +824,7 @@ class UserProfileView(APIView):
                             "id": "00000000-0000-7000-8000-000000000000",
                             "username": "river",
                             "email": "river@localforge.invalid",
+                            "capabilities": list(ACCOUNT_CAPABILITIES),
                         },
                         response_only=True,
                     )
@@ -859,6 +905,7 @@ class UserProfileView(APIView):
                             "id": "00000000-0000-7000-8000-000000000000",
                             "username": "river",
                             "email": "updated@localforge.invalid",
+                            "capabilities": list(ACCOUNT_CAPABILITIES),
                         },
                         response_only=True,
                     )

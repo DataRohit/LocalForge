@@ -14,13 +14,20 @@ authentication class, with throttling and status-code documentation unchanged in
 - [OpenAPI document](../../docs/api/openapi-v1.yaml)
 - [Ticket index](../README.md)
 
-**Status:** pending
+**Status:** done (Locally Verified)
 
-- [ ] Every authenticated route accepts a valid access cookie and rejects an expired, malformed, or revoked one
+- [x] Every authenticated route accepts a valid access cookie and rejects an expired, malformed, or revoked one
       with its documented status code.
-- [ ] Inactive and deleted accounts are rejected on the cookie path exactly as on the bearer path.
-- [ ] A request carrying both an `Authorization` header and the access cookie is rejected with the documented
+- [x] Inactive and deleted accounts are rejected on the cookie path exactly as on the bearer path.
+- [x] A request carrying both an `Authorization` header and the access cookie is rejected with the documented
       bad-request envelope; exactly one credential source is ever accepted.
-- [ ] Throttling identities treat cookie and bearer requests from one account consistently.
-- [ ] The regenerated OpenAPI document lists the cookie security scheme and every status code per route.
-- [ ] Verified in `testing` only; status Locally Verified.
+- [x] Throttling identities treat cookie and bearer requests from one account consistently.
+- [x] The regenerated OpenAPI document lists the cookie security scheme and every status code per route.
+- [x] Verified in `testing` only; status Locally Verified.
+
+**Verification (2026-10-09, `testing` only):** `backend/tests/integration/accounts/test_browser_cookie_authentication.py`
+covers acceptance on the profile routes, expired, malformed, refresh-in-access, and password-revoked cookies, inactive and
+deleted accounts compared with the bearer response, a primary outage (503), the dual-source 400 for both bearer schemes,
+and shared throttle identity between cookie and bearer requests. The regenerated OpenAPI document lists
+`browserCookieAuth` beside `jwtAuth` and `tokenAuth` on every authenticated operation. Findings: none open.
+Disposition: complete.

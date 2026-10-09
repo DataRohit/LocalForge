@@ -177,8 +177,9 @@ def _request_reset_link(
     assert response.status_code == HTTPStatus.ACCEPTED
     message = cast("EmailMultiAlternatives", mail.outbox[-1])
     parsed = urlparse(_credential_handoff_url(message.body))
-    assert parsed.path == "/api/v1/users/reset_password_confirm/"
-    query = parse_qs(parsed.query)
+    assert parsed.path == "/reset-password"
+    assert parsed.query == ""
+    query = parse_qs(parsed.fragment)
     assert set(query) == {"account", "token"}
     return {"account": query["account"][0], "token": query["token"][0]}
 
@@ -583,7 +584,7 @@ def test_password_reset_request_is_indistinguishable_and_delivers_account_bound_
     payload = cast("dict[str, Any]", existing.json())
     message = cast("EmailMultiAlternatives", mail.outbox[0])
     text = message.body
-    query = parse_qs(urlparse(_credential_handoff_url(text)).query)
+    query = parse_qs(urlparse(_credential_handoff_url(text)).fragment)
 
     assert existing.status_code == HTTPStatus.ACCEPTED
     assert inactive_response.status_code == HTTPStatus.ACCEPTED
@@ -636,7 +637,7 @@ def test_password_reset_confirm_changes_password_notifies_revokes_and_rejects_re
         content_type="application/json",
         REMOTE_ADDR="192.0.2.35",
     )
-    query = parse_qs(urlparse(_credential_handoff_url(mail.outbox[0].body)).query)
+    query = parse_qs(urlparse(_credential_handoff_url(mail.outbox[0].body)).fragment)
     request = {
         "account": query["account"][0],
         "token": query["token"][0],
@@ -1638,7 +1639,7 @@ def test_invalid_reset_bodies_do_not_consume_authoritative_quota(
         REMOTE_ADDR=address,
     )
     message = cast("EmailMultiAlternatives", mail.outbox[-1])
-    query = parse_qs(urlparse(_credential_handoff_url(message.body)).query)
+    query = parse_qs(urlparse(_credential_handoff_url(message.body)).fragment)
     link = {"account": query["account"][0], "token": query["token"][0]}
     confirm_address = "192.0.2.52"
     invalid_confirms = [
@@ -4222,7 +4223,7 @@ def test_password_recovery_round_trips_through_smtp_and_mailpit(
             break
         time.sleep(MAILPIT_POLL_SECONDS)
     assert reset_text
-    query = parse_qs(urlparse(_credential_handoff_url(reset_text)).query)
+    query = parse_qs(urlparse(_credential_handoff_url(reset_text)).fragment)
 
     confirmed = client.post(
         "/api/v1/users/reset_password_confirm/",

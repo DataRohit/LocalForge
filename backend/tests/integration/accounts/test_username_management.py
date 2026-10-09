@@ -133,8 +133,9 @@ def _request_reset_link(
     assert response.status_code == HTTPStatus.ACCEPTED
     message = cast("EmailMultiAlternatives", mail.outbox[-1])
     parsed = urlparse(_credential_handoff_url(message.body))
-    assert parsed.path == "/api/v1/users/reset_username_confirm/"
-    query = parse_qs(parsed.query)
+    assert parsed.path == "/reset-username"
+    assert parsed.query == ""
+    query = parse_qs(parsed.fragment)
     assert set(query) == {"account", "token"}
     return {"account": query["account"][0], "token": query["token"][0]}
 
@@ -446,7 +447,7 @@ def test_username_reset_full_loop_is_single_use_and_preserves_credentials(
         REMOTE_ADDR="192.0.2.201",
     )
     message = cast("EmailMultiAlternatives", mail.outbox[0])
-    query = parse_qs(urlparse(_credential_handoff_url(message.body)).query)
+    query = parse_qs(urlparse(_credential_handoff_url(message.body)).fragment)
     payload = {
         "account": query["account"][0],
         "token": query["token"][0],
@@ -1302,7 +1303,7 @@ def test_username_reset_throttles_are_exact_recoverable_and_ignore_invalid_bodie
         REMOTE_ADDR=address,
     )
     message = cast("EmailMultiAlternatives", mail.outbox[-1])
-    query = parse_qs(urlparse(_credential_handoff_url(message.body)).query)
+    query = parse_qs(urlparse(_credential_handoff_url(message.body)).fragment)
     link = {"account": query["account"][0], "token": query["token"][0]}
     confirm_address = "192.0.2.221"
     invalid_confirm = client.post(
@@ -2923,7 +2924,9 @@ def test_username_recovery_round_trips_through_smtp_and_mailpit(
                 "dict[str, Any]",
                 _mailpit_request("GET", f"/api/v1/message/{reset['ID']}"),
             )
-            query = parse_qs(urlparse(_credential_handoff_url(cast("str", detail["Text"]))).query)
+            query = parse_qs(
+                urlparse(_credential_handoff_url(cast("str", detail["Text"]))).fragment
+            )
             link = {"account": query["account"][0], "token": query["token"][0]}
             assert cast("str", detail["HTML"])
             break

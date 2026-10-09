@@ -65,6 +65,9 @@ REQUIRED_ENVIRONMENT = {
     "UVICORN_WEBSOCKET_MAX_SIZE_BYTES": "131072",
     "DJANGO_JWT_ACCESS_TOKEN_LIFETIME_SECONDS": "300",
     "DJANGO_JWT_REFRESH_TOKEN_LIFETIME_SECONDS": "86400",
+    "DJANGO_BROWSER_ACCESS_COOKIE_NAME": "__Host-lf-access",
+    "DJANGO_BROWSER_REFRESH_COOKIE_NAME": "__Secure-lf-refresh",
+    "DJANGO_BROWSER_CSRF_COOKIE_NAME": "__Host-lf-csrf",
     "DJANGO_JWT_SIGNING_KEY": secrets.token_urlsafe(32),
     "DJANGO_TOKEN_LOGIN_ACCOUNT_THROTTLE_RATE": "5/minute",
     "DJANGO_TOKEN_LOGIN_ADDRESS_THROTTLE_RATE": "30/minute",
@@ -793,6 +796,7 @@ def test_shared_rest_framework_defaults_close_new_routes() -> None:
         "DEFAULT_AUTHENTICATION_CLASSES": [
             "accounts.authentication.JWTAuthentication",
             "accounts.authentication.PrimaryTokenAuthentication",
+            "accounts.browser_authentication.CookieJWTAuthentication",
         ],
         "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
         "DEFAULT_PERMISSION_CLASSES": [
@@ -917,7 +921,7 @@ def test_browser_security_policy_is_explicit_for_local_plaintext_transport() -> 
     assert configured_settings.SECURE_HSTS_INCLUDE_SUBDOMAINS is False
     assert configured_settings.SECURE_HSTS_PRELOAD is False
     assert configured_settings.SESSION_COOKIE_SECURE is False
-    assert configured_settings.CSRF_COOKIE_SECURE is False
+    assert configured_settings.CSRF_COOKIE_SECURE is True
     assert configured_settings.SECURE_PROXY_SSL_HEADER is None
 
 
@@ -942,7 +946,7 @@ def test_development_settings_enforce_public_https_transport() -> None:
     assert development.SECURE_PROXY_SSL_HEADER == ("HTTP_X_FORWARDED_PROTO", "https")
     assert development.SECURE_HSTS_SECONDS == PUBLIC_HSTS_SECONDS
     assert development.SESSION_COOKIE_SECURE is False
-    assert development.CSRF_COOKIE_SECURE is False
+    assert development.CSRF_COOKIE_SECURE is True
 
 
 @pytest.mark.unit
@@ -966,6 +970,32 @@ def test_credentialed_cors_rejects_a_wildcard_origin() -> None:
     with pytest.raises(
         ImproperlyConfigured,
         match="DJANGO_CORS_ALLOWED_ORIGINS must not contain a wildcard",
+    ):
+        _execute_module_in_isolation("base", environment)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("origin", ["*", "https://*.datarohit.com"])
+def test_csrf_trusted_origins_reject_wildcards(origin: str) -> None:
+    """Reject any wildcard in the CSRF trusted origins.
+
+    Executes the shared settings boundary with a bare and a subdomain wildcard so a sibling host
+    can never be trusted to submit cookie-authenticated requests.
+
+    Arguments:
+        origin: Wildcard origin presented to the settings boundary.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a wildcard origin is accepted.
+    """
+    environment = REQUIRED_ENVIRONMENT | {"DJANGO_CSRF_TRUSTED_ORIGINS": origin}
+
+    with pytest.raises(
+        ImproperlyConfigured,
+        match="DJANGO_CSRF_TRUSTED_ORIGINS must not contain a wildcard",
     ):
         _execute_module_in_isolation("base", environment)
 
@@ -1054,6 +1084,84 @@ def test_json_web_token_settings_reject_unsafe_relationships(
 
     Raises:
         AssertionError: If unsafe JSON web token settings load successfully.
+    """
+    with pytest.raises(ImproperlyConfigured, match=message):
+        _execute_module_in_isolation("base", REQUIRED_ENVIRONMENT | overrides)
+
+
+@pytest.mark.unit
+def test_browser_cookie_settings_fix_every_flag_and_take_only_names_from_the_environment() -> None:
+    """Pin the browser cookie contract in configuration.
+
+    Executes shared settings and verifies the three names come from the environment while the
+    CSRF cookie's secure, readable, strict, path, and lifetime attributes are fixed in code.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If any cookie name or fixed attribute drifts from the contract.
+    """
+    module = _execute_module_in_isolation("base", REQUIRED_ENVIRONMENT)
+
+    assert module.BROWSER_ACCESS_COOKIE_NAME == "__Host-lf-access"
+    assert module.BROWSER_REFRESH_COOKIE_NAME == "__Secure-lf-refresh"
+    assert module.BROWSER_CSRF_COOKIE_NAME == "__Host-lf-csrf"
+    assert module.CSRF_COOKIE_NAME == "__Host-lf-csrf"
+    assert module.CSRF_COOKIE_SECURE is True
+    assert module.CSRF_COOKIE_HTTPONLY is False
+    assert module.CSRF_COOKIE_SAMESITE == "Strict"
+    assert module.CSRF_COOKIE_PATH == "/"
+    assert module.CSRF_COOKIE_DOMAIN is None
+    refresh_lifetime = int(REQUIRED_ENVIRONMENT["DJANGO_JWT_REFRESH_TOKEN_LIFETIME_SECONDS"])
+    assert refresh_lifetime == module.CSRF_COOKIE_AGE
+    assert module.CSRF_USE_SESSIONS is False
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        pytest.param(
+            {"DJANGO_BROWSER_ACCESS_COOKIE_NAME": "lf-access"},
+            "DJANGO_BROWSER_ACCESS_COOKIE_NAME must be a cookie token starting with __Host-",
+            id="access-without-host-prefix",
+        ),
+        pytest.param(
+            {"DJANGO_BROWSER_REFRESH_COOKIE_NAME": "__Host-lf-refresh"},
+            "DJANGO_BROWSER_REFRESH_COOKIE_NAME must be a cookie token starting with __Secure-",
+            id="refresh-with-wrong-prefix",
+        ),
+        pytest.param(
+            {"DJANGO_BROWSER_CSRF_COOKIE_NAME": "__Host-lf csrf"},
+            "DJANGO_BROWSER_CSRF_COOKIE_NAME must be a cookie token starting with __Host-",
+            id="csrf-with-illegal-character",
+        ),
+        pytest.param(
+            {"DJANGO_BROWSER_CSRF_COOKIE_NAME": "__Host-lf-access"},
+            "must be distinct",
+            id="duplicate-names",
+        ),
+    ],
+)
+def test_browser_cookie_names_reject_unsafe_values(overrides: dict[str, str], message: str) -> None:
+    """Reject cookie names that would lose their prefix protection.
+
+    Executes shared settings with each unsafe name and verifies startup fails naming the variable,
+    because a name without its prefix silently drops the cookie-tossing defence.
+
+    Arguments:
+        overrides: Unsafe environment values replacing the valid baseline.
+        message: Diagnostic fragment the configuration error must carry.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If an unsafe cookie name loads successfully.
     """
     with pytest.raises(ImproperlyConfigured, match=message):
         _execute_module_in_isolation("base", REQUIRED_ENVIRONMENT | overrides)

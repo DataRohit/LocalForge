@@ -12,6 +12,10 @@ if TYPE_CHECKING:
     from asgiref.typing import ASGIReceiveCallable, ASGISendCallable, ASGISendEvent
 
 
+COOKIE_SOURCE = "cookie"
+SUBPROTOCOL_SOURCE = "subprotocol"
+
+
 class WebSocketErrorPayload(TypedDict):
     """Describe the REST-compatible payload inside one WebSocket error frame.
 

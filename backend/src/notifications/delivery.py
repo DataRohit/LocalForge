@@ -217,3 +217,23 @@ def publish_notification(user_id: UUID, event: str, data: dict[str, JsonValue]) 
         group,
         channel_event,
     )
+
+
+def publish_session_revoked(user_id: UUID) -> None:
+    """End every browser-authenticated socket owned by an account.
+
+    Broadcasts the revocation to the account's group so cookie-authenticated consumers close with
+    the credential-expired code, while sockets opened with a bearer subprotocol ignore the event.
+
+    Arguments:
+        user_id: Immutable primary identifier of the account whose browser session ended.
+
+    Returns:
+        None.
+
+    Raises:
+        InvalidNotificationRecipientError: If the recipient identifier is not an actual UUID.
+    """
+    group = notification_group_name(user_id)
+    channel_layer = cast("BaseChannelLayer", get_channel_layer())
+    async_to_sync(channel_layer.group_send)(group, {"type": "session.revoked"})

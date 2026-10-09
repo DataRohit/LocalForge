@@ -20,6 +20,7 @@ from notifications.delivery import (
     JsonValue,
     notification_group_name,
     publish_notification,
+    publish_session_revoked,
 )
 
 pytestmark = pytest.mark.unit
@@ -480,3 +481,52 @@ def test_publish_notification_rejects_non_uuid_recipients_before_layer_acquisiti
 
     layer_factory.assert_not_called()
     group_send.assert_not_awaited()
+
+
+def test_session_revocation_is_published_to_the_account_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Address the revocation event to the account's deterministic group.
+
+    Replaces the channel layer with a recording double and asserts one group send carrying only
+    the dispatch type.
+
+    Arguments:
+        monkeypatch: Fixture installing the channel-layer double.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the group or payload differs.
+    """
+    account = uuid.UUID(int=7)
+    layer = SimpleNamespace(group_send=AsyncMock())
+    monkeypatch.setattr("notifications.delivery.get_channel_layer", lambda: layer)
+
+    publish_session_revoked(account)
+
+    layer.group_send.assert_awaited_once_with(
+        notification_group_name(account),
+        {"type": "session.revoked"},
+    )
+
+
+@pytest.mark.parametrize("invalid_recipient", ["not-a-uuid", 7, None])
+def test_session_revocation_rejects_a_non_uuid_recipient(invalid_recipient: object) -> None:
+    """Refuse a recipient that is not a UUID before touching the channel layer.
+
+    Passes a string and expects the shared recipient error.
+    No channel layer is acquired.
+
+    Arguments:
+        invalid_recipient: Value that is not a UUID.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a string recipient is accepted.
+    """
+    with pytest.raises(InvalidNotificationRecipientError):
+        publish_session_revoked(cast("uuid.UUID", invalid_recipient))

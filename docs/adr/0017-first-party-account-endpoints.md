@@ -270,3 +270,12 @@ URL surface, so every endpoint would need a compatibility shim. Wrong shape for 
   maintained by the framework and need no third party.
 - If Djoser 3.0 ships with a green Django 6 CI matrix and a stable schema story, revisiting this is a contained
   change: the URLs already match.
+
+## Amendment 2026-10-09: emailed links target the single-page application
+
+Phase 11 ([Phase 11 architecture](../architecture/phase-11-backend-freeze.md) Section 5) replaces the credential
+handoff URLs with browser links. Activation, password-reset, and username-reset emails now link to `/activate`,
+`/reset-password`, and `/reset-username` on `DJANGO_SITE_URL`, carrying `account` and `token` in the URL **fragment**.
+A browser never sends a fragment to a server, so the credentials stay out of access logs, proxies, and referrers; the
+single-page application reads them, removes them from the address bar, and submits the same unchanged POST bodies to
+the same routes. No route, body, status code, or token format changed.

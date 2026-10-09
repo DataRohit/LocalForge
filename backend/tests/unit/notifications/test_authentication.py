@@ -19,6 +19,7 @@ from notifications.authentication import (
     JWTSubprotocolAuthMiddleware,
     WebSocketAuthenticationError,
     WebSocketJWTAuthentication,
+    access_cookie_from_scope,
 )
 from notifications.protocol import WebSocketOutcome
 from tests.factories import build_user
@@ -241,3 +242,38 @@ def test_websocket_authentication_distinguishes_expired_from_malformed_tokens() 
 
     assert expired_failure.value.outcome is WebSocketOutcome.CREDENTIAL_EXPIRED
     assert malformed_failure.value.outcome is WebSocketOutcome.CREDENTIAL_MALFORMED
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("headers", "expected"),
+    [
+        ([], None),
+        ([(b"cookie", b"other=1")], None),
+        ([(b"cookie", b"__Host-lf-access=")], None),
+        ([(b"cookie", b"__Host-lf-access=abc")], "abc"),
+        ([(b"cookie", b"a=1"), (b"Cookie", b"__Host-lf-access=abc")], "abc"),
+        ([(b"cookie", b"bad name=1; =2; broken")], None),
+    ],
+    ids=["none", "unrelated", "empty", "present", "split-headers", "unparseable"],
+)
+def test_the_access_cookie_is_read_from_every_cookie_header(
+    headers: list[tuple[bytes, bytes]],
+    expected: str | None,
+) -> None:
+    """Extract the access cookie from the handshake headers.
+
+    Joins split cookie headers, ignores unrelated cookies, and treats an empty or unparseable
+    value as no credential.
+
+    Arguments:
+        headers: ASGI handshake headers.
+        expected: Expected cookie value.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the extracted value differs.
+    """
+    assert access_cookie_from_scope({"headers": headers}) == expected

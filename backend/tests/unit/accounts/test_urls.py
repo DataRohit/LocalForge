@@ -40,6 +40,10 @@ def test_account_routes_match_the_fixed_surface() -> None:
         ("jwt/create/", "jwt-create"),
         ("jwt/refresh/", "jwt-refresh"),
         ("jwt/verify/", "jwt-verify"),
+        ("browser/csrf/", "browser-csrf"),
+        ("browser/login/", "browser-login"),
+        ("browser/refresh/", "browser-refresh"),
+        ("browser/logout/", "browser-logout"),
         ("token/login/", "token-login"),
         ("token/logout/", "token-logout"),
     }

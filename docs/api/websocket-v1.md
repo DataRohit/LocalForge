@@ -20,6 +20,30 @@ pinned Uvicorn transport with HTTP `400` before ASGI dispatch. Account lookup us
 through Channels' database-safe async wrapper. Inactive and unknown or deleted accounts remain distinct close
 classifications.
 
+### Browser cookie path
+
+A browser handshake authenticates with the `HttpOnly` access cookie issued by `POST /api/v1/browser/login/`
+([ADR 0025](../adr/0025-browser-authentication.md)). The cookie is accepted only when the handshake offers no
+subprotocol, and only after the exact Host and Origin validators have admitted it; those validators are the defence
+against cross-site WebSocket hijacking. A cookie-authenticated connection is accepted without a subprotocol echo.
+
+| Handshake | Result |
+| --- | --- |
+| Valid cookie, allowed Origin and Host, no subprotocol | Accepted; `credential_source` is `cookie` |
+| Cookie **and** a credential subprotocol | Closes `4402` `credential_malformed`; the sources are never merged |
+| Missing Origin or Host, or an unlisted Origin | Closes `4406` before authentication or the consumer starts |
+| Malformed, wrong-type, or password-revoked cookie | Closes `4402` |
+| Expired cookie | Closes `4403` |
+| Cookie of an inactive account | Closes `4404` |
+| Cookie of a deleted account | Closes `4405` |
+| No cookie and no subprotocol | Closes `4401` |
+
+A cookie-authenticated socket ends with its browser session. It closes with `4403` `credential_expired` when the
+access token expires, when the browser logout route runs for the account (every cookie-authenticated socket of that
+account closes; sockets opened with a bearer subprotocol are unaffected), and at the next inbound frame if the
+account was deactivated (`4404`), deleted (`4405`), or had its password replaced (`4402`). The browser then refreshes
+its cookies and reconnects. Neither the cookie nor any token is written to an application or access log record.
+
 The notification socket is available at `/ws/notifications/`. Tickets 38 and 39 verify the direct ASGI route,
 configured Host and Origin admission, subprotocol echo, and a live handshake through Traefik.
 
@@ -108,6 +132,12 @@ non-string `"type"` values, and non-object `"payload"` values are malformed fram
 application operation is accepted in version 1. A syntactically valid envelope with an unsupported `"type"`
 receives an error frame while the connection remains open. A `"subscribe"` message is recognized only to return
 the recoverable `permission_denied` error: membership remains server-owned and the socket stays open.
+
+## Notification scope
+
+The socket is a live feed only. There is no REST history route and no replay: an event published while an account has
+no open socket is dropped ([ADR 0024](../adr/0024-full-stack-pivot.md)). Clients that need current state read it from
+the REST routes after connecting.
 
 ## Message size limits
 
@@ -237,6 +267,8 @@ That discard is shielded until the channel layer processes Redis' unsubscribe ac
 ownership released and the original cancellation propagated.
 
 ## Verification state
+
+Ticket 83 adds the cookie path described above and is verified in `testing` only.
 
 Ticket 38 establishes the route, envelope, origin checks, malformed-frame handling, and live upgrade. Ticket 39
 establishes Host admission, JWT subprotocol classifications, authoritative account scope, query-string refusal,

@@ -1,11 +1,17 @@
 """Versioned account API routes.
 
-Maps fixed authentication, registration, activation, self-profile, password, and username
-management endpoints without adding any route outside the closed application surface.
+Maps fixed authentication, browser session, registration, activation, self-profile, password, and
+username management endpoints without adding any route outside the closed application surface.
 """
 
 from django.urls import path
 
+from accounts.browser_sessions import (
+    BrowserCsrfView,
+    BrowserLoginView,
+    BrowserLogoutView,
+    BrowserRefreshView,
+)
 from accounts.jwt_authentication import JWTCreateView, JWTRefreshView, JWTVerifyView
 from accounts.password_management import (
     PasswordChangeView,
@@ -55,6 +61,10 @@ urlpatterns = [
     path("jwt/create/", JWTCreateView.as_view(), name="jwt-create"),
     path("jwt/refresh/", JWTRefreshView.as_view(), name="jwt-refresh"),
     path("jwt/verify/", JWTVerifyView.as_view(), name="jwt-verify"),
+    path("browser/csrf/", BrowserCsrfView.as_view(), name="browser-csrf"),
+    path("browser/login/", BrowserLoginView.as_view(), name="browser-login"),
+    path("browser/refresh/", BrowserRefreshView.as_view(), name="browser-refresh"),
+    path("browser/logout/", BrowserLogoutView.as_view(), name="browser-logout"),
     path("token/login/", TokenLoginView.as_view(), name="token-login"),
     path("token/logout/", TokenLogoutView.as_view(), name="token-logout"),
 ]

@@ -387,18 +387,14 @@ def _send_claimed_activation(
             return False
 
         recipient = account.email
-        action_path = f"/api/v1/users/?{urlencode({'account': account_id, 'token': token})}"
+        action_path = f"/activate#{urlencode({'account': account_id, 'token': token})}"
         delivered = send_application_email(
             recipient,
             "Activate your LocalForge account",
-            (
-                "Give this credential handoff URL to your LocalForge client. The client must "
-                "extract the account and token values and submit them with POST; opening the URL "
-                "in a browser does not activate the account."
-            ),
+            "Open this link in your browser to activate your LocalForge account.",
             action_path=action_path,
             context={
-                "action_label": "Account activation credential handoff URL",
+                "action_label": "Activate your account",
                 "security_notice": (
                     "If you did not create this account, you can ignore this email."
                 ),
@@ -572,21 +568,14 @@ def _send_claimed_password_reset(
         ):
             return False
 
-        action_path = (
-            "/api/v1/users/reset_password_confirm/"
-            f"?{urlencode({'account': account_id, 'token': token})}"
-        )
+        action_path = f"/reset-password#{urlencode({'account': account_id, 'token': token})}"
         delivered = send_application_email(
             account.email,
             "Reset your LocalForge password",
-            (
-                "Give this credential handoff URL to your LocalForge client. The client must "
-                "extract the account and token values, collect your new password, and submit the "
-                "complete POST body; opening the URL in a browser does not reset the password."
-            ),
+            "Open this link in your browser to choose a new LocalForge password.",
             action_path=action_path,
             context={
-                "action_label": "Password reset credential handoff URL",
+                "action_label": "Reset your password",
                 "security_notice": (
                     "If you did not request a password reset, ignore this email and keep your "
                     "current password."
@@ -756,21 +745,14 @@ def _send_claimed_username_reset(
         ):
             return False
 
-        action_path = (
-            "/api/v1/users/reset_username_confirm/"
-            f"?{urlencode({'account': account_id, 'token': token})}"
-        )
+        action_path = f"/reset-username#{urlencode({'account': account_id, 'token': token})}"
         delivered = send_application_email(
             account.email,
             "Reset your LocalForge username",
-            (
-                "Give this credential handoff URL to your LocalForge client. The client must "
-                "extract the account and token values, collect your new username, and submit the "
-                "complete POST body; opening the URL in a browser does not reset the username."
-            ),
+            "Open this link in your browser to choose a new LocalForge username.",
             action_path=action_path,
             context={
-                "action_label": "Username reset credential handoff URL",
+                "action_label": "Reset your username",
                 "security_notice": ("If you did not request a username reset, ignore this email."),
             },
         )

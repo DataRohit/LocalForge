@@ -55,9 +55,7 @@ PINNED_IMAGE_REFERENCES = {
     ),
 }
 HTTP_BODY_LIMIT_BYTES = 4096
-EXPECTED_DEPLOYMENT_WARNINGS = frozenset(
-    {"security.W004", "security.W008", "security.W012", "security.W016"}
-)
+EXPECTED_DEPLOYMENT_WARNINGS = frozenset({"security.W004", "security.W008", "security.W012"})
 DEPLOYMENT_WARNING_PATTERN = re.compile(r"\(([a-z][a-z0-9_]*\.[A-Z]\d{3})\)")
 IMAGE_ID_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
 PROTECTED_ENDPOINTS: Mapping[str, tuple[str, frozenset[int]]] = {
@@ -278,6 +276,101 @@ def deployment_check(runner: AuditRunner, root: Path = REPOSITORY_ROOT) -> bool:
     )
     warnings = frozenset(DEPLOYMENT_WARNING_PATTERN.findall(result.combined_output))
     return result.code == 0 and warnings == EXPECTED_DEPLOYMENT_WARNINGS
+
+
+BROWSER_CONTRACT_PROGRAM = """
+import sys
+sys.path.insert(0, sys.argv[1])
+import django
+django.setup()
+from django.conf import settings
+from django.http import HttpResponse
+from django.test import RequestFactory
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.request import Request
+from accounts.browser_cookies import enforce_csrf, set_credential_cookies
+
+names = (
+    settings.BROWSER_ACCESS_COOKIE_NAME,
+    settings.BROWSER_REFRESH_COOKIE_NAME,
+    settings.BROWSER_CSRF_COOKIE_NAME,
+)
+assert names[0].startswith("__Host-") and names[2].startswith("__Host-")
+assert names[1].startswith("__Secure-") and len(set(names)) == 3
+assert settings.CSRF_COOKIE_NAME == names[2]
+assert settings.CSRF_COOKIE_SECURE is True and settings.CSRF_COOKIE_HTTPONLY is False
+assert settings.CSRF_COOKIE_SAMESITE == "Strict" and settings.CSRF_COOKIE_PATH == "/"
+assert settings.CSRF_COOKIE_DOMAIN is None
+assert not any("*" in origin for origin in settings.CSRF_TRUSTED_ORIGINS)
+assert "*" not in settings.CORS_ALLOWED_ORIGINS
+assert "django.middleware.csrf.CsrfViewMiddleware" in settings.MIDDLEWARE
+classes = settings.REST_FRAMEWORK["DEFAULT_AUTHENTICATION_CLASSES"]
+assert classes[-1] == "accounts.browser_authentication.CookieJWTAuthentication"
+response = HttpResponse()
+set_credential_cookies(response, access="a", refresh="r")
+for cookie in response.cookies.values():
+    assert cookie["httponly"] is True and cookie["secure"] is True
+    assert cookie["samesite"] == "Strict" and cookie["domain"] == ""
+assert response.cookies[names[0]]["path"] == "/"
+assert response.cookies[names[1]]["path"] == "/api/v1/browser/"
+forged = Request(RequestFactory().post("/api/v1/users/me/"))
+try:
+    enforce_csrf(forged)
+except PermissionDenied:
+    pass
+else:
+    raise SystemExit("a forged unsafe request was accepted")
+"""
+BROWSER_HYGIENE_TESTS = (
+    (
+        "tests/integration/accounts/test_browser_sessions.py::test_no_credential_reaches_a_url_or_a_log_record"
+    ),
+    (
+        "tests/integration/notifications/test_cookie_authentication.py::test_no_credential_reaches_a_log_record"
+    ),
+    (
+        "tests/integration/accounts/test_browser_cookie_authentication.py::test_an_unsafe_cookie_request_needs_a_valid_token_and_origin"
+    ),
+)
+
+
+def browser_contract_check(runner: AuditRunner, root: Path = REPOSITORY_ROOT) -> bool:
+    """Require the browser cookie, CSRF, and credential log hygiene contract.
+
+    Evaluates cookie names, attributes, CSRF settings, authentication order, and forged-request
+    rejection in the testing settings, then runs the tests proving credentials never reach a log.
+
+    Arguments:
+        runner: Command execution boundary.
+        root: Repository containing the generated testing environment.
+
+    Returns:
+        True when both the configuration program and the hygiene tests succeed.
+    """
+    backend_root = root / "backend" if (root / "backend").is_dir() else root
+    environment = load_testing_environment(root)
+    contract = runner.run(
+        (sys.executable, "-c", BROWSER_CONTRACT_PROGRAM, str(backend_root / "src")),
+        environment=environment,
+    )
+    if contract.code != 0:
+        return False
+    hygiene = runner.run(
+        (
+            sys.executable,
+            "-m",
+            "pytest",
+            "-c",
+            str(backend_root / "pyproject.toml"),
+            "--rootdir",
+            str(backend_root),
+            "--no-cov",
+            "-q",
+            *(str(backend_root / node) for node in BROWSER_HYGIENE_TESTS),
+        ),
+        environment=environment,
+    )
+    return hygiene.code == 0
 
 
 def docker_bind_path(path: Path) -> str:
@@ -1172,7 +1265,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--scope",
-        choices=("all", "deployment", "history", "dependencies", "images", "runtime"),
+        choices=("all", "deployment", "browser", "history", "dependencies", "images", "runtime"),
         default="all",
     )
     return parser
@@ -1201,6 +1294,7 @@ def main(
     active_runner = runner or HostRunner()
     checks = {
         "deployment": lambda: deployment_check(active_runner, root),
+        "browser": lambda: browser_contract_check(active_runner, root),
         "history": lambda: history_secret_check(active_runner, root),
         "dependencies": lambda: dependency_check(active_runner),
         "images": lambda: image_check(active_runner, root),

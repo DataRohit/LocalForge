@@ -30,6 +30,7 @@ CELERY_MINIMUM_WORKER_CONCURRENCY = 2
 MAXIMUM_DAILY_SCHEDULE_HOUR = 23
 MAXIMUM_DAILY_SCHEDULE_MINUTE = 59
 THROTTLE_IDENTITY_HMAC_TEXT_PATTERN = re.compile(r"[A-Za-z0-9_-]+")
+COOKIE_NAME_PATTERN = re.compile(r"[A-Za-z0-9_-]+")
 THROTTLE_IDENTITY_HMAC_PLACEHOLDER_FRAGMENTS = (
     b"changeme",
     b"defaultsecret",
@@ -93,6 +94,9 @@ JWT_REFRESH_TOKEN_LIFETIME_SECONDS = env.int("DJANGO_JWT_REFRESH_TOKEN_LIFETIME_
 ACCOUNT_ACTIVATION_TOKEN_LIFETIME_SECONDS = env.int(
     "DJANGO_ACCOUNT_ACTIVATION_TOKEN_LIFETIME_SECONDS"
 )
+BROWSER_ACCESS_COOKIE_NAME = env.str("DJANGO_BROWSER_ACCESS_COOKIE_NAME")
+BROWSER_REFRESH_COOKIE_NAME = env.str("DJANGO_BROWSER_REFRESH_COOKIE_NAME")
+BROWSER_CSRF_COOKIE_NAME = env.str("DJANGO_BROWSER_CSRF_COOKIE_NAME")
 PASSWORD_RESET_TIMEOUT = env.int("DJANGO_PASSWORD_RESET_TOKEN_LIFETIME_SECONDS")
 USERNAME_RESET_TIMEOUT = env.int("DJANGO_USERNAME_RESET_TOKEN_LIFETIME_SECONDS")
 
@@ -156,6 +160,21 @@ if JWT_ACCESS_TOKEN_LIFETIME_SECONDS >= JWT_REFRESH_TOKEN_LIFETIME_SECONDS:
     )
     raise ImproperlyConfigured(message)
 
+BROWSER_COOKIE_NAME_RULES = (
+    ("DJANGO_BROWSER_ACCESS_COOKIE_NAME", BROWSER_ACCESS_COOKIE_NAME, "__Host-"),
+    ("DJANGO_BROWSER_REFRESH_COOKIE_NAME", BROWSER_REFRESH_COOKIE_NAME, "__Secure-"),
+    ("DJANGO_BROWSER_CSRF_COOKIE_NAME", BROWSER_CSRF_COOKIE_NAME, "__Host-"),
+)
+
+for _variable, _cookie_name, _prefix in BROWSER_COOKIE_NAME_RULES:
+    if not _cookie_name.startswith(_prefix) or not COOKIE_NAME_PATTERN.fullmatch(_cookie_name):
+        message = f"{_variable} must be a cookie token starting with {_prefix}"
+        raise ImproperlyConfigured(message)
+
+if len({rule[1] for rule in BROWSER_COOKIE_NAME_RULES}) != len(BROWSER_COOKIE_NAME_RULES):
+    message = "the three browser cookie names must be distinct"
+    raise ImproperlyConfigured(message)
+
 if ACCOUNT_ACTIVATION_TOKEN_LIFETIME_SECONDS <= 0:
     message = "DJANGO_ACCOUNT_ACTIVATION_TOKEN_LIFETIME_SECONDS must be positive"
     raise ImproperlyConfigured(message)
@@ -175,6 +194,10 @@ CSRF_TRUSTED_ORIGINS = env.list("DJANGO_CSRF_TRUSTED_ORIGINS")
 CORS_ALLOWED_ORIGINS = tuple(env.list("DJANGO_CORS_ALLOWED_ORIGINS"))
 CORS_ALLOW_CREDENTIALS = env.bool("DJANGO_CORS_ALLOW_CREDENTIALS")
 API_DOCUMENTATION_ENABLED = env.bool("DJANGO_API_DOCUMENTATION_ENABLED")
+
+if any("*" in origin for origin in CSRF_TRUSTED_ORIGINS):
+    message = "DJANGO_CSRF_TRUSTED_ORIGINS must not contain a wildcard"
+    raise ImproperlyConfigured(message)
 
 if "*" in CORS_ALLOWED_ORIGINS:
     message = "DJANGO_CORS_ALLOWED_ORIGINS must not contain a wildcard"
@@ -218,6 +241,7 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "accounts.authentication.JWTAuthentication",
         "accounts.authentication.PrimaryTokenAuthentication",
+        "accounts.browser_authentication.CookieJWTAuthentication",
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "DEFAULT_PERMISSION_CLASSES": [
@@ -363,7 +387,14 @@ SECURE_HSTS_SECONDS = 0
 SECURE_HSTS_INCLUDE_SUBDOMAINS = False
 SECURE_HSTS_PRELOAD = False
 SESSION_COOKIE_SECURE = False
-CSRF_COOKIE_SECURE = False
+CSRF_COOKIE_NAME = BROWSER_CSRF_COOKIE_NAME
+CSRF_COOKIE_SECURE = True
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SAMESITE = "Strict"
+CSRF_COOKIE_PATH = "/"
+CSRF_COOKIE_DOMAIN = None
+CSRF_COOKIE_AGE = JWT_REFRESH_TOKEN_LIFETIME_SECONDS
+CSRF_USE_SESSIONS = False
 SECURE_PROXY_SSL_HEADER = None
 
 SPECTACULAR_SETTINGS = {

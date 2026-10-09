@@ -13,6 +13,800 @@ info:
     name: MIT License
     url: https://opensource.org/license/mit
 paths:
+  /api/v1/browser/csrf/:
+    get:
+      operationId: browser_csrf
+      description: Sets the readable CSRF cookie and returns no body. The browser
+        copies the cookie value into the `X-CSRFToken` header of every unsafe request.
+      summary: Seed the CSRF cookie
+      tags:
+      - Authentication
+      responses:
+        '204':
+          description: The CSRF cookie was set; the response is uncacheable.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[csrf]
+          x-localforge-examples:
+            NoContent:
+              summary: Successful response with no response body.
+              value: null
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                MethodNotAllowed:
+                  value:
+                    code: method_not_allowed
+                    message: The requested method is not allowed.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Method not allowed
+          description: The CSRF route accepts only GET.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[csrf]
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                NotAcceptable:
+                  value:
+                    code: not_acceptable
+                    message: The requested response format is not available.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Not acceptable
+          description: The requested response representation is unavailable.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[csrf]
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                RequestTooLarge:
+                  value:
+                    code: request_too_large
+                    message: The request body is too large.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Request too large
+          description: The request body exceeds the environment-configured API limit.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[csrf]
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                TooManyRequests:
+                  value:
+                    code: throttled
+                    message: Too many requests.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Too many requests
+          description: The client address exceeded the anonymous scope.
+          headers:
+            Retry-After:
+              description: Whole seconds until the fixed or rolling admission window
+                recovers.
+              schema:
+                type: integer
+                minimum: 1
+            X-Request-ID:
+              description: Request correlation identifier echoed by the error envelope.
+              schema:
+                type: string
+                format: uuid
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[csrf]
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                InternalServerError:
+                  value:
+                    code: internal_server_error
+                    message: An unexpected error occurred.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Internal server error
+          description: An unexpected server failure was contained.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[csrf]
+        '400':
+          description: Django rejected the Host header before the operation executed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                InvalidHost:
+                  summary: Invalid Host header
+                  value:
+                    code: bad_request
+                    message: The request was invalid.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[csrf]
+          - backend/tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[browser_csrf]
+      security: []
+      x-localforge-observed-by: backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[csrf]
+    head:
+      operationId: browser_csrf_head
+      description: Runs the same negotiation and throttling boundaries as GET and
+        sets the same CSRF cookie while returning status and headers only.
+      summary: Check the CSRF route without a body
+      tags:
+      - Authentication
+      responses:
+        '204':
+          description: The CSRF cookie was set; the response is uncacheable.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[csrf-head]
+          x-localforge-examples:
+            NoContent:
+              summary: Response with no response body.
+              value: null
+        '406':
+          description: The requested response representation is unavailable.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[csrf-head]
+          x-localforge-examples:
+            NoContent:
+              summary: Response with no response body.
+              value: null
+        '413':
+          description: The request body exceeds the environment-configured API limit.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[csrf-head]
+          x-localforge-examples:
+            NoContent:
+              summary: Response with no response body.
+              value: null
+        '429':
+          description: The client address exceeded the anonymous scope.
+          headers:
+            Retry-After:
+              description: Whole seconds until the fixed or rolling admission window
+                recovers.
+              schema:
+                type: integer
+                minimum: 1
+            X-Request-ID:
+              description: Request correlation identifier echoed by the error envelope.
+              schema:
+                type: string
+                format: uuid
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[csrf-head]
+          x-localforge-examples:
+            NoContent:
+              summary: Response with no response body.
+              value: null
+        '500':
+          description: An unexpected server failure was contained.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[csrf-head]
+          x-localforge-examples:
+            NoContent:
+              summary: Response with no response body.
+              value: null
+        '400':
+          description: Django rejected the Host header before the operation executed.
+          x-localforge-representation-examples:
+            InvalidHost:
+              summary: Invalid Host header
+              value:
+                code: bad_request
+                message: The request was invalid.
+                details: {}
+                request_id: 00000000-0000-4000-8000-000000000000
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[csrf-head]
+          - backend/tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[browser_csrf_head]
+          x-localforge-examples:
+            NoContent:
+              summary: Response with no response body.
+              value: null
+      security: []
+      x-localforge-observed-by: backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[csrf-head]
+  /api/v1/browser/login/:
+    post:
+      operationId: browser_login
+      description: Authenticates an active account without revealing whether a rejected
+        username exists, then sets the HttpOnly access and refresh cookies and rotates
+        the CSRF cookie. The body is the caller's profile; no token appears in any
+        body or URL. Requires a matching `X-CSRFToken` header and a trusted `Origin`.
+      summary: Sign in with HttpOnly cookies
+      tags:
+      - Authentication
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenLogin'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenLogin'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenLogin'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+              examples:
+                SignedIn:
+                  value:
+                    id: 00000000-0000-7000-8000-000000000000
+                    username: river
+                    email: river@localforge.invalid
+                    capabilities:
+                    - account:read
+                    - account:update
+                    - account:delete
+                    - credentials:change
+                    - notifications:receive
+                  summary: Signed in
+          description: Credentials were accepted; cookies were set.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[login]
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                MalformedJSON:
+                  value:
+                    code: parse_error
+                    message: The request body could not be parsed.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Malformed JSON
+                MissingUsername:
+                  value:
+                    code: validation_error
+                    message: The submitted data is invalid.
+                    details:
+                      username:
+                      - This field is required.
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Missing username
+                InvalidHost:
+                  summary: Invalid Host header
+                  value:
+                    code: bad_request
+                    message: The request was invalid.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+          description: The request body is malformed or misses a required credential
+            field.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[login]
+          - backend/tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[browser_login]
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                AuthenticationFailed:
+                  value:
+                    code: authentication_failed
+                    message: Authentication failed.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Authentication failed
+          description: Credentials were rejected without disclosing account state.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[login]
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                CSRFRejected:
+                  value:
+                    code: permission_denied
+                    message: You do not have permission to perform this action.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: CSRF rejected
+          description: The CSRF token or Origin was missing, mismatched, or untrusted.
+            Cookies are left in place so the client can fetch a fresh token and retry.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[login]
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                MethodNotAllowed:
+                  value:
+                    code: method_not_allowed
+                    message: The requested method is not allowed.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Method not allowed
+          description: The browser login route accepts only POST.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[login]
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                NotAcceptable:
+                  value:
+                    code: not_acceptable
+                    message: The requested response format is not available.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Not acceptable
+          description: The requested response representation is unavailable.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[login]
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                RequestTooLarge:
+                  value:
+                    code: request_too_large
+                    message: The request body is too large.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Request too large
+          description: The request body exceeds the environment-configured API limit.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[login]
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                UnsupportedMediaType:
+                  value:
+                    code: unsupported_media_type
+                    message: The request content type is not supported.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Unsupported media type
+          description: The submitted request representation is unsupported.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[login]
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                TooManyRequests:
+                  value:
+                    code: throttled
+                    message: Too many requests.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Too many requests
+          description: The client address or account identifier exceeded its configured
+            login rate.
+          headers:
+            Retry-After:
+              description: Whole seconds until the fixed or rolling admission window
+                recovers.
+              schema:
+                type: integer
+                minimum: 1
+            X-Request-ID:
+              description: Request correlation identifier echoed by the error envelope.
+              schema:
+                type: string
+                format: uuid
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[login]
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                InternalServerError:
+                  value:
+                    code: internal_server_error
+                    message: An unexpected error occurred.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Internal server error
+          description: An unexpected server failure was contained.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[login]
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                ServiceUnavailable:
+                  value:
+                    code: service_unavailable
+                    message: A required service is unavailable.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Service unavailable
+          description: Authoritative account, login-admission, or token-persistence
+            state is unavailable.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[login]
+      security: []
+      x-localforge-observed-by: backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[login]
+  /api/v1/browser/logout/:
+    post:
+      operationId: browser_logout
+      description: 'Blacklists the refresh token, clears all three cookies, and closes
+        the account''s open cookie-authenticated sockets. Safe to repeat: an absent,
+        expired, or already revoked session still returns 204. Requires a matching
+        `X-CSRFToken` header and a trusted `Origin` whenever a credential cookie is
+        present. A previously issued access token stays valid until it expires.'
+      summary: End the browser session
+      tags:
+      - Authentication
+      responses:
+        '204':
+          description: The session ended and the cookies were cleared.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[logout]
+          x-localforge-examples:
+            NoContent:
+              summary: Successful response with no response body.
+              value: null
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                CSRFRejected:
+                  value:
+                    code: permission_denied
+                    message: You do not have permission to perform this action.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: CSRF rejected
+          description: The CSRF token or Origin was missing, mismatched, or untrusted.
+            Cookies are left in place so the client can fetch a fresh token and retry.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[logout]
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                MethodNotAllowed:
+                  value:
+                    code: method_not_allowed
+                    message: The requested method is not allowed.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Method not allowed
+          description: The browser logout route accepts only POST.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[logout]
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                NotAcceptable:
+                  value:
+                    code: not_acceptable
+                    message: The requested response format is not available.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Not acceptable
+          description: The requested response representation is unavailable.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[logout]
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                RequestTooLarge:
+                  value:
+                    code: request_too_large
+                    message: The request body is too large.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Request too large
+          description: The request body exceeds the environment-configured API limit.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[logout]
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                TooManyRequests:
+                  value:
+                    code: throttled
+                    message: Too many requests.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Too many requests
+          description: The client address or token account exceeded the authentication
+            scope.
+          headers:
+            Retry-After:
+              description: Whole seconds until the fixed or rolling admission window
+                recovers.
+              schema:
+                type: integer
+                minimum: 1
+            X-Request-ID:
+              description: Request correlation identifier echoed by the error envelope.
+              schema:
+                type: string
+                format: uuid
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[logout]
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                InternalServerError:
+                  value:
+                    code: internal_server_error
+                    message: An unexpected error occurred.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Internal server error
+          description: An unexpected server failure was contained.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[logout]
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                ServiceUnavailable:
+                  value:
+                    code: service_unavailable
+                    message: A required service is unavailable.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Service unavailable
+          description: Authoritative outstanding-token or blacklist state is unavailable.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[logout]
+        '400':
+          description: Django rejected the Host header before the operation executed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                InvalidHost:
+                  summary: Invalid Host header
+                  value:
+                    code: bad_request
+                    message: The request was invalid.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[logout]
+          - backend/tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[browser_logout]
+      security: []
+      x-localforge-observed-by: backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[logout]
+  /api/v1/browser/refresh/:
+    post:
+      operationId: browser_refresh
+      description: Exchanges the refresh cookie for a new access and refresh cookie
+        pair. The presented refresh token is blacklisted atomically, so replaying
+        it fails. Any unauthorized outcome clears all three cookies. Requires a matching
+        `X-CSRFToken` header and a trusted `Origin` whenever the refresh cookie is
+        present.
+      summary: Rotate the HttpOnly credential cookies
+      tags:
+      - Authentication
+      responses:
+        '204':
+          description: The cookies were rotated; no body is returned.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[refresh]
+          x-localforge-examples:
+            NoContent:
+              summary: Successful response with no response body.
+              value: null
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                AuthenticationFailed:
+                  value:
+                    code: authentication_failed
+                    message: Authentication failed.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Authentication failed
+          description: The refresh cookie is absent, expired, malformed, revoked,
+            replayed, or has no active account. All three cookies are cleared.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[refresh]
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                CSRFRejected:
+                  value:
+                    code: permission_denied
+                    message: You do not have permission to perform this action.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: CSRF rejected
+          description: The CSRF token or Origin was missing, mismatched, or untrusted.
+            Cookies are left in place so the client can fetch a fresh token and retry.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[refresh]
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                MethodNotAllowed:
+                  value:
+                    code: method_not_allowed
+                    message: The requested method is not allowed.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Method not allowed
+          description: The browser refresh route accepts only POST.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[refresh]
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                NotAcceptable:
+                  value:
+                    code: not_acceptable
+                    message: The requested response format is not available.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Not acceptable
+          description: The requested response representation is unavailable.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[refresh]
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                RequestTooLarge:
+                  value:
+                    code: request_too_large
+                    message: The request body is too large.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Request too large
+          description: The request body exceeds the environment-configured API limit.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[refresh]
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                TooManyRequests:
+                  value:
+                    code: throttled
+                    message: Too many requests.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Too many requests
+          description: The client address or token account exceeded the authentication
+            scope.
+          headers:
+            Retry-After:
+              description: Whole seconds until the fixed or rolling admission window
+                recovers.
+              schema:
+                type: integer
+                minimum: 1
+            X-Request-ID:
+              description: Request correlation identifier echoed by the error envelope.
+              schema:
+                type: string
+                format: uuid
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[refresh]
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                InternalServerError:
+                  value:
+                    code: internal_server_error
+                    message: An unexpected error occurred.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Internal server error
+          description: An unexpected server failure was contained.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[refresh]
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                ServiceUnavailable:
+                  value:
+                    code: service_unavailable
+                    message: A required service is unavailable.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: Service unavailable
+          description: Authoritative account, outstanding-token, or blacklist state
+            is unavailable.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[refresh]
+        '400':
+          description: Django rejected the Host header before the operation executed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                InvalidHost:
+                  summary: Invalid Host header
+                  value:
+                    code: bad_request
+                    message: The request was invalid.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[refresh]
+          - backend/tests/integration/config/test_api.py::test_fixed_operation_invalid_host_returns_correlated_bad_request[browser_refresh]
+      security: []
+      x-localforge-observed-by: backend/tests/integration/accounts/test_browser_sessions.py::test_browser_operation_statuses_match_their_documented_contracts[refresh]
   /api/v1/jwt/create/:
     post:
       operationId: jwt_create
@@ -1074,6 +1868,12 @@ paths:
                   value:
                     username: river
                     email: river@localforge.invalid
+                    capabilities:
+                    - account:read
+                    - account:update
+                    - account:delete
+                    - credentials:change
+                    - notifications:receive
                   summary: Registration accepted
           description: The registration was accepted; the account is inactive until
             activation.
@@ -1314,6 +2114,7 @@ paths:
       security:
       - jwtAuth: []
       - tokenAuth: []
+      - browserCookieAuth: []
       responses:
         '200':
           content:
@@ -1326,6 +2127,12 @@ paths:
                     id: 00000000-0000-7000-8000-000000000000
                     username: river
                     email: river@localforge.invalid
+                    capabilities:
+                    - account:read
+                    - account:update
+                    - account:delete
+                    - credentials:change
+                    - notifications:receive
                   summary: Caller profile
           description: The authenticated caller's public profile.
           x-localforge-observed-by:
@@ -1502,6 +2309,7 @@ paths:
       security:
       - jwtAuth: []
       - tokenAuth: []
+      - browserCookieAuth: []
       responses:
         '200':
           content:
@@ -1514,6 +2322,12 @@ paths:
                     id: 00000000-0000-7000-8000-000000000000
                     username: river
                     email: updated@localforge.invalid
+                    capabilities:
+                    - account:read
+                    - account:update
+                    - account:delete
+                    - credentials:change
+                    - notifications:receive
                   summary: Profile updated
           description: The caller's profile after applying the submitted email change.
           x-localforge-observed-by:
@@ -1719,6 +2533,7 @@ paths:
       security:
       - jwtAuth: []
       - tokenAuth: []
+      - browserCookieAuth: []
       responses:
         '204':
           description: The account and its secondary token were removed. Digest-only
@@ -1945,6 +2760,7 @@ paths:
       security:
       - jwtAuth: []
       - tokenAuth: []
+      - browserCookieAuth: []
       responses:
         '200':
           description: The authenticated caller's public profile.
@@ -3110,6 +3926,7 @@ paths:
       security:
       - jwtAuth: []
       - tokenAuth: []
+      - browserCookieAuth: []
       responses:
         '204':
           description: The password changed and every existing credential and session
@@ -3345,6 +4162,7 @@ paths:
       security:
       - jwtAuth: []
       - tokenAuth: []
+      - browserCookieAuth: []
       responses:
         '204':
           description: The username changed, existing credentials remained valid,
@@ -4177,16 +4995,18 @@ components:
       description: |-
         Describe the authenticated caller's public profile.
 
-        Inherits from DRF's ``Serializer`` and exposes the immutable key and two public identifiers,
-        omitting activation, permission, password, token, and operational timestamp state.
+        Inherits from DRF's ``Serializer`` and exposes the immutable key, two public identifiers, and
+        the closed capability list, omitting activation, permission, password, token, and operational
+        timestamp state.
 
         Attributes:
             id: Immutable account identifier.
             username: Public account name changed only through its dedicated route.
             email: Public address and the sole mutable profile field.
+            capabilities: Read-only registry entries a client may use to shape navigation.
 
         Members:
-            None beyond those inherited from ``Serializer``.
+            get_capabilities: Derive the capability list from the account.
       properties:
         id:
           type: string
@@ -4199,7 +5019,21 @@ components:
           type: string
           format: email
           readOnly: true
+        capabilities:
+          type: array
+          items:
+            type: string
+            enum:
+            - account:read
+            - account:update
+            - account:delete
+            - credentials:change
+            - notifications:receive
+          readOnly: true
+          description: Closed registry guarding client navigation only; every route
+            still enforces authorization itself.
       required:
+      - capabilities
       - email
       - id
       - username
@@ -4991,6 +5825,13 @@ components:
       - $ref: '#/components/schemas/HealthNotReadyPublic'
       - $ref: '#/components/schemas/HealthNotReadyStaff'
   securitySchemes:
+    browserCookieAuth:
+      type: apiKey
+      in: cookie
+      name: __Host-lf-access
+      description: HttpOnly access cookie issued by the browser login route. Unsafe
+        requests must also send a matching `X-CSRFToken` header and a trusted `Origin`.
+        A request carrying both this cookie and an `Authorization` header is rejected.
     cookieAuth:
       type: apiKey
       in: cookie
@@ -5006,7 +5847,7 @@ components:
       description: 'Send `Authorization: Token <key>`.'
 tags:
 - name: Authentication
-  description: Token and JSON Web Token authentication operations.
+  description: Token, JSON Web Token, and browser cookie session operations.
 - name: Accounts
   description: Account registration, profile, activation, password, and username operations.
 - name: Health

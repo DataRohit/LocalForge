@@ -93,6 +93,11 @@ class AsgiRequestSpec:
 
 DEFAULT_ASGI_REQUEST_SPEC = AsgiRequestSpec()
 FIXED_HTTP_OPERATIONS = (
+    pytest.param("GET", "/api/v1/browser/csrf/", id="browser_csrf"),
+    pytest.param("HEAD", "/api/v1/browser/csrf/", id="browser_csrf_head"),
+    pytest.param("POST", "/api/v1/browser/login/", id="browser_login"),
+    pytest.param("POST", "/api/v1/browser/refresh/", id="browser_refresh"),
+    pytest.param("POST", "/api/v1/browser/logout/", id="browser_logout"),
     pytest.param("POST", "/api/v1/jwt/create/", id="jwt_create"),
     pytest.param("POST", "/api/v1/jwt/refresh/", id="jwt_refresh"),
     pytest.param("POST", "/api/v1/jwt/verify/", id="jwt_verify"),

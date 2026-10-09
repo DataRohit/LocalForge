@@ -117,6 +117,26 @@ class ServiceUnavailable(APIException):
     default_detail = "A required service is unavailable."
 
 
+class AmbiguousCredentials(APIException):
+    """Represent a request that presents two credential sources.
+
+    Inherits from DRF's ``APIException`` and fixes the public bad-request status, so a request
+    carrying both an authorization header and a browser cookie is rejected instead of merged.
+
+    Attributes:
+        status_code: HTTP bad-request status.
+        default_code: Stable framework-facing exception code.
+        default_detail: Safe framework-facing exception detail.
+
+    Members:
+        None.
+    """
+
+    status_code = HTTPStatus.BAD_REQUEST
+    default_code = ErrorCode.BAD_REQUEST
+    default_detail = "The request was invalid."
+
+
 class ActivationTokenExpired(APIException):
     """Represent an activation token beyond its allowed lifetime.
 
@@ -562,6 +582,7 @@ EXCEPTION_DEFINITIONS: dict[type[Exception], ErrorDefinition] = {
     UnsupportedMediaType: UNSUPPORTED_MEDIA_TYPE,
     Throttled: THROTTLED,
     ServiceUnavailable: SERVICE_UNAVAILABLE,
+    AmbiguousCredentials: BAD_REQUEST,
     ActivationTokenExpired: ACTIVATION_TOKEN_EXPIRED,
     ActivationTokenForeign: ACTIVATION_TOKEN_FOREIGN,
     ActivationTokenMalformed: ACTIVATION_TOKEN_MALFORMED,

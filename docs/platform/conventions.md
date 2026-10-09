@@ -495,9 +495,9 @@ records and preserves the provider-issued `RESEND_API_KEY` and `TUNNEL_TOKEN`. B
 through `env_file` and never appear in Compose
 literals, images, logs, browser responses, or documentation.
 
-### 3.5 Browser authentication and frontend (planned, Phase 11)
+### 3.5 Browser authentication and frontend (Phase 11)
 
-Three non-secret variables, owned by `django-uv5n2`. Ticket 80 adds them to `.env.example`, the secret generator,
+Three non-secret variables, owned by `django-uv5n2`. Ticket 80 added them to `.env.example`, the secret generator,
 and the `testing` files; `.env.development` and its encrypted counterpart change only as inert candidates until the
 user authorizes it. The cookie flags, paths, and lifetimes are not variables: they are fixed in
 [the Phase 11 architecture](../architecture/phase-11-backend-freeze.md) Section 2. The frontend has no environment

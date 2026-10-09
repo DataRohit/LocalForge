@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 import uuid
 from typing import TYPE_CHECKING, Any, cast, override
 
@@ -21,6 +22,8 @@ from config.security import allowed_cors_origin, request_origin_from_scope
 from notifications.delivery import notification_group_name
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from asgiref.typing import (
         ASGI3Application,
         ASGIReceiveCallable,
@@ -34,6 +37,7 @@ if TYPE_CHECKING:
     from notifications.delivery import NotificationChannelEvent
 
 from notifications.protocol import (
+    COOKIE_SOURCE,
     WebSocketOutcome,
     close_rejected_handshake,
     websocket_error_frame,
@@ -348,18 +352,21 @@ class NotificationConsumer(AsyncWebsocketConsumer):  # type: ignore[misc]
         connection_request_id: Correlation identifier carried by error frames.
         notification_group_joined: Whether this connection currently owns group membership.
         notification_group: Server-selected group for the authenticated account.
+        session_expiry_task: Timer closing a cookie-authenticated socket at token expiry.
 
     Members:
         __call__: Guarantee group cleanup on every lifecycle exit.
         connect: Correlate and accept the connection.
         disconnect: Remove group membership when the connection ends.
         notification_message: Deliver one user-targeted notification.
+        session_revoked: Close a cookie-authenticated socket when its session ends.
         receive: Validate and dispatch one incoming frame.
     """
 
     connection_request_id: str
     notification_group: str
     notification_group_joined: bool
+    session_expiry_task: asyncio.Task[None] | None = None
 
     @override
     async def __call__(
@@ -385,6 +392,7 @@ class NotificationConsumer(AsyncWebsocketConsumer):  # type: ignore[misc]
         try:
             await super().__call__(scope, receive, send)
         finally:
+            self._cancel_session_expiry()
             await self._leave_notification_group()
 
     @override
@@ -409,6 +417,89 @@ class NotificationConsumer(AsyncWebsocketConsumer):  # type: ignore[misc]
         await self.accept(
             subprotocol=accepted_subprotocol if isinstance(accepted_subprotocol, str) else None
         )
+        if self._is_cookie_session():
+            token = cast("Any", self.scope["access_token"])
+            delay = max(0.0, float(token["exp"]) - time.time())
+            self.session_expiry_task = asyncio.create_task(self._close_at_expiry(delay))
+
+    def _is_cookie_session(self) -> bool:
+        """Report whether this socket was admitted by the browser access cookie.
+
+        Only cookie sessions end with the browser session, so bearer-subprotocol sockets keep the
+        lifetime they have always had.
+
+        Arguments:
+            None.
+
+        Returns:
+            Whether the credential source is the access cookie.
+        """
+        return bool(self.scope.get("credential_source") == COOKIE_SOURCE)
+
+    def _cancel_session_expiry(self) -> None:
+        """Stop the pending expiry timer, if any.
+
+        Prevents a finished connection from leaving a sleeping task behind.
+        Safe to call repeatedly.
+
+        Arguments:
+            None.
+
+        Returns:
+            None.
+        """
+        if self.session_expiry_task is not None:
+            self.session_expiry_task.cancel()
+            self.session_expiry_task = None
+
+    async def _close_at_expiry(self, delay: float) -> None:
+        """Close the socket when its access token expires.
+
+        Waits for the token lifetime and then closes with the credential-expired code, after which
+        the client refreshes its cookies and reconnects.
+
+        Arguments:
+            delay: Seconds until the access token expires.
+
+        Returns:
+            None.
+        """
+        await asyncio.sleep(delay)
+        await self.close(code=WebSocketOutcome.CREDENTIAL_EXPIRED.required_close_code())
+
+    async def session_revoked(self, event: dict[str, str]) -> None:
+        """Close a cookie-authenticated socket after logout.
+
+        Ignores sockets opened with a bearer subprotocol, which are unaffected by browser logout.
+        The browser then refreshes its cookies and reconnects.
+
+        Arguments:
+            event: Channel-layer revocation event.
+
+        Returns:
+            None.
+        """
+        del event
+        if self._is_cookie_session():
+            await self.close(code=WebSocketOutcome.CREDENTIAL_EXPIRED.required_close_code())
+
+    async def _revalidate_cookie_session(self) -> WebSocketOutcome | None:
+        """Re-check the account behind a cookie-authenticated socket.
+
+        Resolves the account on the primary again, so deactivation, deletion, and password
+        replacement end the socket at the next frame.
+
+        Arguments:
+            None.
+
+        Returns:
+            The rejecting outcome, or None while the session remains valid.
+        """
+        revalidate = cast(
+            "Callable[[], Awaitable[WebSocketOutcome | None]]", self.scope["revalidate_session"]
+        )
+
+        return await revalidate()
 
     @override
     async def disconnect(self, code: int) -> None:
@@ -424,6 +515,7 @@ class NotificationConsumer(AsyncWebsocketConsumer):  # type: ignore[misc]
             None.
         """
         del code
+        self._cancel_session_expiry()
         await self._leave_notification_group()
 
     async def _leave_notification_group(self) -> None:
@@ -512,6 +604,11 @@ class NotificationConsumer(AsyncWebsocketConsumer):  # type: ignore[misc]
             None.
         """
         del kwargs
+        if self._is_cookie_session():
+            rejected = await self._revalidate_cookie_session()
+            if rejected is not None:
+                await self.close(code=rejected.required_close_code())
+                return
         try:
             message_size = (
                 len(bytes_data)

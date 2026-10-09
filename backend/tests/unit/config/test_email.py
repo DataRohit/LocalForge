@@ -241,3 +241,41 @@ def test_an_invalid_header_is_logged_without_escaping(
     assert delivered is False
     assert failure_record.email_error_type == "ValueError"
     assert unsafe_subject not in rendered
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("route", ["activate", "reset-password", "reset-username"])
+@override_settings(
+    SITE_URL="https://localforge.example.invalid",
+    DEFAULT_FROM_EMAIL=SENDER,
+    DEFAULT_REPLY_TO_EMAIL="support@localforge.invalid",
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+)
+def test_single_page_routes_carry_credentials_only_in_the_fragment(route: str) -> None:
+    """Render the SPA action link with its credentials after the fragment marker.
+
+    Sends each emailed route shape and asserts both bodies link to the SPA path with no query
+    string, so a browser never transmits the credentials to a server, proxy, or log.
+
+    Arguments:
+        route: Single-page route under test.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If a credential leaves the fragment.
+    """
+    mail.outbox.clear()
+    path = f"/{route}#account=abc&token=xyz"
+
+    assert send_application_email(RECIPIENT, SUBJECT, MESSAGE, action_path=path) is True
+
+    message = cast("EmailMultiAlternatives", mail.outbox[0])
+    expected = f"https://localforge.example.invalid/{route}#account=abc&token=xyz"
+    assert expected in message.body
+    assert f"https://localforge.example.invalid/{route}#account=abc&amp;token=xyz" in str(
+        message.alternatives[0][0]
+    )
+    for body in (message.body, str(message.alternatives[0][0])):
+        assert "?" not in body.split(f"/{route}")[1].split()[0]

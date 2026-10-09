@@ -1,17 +1,20 @@
 """WebSocket JSON web token authentication.
 
-Classifies the token-bearing subprotocol, resolves current account state on the primary database,
-and installs the authenticated user without exposing credentials to URLs or application logs.
+Classifies the token-bearing subprotocol or the browser access cookie, resolves current account
+state on the primary database, and installs the user without exposing credentials to URLs or logs.
 """
 
 from __future__ import annotations
 
 import logging
+from functools import partial
+from http.cookies import SimpleCookie
 from typing import TYPE_CHECKING, cast, override
 from uuid import UUID
 
 from channels.auth import AuthMiddleware
 from channels.db import database_sync_to_async
+from django.conf import settings
 from django.db import Error as DjangoDatabaseError
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import ExpiredTokenError, TokenError
@@ -21,7 +24,12 @@ from rest_framework_simplejwt.utils import get_md5_hash_password
 
 from accounts.models import User
 from config.logs import REQUEST_ID_META_KEY
-from notifications.protocol import WebSocketOutcome, close_rejected_handshake
+from notifications.protocol import (
+    COOKIE_SOURCE,
+    SUBPROTOCOL_SOURCE,
+    WebSocketOutcome,
+    close_rejected_handshake,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -34,6 +42,30 @@ if TYPE_CHECKING:
     from rest_framework_simplejwt.tokens import Token
 
 logger = logging.getLogger(__name__)
+
+
+def access_cookie_from_scope(scope: Mapping[str, object]) -> str | None:
+    """Read the browser access cookie from a handshake scope.
+
+    Joins every cookie header, which HTTP/2 may split, parses them with the standard library, which
+    skips malformed pairs, and treats a missing or empty value as no cookie.
+
+    Arguments:
+        scope: WebSocket connection scope.
+
+    Returns:
+        The encoded access token, or None when no usable cookie was sent.
+    """
+    values = [
+        value.decode("latin-1")
+        for name, value in cast("list[tuple[bytes, bytes]]", scope.get("headers", []))
+        if name.lower() == b"cookie"
+    ]
+    jar: SimpleCookie = SimpleCookie()
+    jar.load("; ".join(values))
+    morsel = jar.get(cast("str", settings.BROWSER_ACCESS_COOKIE_NAME))
+
+    return str(morsel.value) if morsel is not None and morsel.value else None
 
 
 class WebSocketAuthenticationError(Exception):
@@ -149,11 +181,42 @@ class WebSocketJWTAuthentication(JWTAuthentication):
         return user
 
 
+async def revalidate_session(
+    authentication: WebSocketJWTAuthentication,
+    token: Token,
+) -> WebSocketOutcome | None:
+    """Re-check the account behind an authenticated socket.
+
+    Resolves the account on the primary again, so deactivation, deletion, and password replacement
+    are noticed after the handshake.
+
+    Arguments:
+        authentication: Adapter owning authoritative account classification.
+        token: Validated access token admitted at the handshake.
+
+    Returns:
+        The rejecting outcome, or None while the session remains valid.
+
+    Raises:
+        DatabaseError: If the primary lookup fails.
+    """
+    try:
+        await database_sync_to_async(JWTSubprotocolAuthMiddleware.resolve_user)(
+            authentication,
+            token,
+        )
+    except WebSocketAuthenticationError as error:
+        return error.outcome
+
+    return None
+
+
 class JWTSubprotocolAuthMiddleware(AuthMiddleware):  # type: ignore[misc]
-    """Authenticate the sole WebSocket subprotocol as a JSON web token.
+    """Authenticate the sole WebSocket subprotocol or the access cookie as a JSON web token.
 
     Inherits from Channels' ``AuthMiddleware`` but replaces session resolution with the project's
-    token protocol, installing the primary-resolved user and accepted subprotocol in a copied scope.
+    token protocol, installing the primary-resolved user, the credential source, and any accepted
+    subprotocol in a copied scope. A handshake offering both sources is rejected, never merged.
 
     Attributes:
         None beyond those inherited from ``AuthMiddleware``.
@@ -208,10 +271,10 @@ class JWTSubprotocolAuthMiddleware(AuthMiddleware):  # type: ignore[misc]
 
     @override
     async def resolve_scope(self, scope: dict[str, object]) -> None:
-        """Validate the sole subprotocol and install its active account.
+        """Validate the one credential source and install its active account.
 
-        Rejects an absent or ambiguous protocol list before decoding, then runs the synchronous
-        primary account lookup through Channels' database-aware async wrapper.
+        Rejects an absent or ambiguous credential before decoding, including a cookie offered
+        beside a subprotocol, then runs the primary account lookup through the async wrapper.
 
         Arguments:
             scope: Copied mutable WebSocket scope receiving authentication state.
@@ -224,17 +287,30 @@ class JWTSubprotocolAuthMiddleware(AuthMiddleware):  # type: ignore[misc]
             DatabaseError: If the primary account lookup fails.
         """
         subprotocols = scope.get("subprotocols")
-        if not isinstance(subprotocols, list) or not subprotocols:
-            raise WebSocketAuthenticationError(WebSocketOutcome.CREDENTIAL_ABSENT)
-        if len(subprotocols) != 1 or not isinstance(subprotocols[0], str) or not subprotocols[0]:
+        cookie = access_cookie_from_scope(scope)
+        offered = isinstance(subprotocols, list) and bool(subprotocols)
+        if cookie is not None and offered:
             raise WebSocketAuthenticationError(WebSocketOutcome.CREDENTIAL_MALFORMED)
+        if cookie is None and not offered:
+            raise WebSocketAuthenticationError(WebSocketOutcome.CREDENTIAL_ABSENT)
 
-        credential = subprotocols[0]
+        credential = cookie
+        if credential is None:
+            offered_protocols = cast("list[object]", subprotocols)
+            first = offered_protocols[0]
+            if len(offered_protocols) != 1 or not isinstance(first, str) or not first:
+                raise WebSocketAuthenticationError(WebSocketOutcome.CREDENTIAL_MALFORMED)
+            credential = first
+
         authentication = WebSocketJWTAuthentication()
         token = authentication.get_validated_token(credential.encode())
         user = await database_sync_to_async(self.resolve_user)(authentication, token)
         scope["user"] = user
-        scope["accepted_subprotocol"] = credential
+        scope["access_token"] = token
+        scope["revalidate_session"] = partial(revalidate_session, authentication, token)
+        scope["credential_source"] = COOKIE_SOURCE if cookie is not None else SUBPROTOCOL_SOURCE
+        if cookie is None:
+            scope["accepted_subprotocol"] = credential
 
     @staticmethod
     def resolve_user(authentication: WebSocketJWTAuthentication, token: Token) -> User:

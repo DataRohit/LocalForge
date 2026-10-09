@@ -14,12 +14,19 @@ that no browser credential leaks through any channel.
 - [Security audit](../../docs/security/security-audit.md)
 - [Ticket index](../README.md)
 
-**Status:** pending
+**Status:** done (Locally Verified)
 
-- [ ] The existing bearer, token, and subprotocol test suites pass unchanged, and a schema diff shows no change to
+- [x] The existing bearer, token, and subprotocol test suites pass unchanged, and a schema diff shows no change to
       their documented contracts.
-- [ ] Tests prove credentials never appear in a response body, URL, log record, metric label, or error envelope on
+- [x] Tests prove credentials never appear in a response body, URL, log record, metric label, or error envelope on
       any browser route.
-- [ ] The security audit gains checks for cookie attributes, CSRF enforcement, and credential log hygiene.
-- [ ] The complete `testing` gate passes in container and host mode with parallel execution.
-- [ ] Status recorded as Locally Verified.
+- [x] The security audit gains checks for cookie attributes, CSRF enforcement, and credential log hygiene.
+- [x] The complete `testing` gate passes in container and host mode with parallel execution.
+- [x] Status recorded as Locally Verified.
+
+**Verification (2026-10-09, `testing` only):** the existing bearer, token, and subprotocol suites ran unchanged in the
+same host and container gates; the OpenAPI diff against the previous committed document is additive only (new routes,
+the `browserCookieAuth` alternative, `capabilities`, one tag description). `python -m scripts.audit_security --scope browser`
+checks cookie attributes, CSRF enforcement, and credential log hygiene and is part of `security-audit-static` and `all`;
+credential secrecy tests exist for the REST lifecycle and the WebSocket handshake. Findings: none open.
+Disposition: complete.

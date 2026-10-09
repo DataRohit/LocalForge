@@ -38,15 +38,24 @@ The convention audit additionally launches a pinned disposable probe on every in
 external DNS resolution to fail with the exact expected status and no output. Unpublished services are forbidden
 from joining either non-internal access zone.
 
+## Browser cookie contract
+
+`python -m scripts.audit_security --scope browser` (part of `security-audit-static` and `all`) evaluates the testing
+configuration and asserts the cookie prefixes and distinct names, the fixed `Secure`, `HttpOnly`, `SameSite=Strict`,
+path, and lifetime attributes, wildcard-free trusted origins, CSRF middleware presence, the cookie authenticator's
+position after the bearer classes, and rejection of a forged unsafe request. It then runs the tests proving no
+credential reaches a log record. It needs the `testing` stack, like the other runtime-backed checks.
+
 ## Framework and secret evidence
 
 `config.settings.testing` keeps debug mode off and is the production-shaped configuration for the deployment
-checker. `manage.py check --deploy` must return only:
+checker. `manage.py check --deploy` must return only these three warnings:
 
 - `security.W004` — HSTS is inert on plaintext localhost.
 - `security.W008` — redirecting to HTTPS would make the offline stack unreachable.
 - `security.W012` — the session cookie cannot be secure-only on plaintext localhost.
-- `security.W016` — the CSRF cookie cannot be secure-only on plaintext localhost.
+
+`security.W016` no longer appears: since Phase 11 the CSRF cookie is always `Secure` (Ticket 81).
 
 The browser boundary still enforces content-type sniffing protection, frame denial, same-origin referrers, and the
 project content security policy. Existing integration tests prove debug detail and tracebacks do not enter error

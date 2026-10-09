@@ -279,13 +279,14 @@ help = "Audit live Docker conventions for testing"
 cmd = "python -m scripts.audit_naming --environment testing"
 
 [tool.poe.tasks.security-audit]
-help = "Run deployment, history, dependency, image, exposure, and runtime secret audits"
+help = "Run deployment, browser, history, dependency, image, exposure, and runtime secret audits"
 cmd = "python -m scripts.audit_security --scope all"
 
 [tool.poe.tasks.security-audit-static]
-help = "Run deployment, history, dependency, and image vulnerability audits"
+help = "Run deployment, browser contract, history, dependency, and image vulnerability audits"
 sequence = [
     { cmd = "python -m scripts.audit_security --scope deployment" },
+    { cmd = "python -m scripts.audit_security --scope browser" },
     { cmd = "python -m scripts.audit_security --scope history" },
     { cmd = "python -m scripts.audit_security --scope dependencies" },
     { cmd = "python -m scripts.audit_security --scope images" },

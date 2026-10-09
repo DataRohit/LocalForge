@@ -21,6 +21,7 @@ from rest_framework_simplejwt.exceptions import (
 from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.utils import get_md5_hash_password
 
+from accounts.browser_cookies import reject_ambiguous_credentials
 from accounts.models import User
 from config.api_errors import ServiceUnavailable
 
@@ -108,7 +109,9 @@ class JWTAuthentication(SimpleJWTAuthentication):
         Raises:
             AuthenticationFailed: If a bearer credential or its account is invalid.
             ServiceUnavailable: If authoritative account state cannot be read.
+            AmbiguousCredentials: If the request also carries the browser access cookie.
         """
+        reject_ambiguous_credentials(request)
         try:
             result = super().authenticate(request)
         except SimpleJWTAuthenticationFailed as error:

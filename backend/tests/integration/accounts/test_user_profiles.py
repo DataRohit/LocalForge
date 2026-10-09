@@ -30,6 +30,7 @@ import accounts.user_profiles as user_profiles_module
 from accounts.jwt_authentication import PrimaryRefreshToken
 from accounts.login_throttle import PostgresLoginThrottleStore
 from accounts.models import LoginThrottleEvent, User
+from accounts.user_profiles import ACCOUNT_CAPABILITIES
 from config.api_errors import ErrorCode, ServiceUnavailable
 from config.logs import REQUEST_ID_HEADER
 
@@ -666,6 +667,13 @@ def test_profile_returns_only_the_authenticated_caller_and_ignores_query_identif
         "id": str(caller.pk),
         "username": caller.username,
         "email": caller.email,
+        "capabilities": [
+            "account:read",
+            "account:update",
+            "account:delete",
+            "credentials:change",
+            "notifications:receive",
+        ],
     }
     assert other.email.encode() not in response.content
 
@@ -725,6 +733,7 @@ def test_profile_partial_update_changes_only_the_email(
         "id": str(original_id),
         "username": original_username,
         "email": updated_email.lower(),
+        "capabilities": list(ACCOUNT_CAPABILITIES),
     }
     assert account.pk == original_id
     assert account.username == original_username
@@ -1820,7 +1829,7 @@ def test_registration_observed_statuses_exactly_match_its_documented_contract(
         activation_link = next(
             word for word in mail.outbox[-1].body.split() if word.startswith("http")
         )
-        activation_query = parse_qs(urlparse(activation_link).query)
+        activation_query = parse_qs(urlparse(activation_link).fragment)
         activated = client.post(
             "/api/v1/users/",
             {

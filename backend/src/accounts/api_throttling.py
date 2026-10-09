@@ -116,7 +116,8 @@ def _request_account_identity(request: Request, view: APIView) -> str | None:
     """Resolve an account dimension available before the view runs.
 
     Prefers the authenticated immutable identifier, then permits only the signed subject from the
-    body token field explicitly declared by the selected view. Raw selectors never create buckets.
+    body token field or cookie credential explicitly declared by the selected view. Raw selectors
+    never create buckets.
 
     Arguments:
         request: REST request entering throttling.
@@ -129,6 +130,10 @@ def _request_account_identity(request: Request, view: APIView) -> str | None:
     if user.is_authenticated:
         return f"id:{user.pk}"
 
+    credential_reader = getattr(view, "signed_subject_credential", None)
+    if callable(credential_reader):
+        credential = credential_reader(request)
+        return _signed_token_subject(credential) if isinstance(credential, str) else None
     field = getattr(view, "signed_subject_throttle_field", None)
     if field not in {"refresh", "token"}:
         return None

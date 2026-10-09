@@ -35,6 +35,10 @@ DOCUMENTATION_PATHS: Final = (
     "/api/schema/redoc/",
 )
 FIXED_APPLICATION_PATHS: Final = [
+    "/api/v1/browser/csrf/",
+    "/api/v1/browser/login/",
+    "/api/v1/browser/logout/",
+    "/api/v1/browser/refresh/",
     "/api/v1/jwt/create/",
     "/api/v1/jwt/refresh/",
     "/api/v1/jwt/verify/",
@@ -252,6 +256,16 @@ def test_api_documentation_renders_from_only_local_assets() -> None:
     assert evidence["openapi"] == "3.1.0"
     assert evidence["paths"] == FIXED_APPLICATION_PATHS
     assert evidence["security_schemes"] == {
+        "browserCookieAuth": {
+            "type": "apiKey",
+            "in": "cookie",
+            "name": "__Host-lf-access",
+            "description": (
+                "HttpOnly access cookie issued by the browser login route. Unsafe requests must "
+                "also send a matching `X-CSRFToken` header and a trusted `Origin`. A request "
+                "carrying both this cookie and an `Authorization` header is rejected."
+            ),
+        },
         "cookieAuth": {
             "type": "apiKey",
             "in": "cookie",

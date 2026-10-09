@@ -450,8 +450,9 @@ def _activation_fields(message: EmailMultiAlternatives) -> dict[str, str]:
     links = [word for word in message.body.split() if word.startswith("http")]
     assert len(links) == 1
     parsed = urlparse(links[0])
-    assert parsed.path == "/api/v1/users/"
-    query = parse_qs(parsed.query)
+    assert parsed.path == "/activate"
+    assert parsed.query == ""
+    query = parse_qs(parsed.fragment)
 
     return {
         "account": query["account"][0],
@@ -3435,7 +3436,7 @@ def test_registration_activation_loop_round_trips_through_mailpit(client: Client
 
     links = [word for word in detail["Text"].split() if word.startswith("http")]
     assert len(links) == 1
-    parsed = parse_qs(urlparse(links[0]).query)
+    parsed = parse_qs(urlparse(links[0]).fragment)
     assert links[0].startswith(settings.SITE_URL)
     assert parsed["account"][0] in detail["HTML"]
     assert quote(parsed["token"][0], safe="") in detail["HTML"]

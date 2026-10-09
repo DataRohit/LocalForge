@@ -50,6 +50,26 @@ OPENAPI_OPERATION_EVIDENCE = {
         "backend/tests/integration/config/test_readiness.py::"
         "test_health_head_observed_statuses_exactly_match_its_documented_contract"
     ),
+    "browser_csrf": (
+        "backend/tests/integration/accounts/test_browser_sessions.py::"
+        "test_browser_operation_statuses_match_their_documented_contracts[csrf]"
+    ),
+    "browser_csrf_head": (
+        "backend/tests/integration/accounts/test_browser_sessions.py::"
+        "test_browser_operation_statuses_match_their_documented_contracts[csrf-head]"
+    ),
+    "browser_login": (
+        "backend/tests/integration/accounts/test_browser_sessions.py::"
+        "test_browser_operation_statuses_match_their_documented_contracts[login]"
+    ),
+    "browser_logout": (
+        "backend/tests/integration/accounts/test_browser_sessions.py::"
+        "test_browser_operation_statuses_match_their_documented_contracts[logout]"
+    ),
+    "browser_refresh": (
+        "backend/tests/integration/accounts/test_browser_sessions.py::"
+        "test_browser_operation_statuses_match_their_documented_contracts[refresh]"
+    ),
     "jwt_create": (
         "backend/tests/integration/accounts/test_jwt_authentication.py::"
         "test_jwt_create_observed_statuses_exactly_match_its_documented_contract"
@@ -127,6 +147,11 @@ OPENAPI_OPERATION_EVIDENCE = {
 }
 
 OPENAPI_OPERATION_TAGS = {
+    "browser_csrf": "Authentication",
+    "browser_csrf_head": "Authentication",
+    "browser_login": "Authentication",
+    "browser_logout": "Authentication",
+    "browser_refresh": "Authentication",
     "health_readiness": "Health",
     "health_readiness_head": "Health",
     "jwt_create": "Authentication",
@@ -139,7 +164,7 @@ OPENAPI_OPERATION_TAGS = {
 OPENAPI_TAGS = [
     {
         "name": "Authentication",
-        "description": "Token and JSON Web Token authentication operations.",
+        "description": "Token, JSON Web Token, and browser cookie session operations.",
     },
     {
         "name": "Accounts",
@@ -248,6 +273,14 @@ def _add_implicit_head_operations(paths: dict[str, dict[str, Any]]) -> None:
         None.
     """
     contracts = {
+        "/api/v1/browser/csrf/": (
+            "browser_csrf_head",
+            "Check the CSRF route without a body",
+            (
+                "Runs the same negotiation and throttling boundaries as GET and sets the same "
+                "CSRF cookie while returning status and headers only."
+            ),
+        ),
         "/api/v1/users/me/": (
             "user_profile_head",
             "Check availability of the caller's profile",

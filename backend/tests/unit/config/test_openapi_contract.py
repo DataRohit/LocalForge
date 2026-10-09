@@ -29,14 +29,53 @@ REPOSITORY_ROOT: Final = (
 OPENAPI_ARTIFACT: Final = REPOSITORY_ROOT / "docs" / "api" / "openapi-v1.yaml"
 WEBSOCKET_ARTIFACT: Final = REPOSITORY_ROOT / "docs" / "api" / "websocket-v1.md"
 PUBLIC_SECURITY: Final[list[dict[str, list[str]]]] = []
-DUAL_TOKEN_SECURITY: Final[list[dict[str, list[str]]]] = [
+AUTHENTICATED_SECURITY: Final[list[dict[str, list[str]]]] = [
     {"jwtAuth": []},
     {"tokenAuth": []},
+    {"browserCookieAuth": []},
 ]
 TOKEN_ONLY_SECURITY: Final[list[dict[str, list[str]]]] = [{"tokenAuth": []}]
 HEALTH_SECURITY: Final[list[dict[str, list[str]]]] = [{"cookieAuth": []}, {}]
 
+BROWSER_EVIDENCE: Final = "backend/tests/integration/accounts/test_browser_sessions.py"
+BROWSER_EVIDENCE_TEST: Final = "test_browser_operation_statuses_match_their_documented_contracts"
+
 OPERATION_CONTRACT: Final = {
+    ("get", "/api/v1/browser/csrf/"): (
+        "browser_csrf",
+        PUBLIC_SECURITY,
+        {"204", "400", "405", "406", "413", "429", "500"},
+        BROWSER_EVIDENCE,
+        f"{BROWSER_EVIDENCE_TEST}[csrf]",
+    ),
+    ("head", "/api/v1/browser/csrf/"): (
+        "browser_csrf_head",
+        PUBLIC_SECURITY,
+        {"204", "400", "406", "413", "429", "500"},
+        BROWSER_EVIDENCE,
+        f"{BROWSER_EVIDENCE_TEST}[csrf-head]",
+    ),
+    ("post", "/api/v1/browser/login/"): (
+        "browser_login",
+        PUBLIC_SECURITY,
+        {"200", "400", "401", "403", "405", "406", "413", "415", "429", "500", "503"},
+        BROWSER_EVIDENCE,
+        f"{BROWSER_EVIDENCE_TEST}[login]",
+    ),
+    ("post", "/api/v1/browser/refresh/"): (
+        "browser_refresh",
+        PUBLIC_SECURITY,
+        {"204", "400", "401", "403", "405", "406", "413", "429", "500", "503"},
+        BROWSER_EVIDENCE,
+        f"{BROWSER_EVIDENCE_TEST}[refresh]",
+    ),
+    ("post", "/api/v1/browser/logout/"): (
+        "browser_logout",
+        PUBLIC_SECURITY,
+        {"204", "400", "403", "405", "406", "413", "429", "500", "503"},
+        BROWSER_EVIDENCE,
+        f"{BROWSER_EVIDENCE_TEST}[logout]",
+    ),
     ("post", "/api/v1/jwt/create/"): (
         "jwt_create",
         PUBLIC_SECURITY,
@@ -81,28 +120,28 @@ OPERATION_CONTRACT: Final = {
     ),
     ("get", "/api/v1/users/me/"): (
         "user_profile_retrieve",
-        DUAL_TOKEN_SECURITY,
+        AUTHENTICATED_SECURITY,
         {"200", "400", "401", "405", "406", "413", "429", "500", "503"},
         "backend/tests/integration/accounts/test_user_profiles.py",
         "test_profile_observed_statuses_exactly_match_each_documented_contract[get]",
     ),
     ("head", "/api/v1/users/me/"): (
         "user_profile_head",
-        DUAL_TOKEN_SECURITY,
+        AUTHENTICATED_SECURITY,
         {"200", "400", "401", "406", "413", "429", "500", "503"},
         "backend/tests/integration/accounts/test_user_profiles.py",
         "test_profile_head_observed_statuses_exactly_match_its_documented_contract",
     ),
     ("patch", "/api/v1/users/me/"): (
         "user_profile_update",
-        DUAL_TOKEN_SECURITY,
+        AUTHENTICATED_SECURITY,
         {"200", "400", "401", "405", "406", "413", "415", "429", "500", "503"},
         "backend/tests/integration/accounts/test_user_profiles.py",
         "test_profile_observed_statuses_exactly_match_each_documented_contract[patch]",
     ),
     ("delete", "/api/v1/users/me/"): (
         "user_profile_delete",
-        DUAL_TOKEN_SECURITY,
+        AUTHENTICATED_SECURITY,
         {"204", "400", "401", "405", "406", "413", "415", "429", "500", "503"},
         "backend/tests/integration/accounts/test_user_profiles.py",
         "test_profile_observed_statuses_exactly_match_each_documented_contract[delete]",
@@ -156,7 +195,7 @@ OPERATION_CONTRACT: Final = {
     ),
     ("post", "/api/v1/users/set_password/"): (
         "user_password_change",
-        DUAL_TOKEN_SECURITY,
+        AUTHENTICATED_SECURITY,
         {"204", "400", "401", "405", "406", "413", "415", "429", "500", "503"},
         "backend/tests/integration/accounts/test_password_management.py",
         (
@@ -166,7 +205,7 @@ OPERATION_CONTRACT: Final = {
     ),
     ("post", "/api/v1/users/set_username/"): (
         "user_username_change",
-        DUAL_TOKEN_SECURITY,
+        AUTHENTICATED_SECURITY,
         {"204", "400", "401", "405", "406", "413", "415", "429", "500", "503"},
         "backend/tests/integration/accounts/test_username_management.py",
         (
@@ -191,6 +230,10 @@ OPERATION_CONTRACT: Final = {
 }
 
 BODYLESS_OPERATIONS: Final = {
+    ("get", "/api/v1/browser/csrf/"),
+    ("head", "/api/v1/browser/csrf/"),
+    ("post", "/api/v1/browser/refresh/"),
+    ("post", "/api/v1/browser/logout/"),
     ("get", "/api/v1/users/me/"),
     ("head", "/api/v1/users/me/"),
     ("post", "/api/v1/token/logout/"),
@@ -357,7 +400,7 @@ def test_openapi_contract_is_complete_and_bound_to_observed_evidence() -> None:
     assert schema["tags"] == [
         {
             "name": "Authentication",
-            "description": "Token and JSON Web Token authentication operations.",
+            "description": "Token, JSON Web Token, and browser cookie session operations.",
         },
         {
             "name": "Accounts",
@@ -463,6 +506,10 @@ def test_openapi_contract_is_complete_and_bound_to_observed_evidence() -> None:
         )
 
         if "400" in responses and operation_id not in {
+            "browser_csrf",
+            "browser_csrf_head",
+            "browser_logout",
+            "browser_refresh",
             "health_readiness",
             "health_readiness_head",
             "token_logout",
