@@ -93,6 +93,16 @@ No comments, matching [0020](../adr/0020-no-comments-structured-docstrings.md). 
 exported function carries a TSDoc block with a one-line title, a two to three line description, its parameters or
 props, what it returns, and what it throws. ESLint and a checker in the frontend quality gate enforce it.
 
+`pnpm run docs` (`make frontend-docs-standard`) enforces these rules over `src/`, `test/`, and `scripts/`:
+
+- No `//` comment and no `/* */` comment exists, including inside JSX. The only comments are `/** */` TSDoc blocks.
+- Each file starts with a block tagged `@packageDocumentation`: a one-line title, then two or three description lines.
+- Each exported function, component, hook, class, type, and interface has a block with a one-line title and two or
+  three description lines.
+- An exported function documents every parameter with `@param`, a non-void result with `@returns`, and a body that
+  contains `throw` with `@throws`. A component documents its props object as `@param props`.
+- A description line is at most 100 characters.
+
 ## 10. Quality gate
 
 `make frontend-check` runs, in order: format check, ESLint (type-aware, zero warnings), `tsc --noEmit`, the TSDoc
@@ -110,4 +120,6 @@ browsers are listed in Section 5 of the same document.
 - The built SPA references only its own origin. A test fails the build if a bundled file contains an absolute URL
   to another host.
 - The `Content-Security-Policy` is `default-src 'self'` with no inline script and no `unsafe-eval`.
-- Dependencies are exact-pinned, installed with `npm ci`, and audited for licence, advisories, and install scripts.
+- Dependencies are exact-pinned, installed with `pnpm install --frozen-lockfile`, at least seven days old when pinned
+  (`minimumReleaseAge` in `pnpm-workspace.yaml`, no exclusions), and audited for licence, advisories, and install
+  scripts.

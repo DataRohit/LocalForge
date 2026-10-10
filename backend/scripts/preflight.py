@@ -498,14 +498,14 @@ TOOL_CHECKS: tuple[ToolCheck, ...] = (
     ToolCheck(
         requirement=Requirement(
             number=16,
-            title="npm, for the frontend",
-            minimum_label="bundled with Node 24",
+            title="pnpm, for the frontend",
+            minimum_label="11.21.0",
             required=False,
-            remediation="winget install --id OpenJS.NodeJS.LTS --exact",
+            remediation="corepack enable pnpm",
             matters_when=FRONTEND_TOOLING_NOTE,
         ),
-        command=("npm", "--version"),
-        minimum=(11,),
+        command=("pnpm", "--version"),
+        minimum=(11, 21),
     ),
 )
 

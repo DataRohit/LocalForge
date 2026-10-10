@@ -34,7 +34,7 @@ PASSING_OUTPUTS: dict[tuple[str, ...], str] = {
     ("psql", "--version"): "psql (PostgreSQL) 16.4",
     ("make", "--version"): "GNU Make 4.4.1",
     ("node", "--version"): "v24.20.0",
-    ("npm", "--version"): "12.0.2",
+    ("pnpm", "--version"): "11.21.0",
     ("kind", "version"): "kind v0.33.0 go1.25.1 windows/amd64",
 }
 
@@ -455,7 +455,7 @@ def test_every_failing_row_names_a_remediation() -> None:
         (13, "winget install --id PostgreSQL.PostgreSQL --exact"),
         (14, "Install GNU Make and add its executable to PATH"),
         (15, "winget install --id OpenJS.NodeJS.LTS --exact"),
-        (16, "winget install --id OpenJS.NodeJS.LTS --exact"),
+        (16, "corepack enable pnpm"),
     ],
 )
 def test_installable_tools_name_an_executable_remediation(number: int, expected: str) -> None:

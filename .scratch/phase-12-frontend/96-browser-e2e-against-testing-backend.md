@@ -13,6 +13,7 @@ single origin.
 - [Frontend hosting and edge routing ADR](../../docs/adr/0027-frontend-hosting-and-edge-routing.md)
 - [Full-stack pivot ADR](../../docs/adr/0024-full-stack-pivot.md)
 - [Service inventory: testing stack](../../docs/platform/service-inventory.md)
+- [Phase 12 replan record](../../docs/architecture/phase-12-frontend.md)
 - [Ticket index](../README.md)
 
 **Status:** pending
@@ -24,7 +25,7 @@ single origin.
       recovery, notifications over the socket, and sign-out.
 - [ ] CSRF, expired-session, throttled, and offline behavior are exercised in a real browser.
 - [ ] The suite runs on Chromium, Firefox, and WebKit as the browser support table specifies, with WebKit limited to
-      the origins it supports.
+      the origins it supports; the browsers are fetched once by the pinned Playwright.
 - [ ] Runs are parallel with timeouts, and leave no residue in the test services.
 - [ ] A bounded log window for every affected `testing` container is inspected and clean.
 - [ ] Status recorded as Locally Verified; `development` stays unverified.

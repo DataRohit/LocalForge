@@ -88,7 +88,8 @@ environment-sensitive command, confirm from its Poe task or Make target that it 
 7. Use `uv run` for every Python command. Bare `python` here is 3.12.10, not the required 3.14.6.
    Root operator commands use `make`; the root `Makefile` selects `backend/` after Ticket 73 moves the project and
    runs Poe from the selected project. Frontend commands run through root `make frontend-*` targets once Ticket 87
-   adds them; use `npm ci`, never `npm install`.
+   adds them; the package manager is pnpm, installed with `pnpm install --frozen-lockfile`, and dependencies change
+   only through `pnpm add --save-exact` or `pnpm remove`. Never use npm in `frontend/`.
 8. Keep the quality gate where it is: 100% branch coverage, Ruff `select = ["ALL"]`, mypy `strict`. Fix the code.
 9. **Runtime truth is a separate gate.** Tests prove controlled cases; they do not prove the running stack is
    healthy. After any runtime, integration, infrastructure, observability, or test-harness change:
@@ -246,7 +247,7 @@ These predate this work.
 | Linting      | Ruff, `select = ["ALL"]`, line length 100                                                   |
 | Types        | mypy `strict` plus `ty`; both must pass                                                     |
 | Tests        | pytest, 100% branch coverage enforced, `xfail_strict`, markers `unit` and `integration`     |
-| Frontend     | `npm` with exact pins and a committed lockfile; ESLint, Prettier, `tsc`, Vitest, Playwright |
+| Frontend     | `pnpm` with exact pins, committed lockfile; ESLint, Prettier, `tsc`, Vitest, Playwright     |
 | Markdown     | markdownlint-cli2, 120-character lines outside tables and code                              |
 | Line endings | LF, enforced by pre-commit                                                                  |
 | Commits      | `COMMIT_CONVENTION.md`; a `commit-msg` hook validates the format                            |

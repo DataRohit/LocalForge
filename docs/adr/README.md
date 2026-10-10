@@ -37,7 +37,7 @@ Format follows `.agents/skills/domain-modeling/ADR-FORMAT.md`: sequential number
 | [0025](./0025-browser-authentication.md) | Browser auth | HttpOnly cookie JWT pair, double-submit CSRF, cookie WebSocket handshake | — | accepted |
 | [0026](./0026-react-and-tailwind-frontend.md) | Frontend framework | React and Tailwind CSS, static SPA, no SSR or BFF | — | accepted |
 | [0027](./0027-frontend-hosting-and-edge-routing.md) | Frontend hosting | Static nginx container, single origin through Traefik | `frontend-fe6vn` | accepted |
-| [0028](./0028-frontend-toolchain.md) | Frontend toolchain | TypeScript, Vite, React Router, TanStack Query, Vitest, Playwright, npm | resolved by Ticket 87 | accepted |
+| [0028](./0028-frontend-toolchain.md) | Frontend toolchain | TypeScript, Vite, React Router, TanStack Query, Vitest, Playwright, pnpm | resolved 2026-10-10 | accepted |
 
 ## Evidence standard
 

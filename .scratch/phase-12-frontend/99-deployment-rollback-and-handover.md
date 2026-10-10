@@ -1,7 +1,7 @@
 # 99: Deployment, rollback, and handover
 
-**What to build:** The exact procedures to deploy the frontend into `development` and roll it back, plus the
-Phase 12 handover for Gate 4.
+**What to build:** The exact procedures to deploy the frontend into `development` and roll it back, plus the Phase 12
+handover for Gate 4.
 
 **Blocked by:**
 
@@ -12,6 +12,7 @@ Phase 12 handover for Gate 4.
 - [Frontend hosting and edge routing ADR](../../docs/adr/0027-frontend-hosting-and-edge-routing.md)
 - [Full-stack pivot ADR](../../docs/adr/0024-full-stack-pivot.md)
 - [Build plan](../../docs/build/plan.md)
+- [Phase 12 replan record](../../docs/architecture/phase-12-frontend.md)
 - [Ticket index](../README.md)
 
 **Status:** pending

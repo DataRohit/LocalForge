@@ -88,6 +88,11 @@ and 12 full-stack documents and files, which exist only once their tickets creat
 | `.scratch/phase-11-backend-freeze/` | Tickets 79–86: isolation hardening, browser authentication, backend freeze |
 | `.scratch/phase-12-frontend/` | Tickets 87–99: frontend build, gates, container, deployment and rollback |
 | `frontend/` | The React, Tailwind, and TypeScript project; created by Ticket 87 with its own manifest and lockfile |
+| `frontend/package.json`, `frontend/pnpm-lock.yaml`, `frontend/pnpm-workspace.yaml`, `frontend/.node-version` | Exact pins, the committed lockfile, the seven-day release-age gate and the one peer override, and the Node pin; created by Ticket 87 |
+| `frontend/tsconfig.json`, `frontend/tsconfig.node.json`, `frontend/vite.config.ts`, `frontend/eslint.config.js`, `frontend/.prettierrc.json`, `frontend/.prettierignore`, `frontend/index.html` | Strict TypeScript for the app and for the tooling, the Vite and Vitest configuration, lint and format rules, and the document shell; created by Ticket 87 |
+| `frontend/scripts/` | `check-docs.mjs`, `generate-api.mjs`, `check-bundle.mjs`, `audit-supply-chain.mjs` and their tests; created by Tickets 87 and 98 |
+| `frontend/src/`, `frontend/test/` | Application source with colocated tests, and the test setup, mock backend, and fake socket; created by Tickets 87 to 93 |
+| `frontend/e2e/`, `frontend/playwright.config.ts` | Browser suites and projects against the `testing` backend; created by Ticket 96 |
 | `docker/frontend/Dockerfile`, `docker/frontend/nginx.conf` | Digest-pinned build and static runtime image and its server configuration; created by Ticket 97 |
 | `docs/runbooks/frontend-deployment/` | Inert candidate Compose and Traefik files plus deploy and rollback procedure; never loaded by tooling; created by Tickets 97 and 99 |
 | `docs/handover/phase-11.md`, `docs/handover/phase-12.md` | Freeze Manifest and frontend handover records; created by Tickets 86 and 99 |
@@ -456,7 +461,8 @@ Backend code is not changed afterwards without reopening Phase 11. Production ru
 gate until the user authorizes inspection.
 
 The gate passed on 2026-10-10: the user delegated the acceptance decision and the main thread accepted the freeze
-(see [the Phase 11 handover](../handover/phase-11.md) Section 8). Phase 12 has not started.
+(see [the Phase 11 handover](../handover/phase-11.md) Section 8). Phase 12 started on 2026-10-10 on the user's
+instruction.
 
 ### Phase 12 — Frontend
 
@@ -464,8 +470,9 @@ Phase 12 builds the React and Tailwind frontend ([ADR 0026](../adr/0026-react-an
 [ADR 0028](../adr/0028-frontend-toolchain.md)) against the frozen backend, to
 [the frontend standard](../platform/frontend-standard.md). Work tickets 87–99 in `.scratch/phase-12-frontend/`.
 The authoritative route map, commands, quality bars, browser support, and gate are
-[phase-12-frontend.md](../architecture/phase-12-frontend.md). The plan is locked as of 2026-10-09: scope changes
-need an ADR update and the user's approval.
+[phase-12-frontend.md](../architecture/phase-12-frontend.md). The plan was locked on 2026-10-09 and replanned on
+2026-10-10 with the user's approval (that document's Section 8): scope changes need an ADR update and the user's
+approval.
 
 Tickets 87–93 build the toolchain, API client, shell, and the authentication, recovery, profile, and notification
 workflows. Tickets 94–96 audit accessibility, test the units, and drive real browsers against the `testing`
