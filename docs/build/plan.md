@@ -455,6 +455,9 @@ backend contract, every ticket's verification record is complete, and the user e
 Backend code is not changed afterwards without reopening Phase 11. Production runtime truth stays an unverified
 gate until the user authorizes inspection.
 
+The gate passed on 2026-10-10: the user delegated the acceptance decision and the main thread accepted the freeze
+(see [the Phase 11 handover](../handover/phase-11.md) Section 8). Phase 12 has not started.
+
 ### Phase 12 — Frontend
 
 Phase 12 builds the React and Tailwind frontend ([ADR 0026](../adr/0026-react-and-tailwind-frontend.md),
