@@ -247,10 +247,11 @@ continue if any environment file is still present, and Block 2 refuses to contin
 `RESEND_API_KEY` is still the `<GENERATED>` placeholder. Neither block prints a credential. Set `$StartAt` to a failed
 step number to resume without repeating completed steps.
 
-Block 2 sets `BUILDKIT_PROGRESS=plain` and `COMPOSE_PROGRESS=plain` for its own run and restores them afterwards.
-Without them, `docker compose build` exits 1 with `failed to get console: The handle is invalid.` whenever its
-standard output is piped (as the block does for its readable summary) while a console is still attached; this was
-reproduced on 2026-10-10 in a real console window and fixed by the plain setting.
+The blocks run every `make` command without piping its output, so Docker, uv, and pytest keep the console and show
+their compact progress. Piping a command through `Out-Host` for a tidier summary was tried first and rejected: it left
+standard output a pipe with a console still attached, and `docker compose build` then exited 1 with
+`failed to get console: The handle is invalid.` (reproduced on 2026-10-10 in a real console window). Forcing plain
+progress fixed that but printed every image layer.
 
 ### 9.1 Block 1: setup and secret generation
 
@@ -270,10 +271,10 @@ reproduced on 2026-10-10 in a real console window and fixed by the plain setting
     $Steps = @(
         @{ Name = 'Install locked dependencies'
            Cmd  = 'make sync'
-           Run  = { make sync | Out-Host } },
+           Run  = { make sync } },
         @{ Name = 'Check prerequisites'
            Cmd  = 'make preflight'
-           Run  = { make preflight | Out-Host } },
+           Run  = { make preflight } },
         @{ Name = 'Confirm the old environment files are gone'
            Cmd  = '(check) .env.development  .env.testing  .env.testing.host'
            Run  = {
@@ -288,10 +289,10 @@ reproduced on 2026-10-10 in a real console window and fixed by the plain setting
            } },
         @{ Name = 'Require zero LocalForge Docker resources'
            Cmd  = 'make docker-clean-check'
-           Run  = { make docker-clean-check | Out-Host } },
+           Run  = { make docker-clean-check } },
         @{ Name = 'Generate fresh credentials'
            Cmd  = 'make secrets-generate'
-           Run  = { make secrets-generate | Out-Host } },
+           Run  = { make secrets-generate } },
         @{ Name = 'Confirm the generated files'
            Cmd  = '(check) files exist, provider placeholders pending'
            Run  = {
@@ -404,9 +405,6 @@ reproduced on 2026-10-10 in a real console window and fixed by the plain setting
     $Width      = 78
     $Report     = New-Object System.Collections.Generic.List[object]
     $Clock      = [Diagnostics.Stopwatch]::StartNew()
-    $SavedProgress = @($env:BUILDKIT_PROGRESS, $env:COMPOSE_PROGRESS)
-    $env:BUILDKIT_PROGRESS = 'plain'
-    $env:COMPOSE_PROGRESS  = 'plain'
 
     $Steps = @(
         @{ Name = 'Confirm the provider values were replaced'
@@ -430,36 +428,36 @@ reproduced on 2026-10-10 in a real console window and fixed by the plain setting
            } },
         @{ Name = 'Derive the mail credentials from the provider key'
            Cmd  = 'make secrets-generate'
-           Run  = { make secrets-generate | Out-Host } },
+           Run  = { make secrets-generate } },
         @{ Name = 'Pull, build, start, and health-check both environments'
            Cmd  = 'make environments-setup   (adds ARGS=--proxy-only when port 8000 is busy)'
            Run  = {
                $Busy = Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue
                if ($Busy) {
                    Write-Host '    Port 8000 is owned by another process: publishing through Traefik only.' -ForegroundColor Yellow
-                   make environments-setup 'ARGS=--proxy-only' | Out-Host
+                   make environments-setup 'ARGS=--proxy-only'
                } else {
-                   make environments-setup | Out-Host
+                   make environments-setup
                }
            } },
         @{ Name = 'Export developer bookmarks and password imports'
            Cmd  = 'make developer-access-export'
-           Run  = { make developer-access-export | Out-Host } },
+           Run  = { make developer-access-export } },
         @{ Name = 'Quality gate and complete host suite'
            Cmd  = 'make check'
-           Run  = { make check | Out-Host } },
+           Run  = { make check } },
         @{ Name = 'Complete suite inside the test container'
            Cmd  = 'make testing-test-container'
-           Run  = { make testing-test-container | Out-Host } },
+           Run  = { make testing-test-container } },
         @{ Name = 'Mailpit persistence and degraded-readiness audit'
            Cmd  = 'make testing-integration-audit'
-           Run  = { make testing-integration-audit | Out-Host } },
+           Run  = { make testing-integration-audit } },
         @{ Name = 'Development runtime health'
            Cmd  = 'make development-health'
-           Run  = { make development-health | Out-Host } },
+           Run  = { make development-health } },
         @{ Name = 'Testing runtime health'
            Cmd  = 'make testing-health'
-           Run  = { make testing-health | Out-Host } },
+           Run  = { make testing-health } },
         @{ Name = 'Exercise the browser CSRF route through Traefik'
            Cmd  = 'curl.exe GET http://127.0.0.1:8080/api/v1/browser/csrf/  (Host: localforge.localhost)'
            Run  = {
@@ -490,10 +488,10 @@ reproduced on 2026-10-10 in a real console window and fixed by the plain setting
            } },
         @{ Name = 'Live convention audit of both environments'
            Cmd  = 'make convention-audit'
-           Run  = { make convention-audit | Out-Host } },
+           Run  = { make convention-audit } },
         @{ Name = 'Security audit: static, browser contract, runtime, logs'
            Cmd  = 'make security-audit'
-           Run  = { make security-audit | Out-Host } }
+           Run  = { make security-audit } }
     )
 
     Write-Host ''
@@ -569,7 +567,5 @@ reproduced on 2026-10-10 in a real console window and fixed by the plain setting
         Write-Host ' Both environments are running. Public entry point: http://localforge.localhost:8080/' -ForegroundColor Green
     }
     Write-Host ('=' * $Width) -ForegroundColor Cyan
-    $env:BUILDKIT_PROGRESS = $SavedProgress[0]
-    $env:COMPOSE_PROGRESS  = $SavedProgress[1]
 }
 ```
