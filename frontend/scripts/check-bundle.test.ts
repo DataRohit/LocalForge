@@ -66,8 +66,23 @@ describe("findRemoteUrls", () => {
     "http://www.w3.org/1998/Math/MathML",
     "http://www.w3.org/1999/xhtml",
     "https://react.dev/errors/",
+    "https://reactrouter.com/en/main/routers/picking-a-router",
+    "https://json-schema.org/draft/2020-12/schema",
+    "http://json-schema.org/draft-07/schema#",
+    "http://json-schema.org/draft-04/schema#",
+    "http://localhost",
+    "http://[${e}]",
   ])("allows the inert identifier %s", (url) => {
     expect(findRemoteUrls("app.js", `const a = "${url}";`)).toEqual([]);
+  });
+
+  it("ignores trailing sentence punctuation when matching", () => {
+    expect(
+      findRemoteUrls("app.js", "see https://reactrouter.com/en/main/routers/picking-a-router."),
+    ).toEqual([]);
+    expect(findRemoteUrls("app.js", "go to https://cdn.example.test/x.")).toEqual([
+      "https://cdn.example.test/x",
+    ]);
   });
 
   it("allows the Tailwind banner only in a stylesheet", () => {

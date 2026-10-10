@@ -188,7 +188,8 @@ function refreshSession(): Promise<boolean> {
  * Call one documented operation.
  *
  * Sends the request and, for an authenticated operation answered with 401, refreshes the session
- * once and retries once. A refresh or retry rejected with 401 announces session loss.
+ * once and retries once. The backend sets the CSRF cookie at sign-in and removes it with the
+ * session, so without it there is nothing to refresh. Failure to recover announces session loss.
  *
  * @param id - Operation identifier from the generated table.
  * @param options - JSON body and cancellation signal.
@@ -207,7 +208,7 @@ export async function call<Id extends OperationId>(
     if (!(error instanceof ApiError) || error.status !== 401 || !operations[id].authenticated) {
       throw error;
     }
-    if (!(await refreshSession())) {
+    if (readCsrfToken() === null || !(await refreshSession())) {
       notifyUnauthorized();
       throw error;
     }

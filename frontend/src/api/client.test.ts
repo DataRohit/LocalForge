@@ -261,6 +261,19 @@ describe("session recovery", () => {
     lost.stop();
   });
 
+  it("does not try to refresh when no CSRF cookie exists, because no session was started", async () => {
+    setCookies("");
+    const lost = watchSessionLoss();
+    const refreshCalls = sequence("browser_refresh", [{ status: 204 }]);
+    fail("user_profile_retrieve", 401, envelope("not_authenticated", "No session."));
+
+    await expect(call("user_profile_retrieve")).rejects.toMatchObject({ status: 401 });
+
+    expect(refreshCalls()).toBe(0);
+    expect(lost.count()).toBe(1);
+    lost.stop();
+  });
+
   it("announces session loss when the refresh is rejected", async () => {
     const lost = watchSessionLoss();
     const profileCalls = sequence("user_profile_retrieve", [

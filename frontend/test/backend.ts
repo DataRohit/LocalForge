@@ -171,6 +171,19 @@ export function fail(
 }
 
 /**
+ * Make an operation fail at the network level.
+ *
+ * Registers a handler that aborts the connection, so the client sees no HTTP response at all.
+ * Tests use it for the offline path.
+ *
+ * @param id - Operation identifier.
+ */
+export function disconnect(id: OperationId): void {
+  const operation = operations[id];
+  server.use(http[operation.method](operation.path, () => HttpResponse.error()));
+}
+
+/**
  * Profile fixture.
  *
  * Returns the same profile every time unless fields are replaced, so tests compare

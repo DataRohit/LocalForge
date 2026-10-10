@@ -30,6 +30,10 @@ const TEXT_EXTENSIONS = new Set([".js", ".css", ".html", ".svg", ".json", ".txt"
 const INERT_URLS: readonly RegExp[] = [
   /^http:\/\/www\.w3\.org\/(1999\/xhtml|2000\/svg|1998\/Math\/MathML|1999\/xlink|XML\/1998\/namespace|2000\/xmlns\/?)$/,
   /^https:\/\/react\.dev\/errors\/?$/,
+  /^https:\/\/reactrouter\.com\/en\/main\/routers\/picking-a-router$/,
+  /^https?:\/\/json-schema\.org\/draft(-0[47]|\/2020-12)\/schema#?$/,
+  /^http:\/\/localhost$/,
+  /^http:\/\/\[\$\{[a-z]\}\]$/,
 ];
 
 const CSS_BANNER_URL = /^https:\/\/tailwindcss\.com$/;
@@ -84,15 +88,17 @@ export function readDocumentAssets(html: string): DocumentAssets {
 /**
  * Find absolute URLs that are not on the inert allowlist.
  *
- * Extracts every http or https URL from the text and keeps those that are neither a known
- * namespace or message prefix nor, in a stylesheet, the Tailwind licence banner.
+ * Extracts every http or https URL from the text, drops trailing sentence punctuation, and keeps
+ * those that are neither a known inert identifier nor, in a stylesheet, the Tailwind banner.
  *
  * @param file - File name, used to apply the stylesheet-only banner allowance.
  * @param text - File text.
  * @returns The offending URLs.
  */
 export function findRemoteUrls(file: string, text: string): string[] {
-  const urls = text.match(/https?:\/\/[^\s"'`)<>\\]+/g) ?? [];
+  const urls = (text.match(/https?:\/\/[^\s"'`)<>\\]+/g) ?? []).map((url) =>
+    url.replace(/[.,;]+$/, ""),
+  );
   return urls.filter(
     (url) =>
       !INERT_URLS.some((pattern) => pattern.test(url)) &&
