@@ -251,7 +251,9 @@ The blocks run every `make` command without piping its output, so Docker, uv, an
 their compact progress. Piping a command through `Out-Host` for a tidier summary was tried first and rejected: it left
 standard output a pipe with a console still attached, and `docker compose build` then exited 1 with
 `failed to get console: The handle is invalid.` (reproduced on 2026-10-10 in a real console window). Forcing plain
-progress fixed that but printed every image layer.
+progress fixed that but printed every image layer, and a stopped run left `COMPOSE_PROGRESS=plain` set in the
+PowerShell session, so the unpiped version kept printing layers. Block 2 therefore clears `BUILDKIT_PROGRESS` and
+`COMPOSE_PROGRESS` before it starts.
 
 ### 9.1 Block 1: setup and secret generation
 
@@ -405,6 +407,7 @@ progress fixed that but printed every image layer.
     $Width      = 78
     $Report     = New-Object System.Collections.Generic.List[object]
     $Clock      = [Diagnostics.Stopwatch]::StartNew()
+    Remove-Item -Path Env:BUILDKIT_PROGRESS, Env:COMPOSE_PROGRESS -ErrorAction SilentlyContinue
 
     $Steps = @(
         @{ Name = 'Confirm the provider values were replaced'
