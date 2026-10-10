@@ -247,6 +247,11 @@ continue if any environment file is still present, and Block 2 refuses to contin
 `RESEND_API_KEY` is still the `<GENERATED>` placeholder. Neither block prints a credential. Set `$StartAt` to a failed
 step number to resume without repeating completed steps.
 
+Block 2 sets `BUILDKIT_PROGRESS=plain` and `COMPOSE_PROGRESS=plain` for its own run and restores them afterwards.
+Without them, `docker compose build` exits 1 with `failed to get console: The handle is invalid.` whenever its
+standard output is piped (as the block does for its readable summary) while a console is still attached; this was
+reproduced on 2026-10-10 in a real console window and fixed by the plain setting.
+
 ### 9.1 Block 1: setup and secret generation
 
 ```powershell
@@ -399,6 +404,9 @@ step number to resume without repeating completed steps.
     $Width      = 78
     $Report     = New-Object System.Collections.Generic.List[object]
     $Clock      = [Diagnostics.Stopwatch]::StartNew()
+    $SavedProgress = @($env:BUILDKIT_PROGRESS, $env:COMPOSE_PROGRESS)
+    $env:BUILDKIT_PROGRESS = 'plain'
+    $env:COMPOSE_PROGRESS  = 'plain'
 
     $Steps = @(
         @{ Name = 'Confirm the provider values were replaced'
@@ -561,5 +569,7 @@ step number to resume without repeating completed steps.
         Write-Host ' Both environments are running. Public entry point: http://localforge.localhost:8080/' -ForegroundColor Green
     }
     Write-Host ('=' * $Width) -ForegroundColor Cyan
+    $env:BUILDKIT_PROGRESS = $SavedProgress[0]
+    $env:COMPOSE_PROGRESS  = $SavedProgress[1]
 }
 ```
