@@ -231,6 +231,13 @@ Residual risks the acceptance carries, none of which blocks it:
 - A logout does not revoke an access token already issued; it lives until expiry. The cookie sockets do close.
 - The prefixed cookies are dependable only over HTTPS; the plain-HTTP evidence is secondary (Section 3).
 - The host security timing stage is load sensitive and passed on a clean rerun (Section 6).
+- The image audit compares against a dated scanner snapshot, so it can fail with no code change. The clean-room run on
+  2026-10-10 hit this on `axllent/mailpit:v1.31.1`, and the audit stops at the first drifting image. Rescanning all 19
+  images found 16 drifted with unchanged image IDs. Three Go standard-library CVEs (CVE-2026-78667, CVE-2026-78669,
+  CVE-2026-97031) appeared in every Go image, and Debian `openssl` and `libpcre2` records appeared in the
+  Debian-based ones. The newest Mailpit release (v1.31.4) has the same findings, so there was no upstream fix to
+  adopt. The refreshed snapshot is in `docs/security/image-vulnerability-policy.json` and the table in
+  `docs/security/security-audit.md`; review is due 2026-10-14.
 
 The user's own clean-room rehearsal (Section 9) is the final confirmation. A defect it finds in the backend contract
 reopens Phase 11. Phase 12 starts only on the user's instruction.

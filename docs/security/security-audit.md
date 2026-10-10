@@ -118,17 +118,23 @@ upstream project publishes a replacement image; the live snapshot and review are
 
 | Image | Fixable high/critical package findings | Reason pinned past |
 | --- | ---: | --- |
-| `chrislusf/seaweedfs:4.46` | 1 | current pinned upstream release; unsigned administration surfaces are not host-published |
-| `cloudflare/cloudflared:2026.9.3` | 2 | current pinned upstream release; connector has no host-published port |
+| `axllent/mailpit:v1.31.1` | 4 | newest upstream release (v1.31.4) carries the same Go `stdlib` and `x/net` findings; UI is authenticated and loopback-only |
+| `chrislusf/seaweedfs:4.46` | 5 | current pinned upstream release; unsigned administration surfaces are not host-published |
+| `cloudflare/cloudflared:2026.9.3` | 5 | current pinned upstream release; connector has no host-published port |
 | `dpage/pgadmin4:9.17` | 6 | current pinned upstream release; authenticated UI is loopback-only |
-| `ghcr.io/google/cadvisor:v0.60.5` | 25 | current pinned upstream release; no host publication |
-| `grafana/alloy:v1.19.2` | 4 | current pinned upstream release; no host publication |
-| `grafana/grafana-oss:13.0.2` | 84 | current pinned upstream release; authenticated UI is loopback-only |
-| `grafana/loki:3.7.7` | 10 | current pinned upstream release; no host publication |
+| `ghcr.io/google/cadvisor:v0.60.5` | 29 | current pinned upstream release; no host publication |
+| `grafana/alloy:v1.19.2` | 8 | current pinned upstream release; no host publication |
+| `grafana/grafana-oss:13.0.2` | 92 | current pinned upstream release; authenticated UI is loopback-only |
+| `grafana/loki:3.7.7` | 14 | current pinned upstream release; no host publication |
+| `localforge/django-test:0.1.0` | 7 | rebuilt on the digest-pinned Debian base; records are base packages and the test-only `virtualenv` |
+| `localforge/django:0.1.0` | 4 | rebuilt on the digest-pinned Debian base; remaining records are base `openssl` and `libpcre2` |
 | `localforge/pgbackrest:18.6` | 29 | rebuilt from the current PostgreSQL 18.6 base; remaining records originate in that base |
+| `oliver006/redis_exporter:v1.91.1` | 3 | current pinned upstream release; Go `stdlib`; no host publication |
 | `postgres:18.6` | 29 | current pinned upstream release; database ports are loopback-only |
-| `prom/prometheus:v3.14.0` | 6 | current pinned upstream release; no host publication |
-| `quay.io/prometheuscommunity/postgres-exporter:v0.20.1` | 12 | current pinned upstream release; no host publication |
+| `prom/prometheus:v3.14.0` | 14 | current pinned upstream release; no host publication |
+| `quay.io/prometheuscommunity/postgres-exporter:v0.20.1` | 16 | current pinned upstream release; no host publication |
+| `traefik:v3.7.13` | 4 | current pinned upstream release; Go `stdlib`; dashboard is authenticated and loopback-only |
+| `valkey/valkey:9.1.2` | 3 | current pinned upstream release; Debian base `openssl` and `libpcre2`; database ports are loopback-only and password-protected |
 
 ## Reliability evidence
 
