@@ -1,17 +1,26 @@
 /**
  * Shared test setup.
  *
- * Registers the DOM matchers, unmounts rendered trees, and fails any test that leaves a
- * console.error or console.warn call unconsumed.
+ * Registers the DOM matchers, runs the mock backend, unmounts rendered trees, and fails any test
+ * that leaves a console.error or console.warn call unconsumed.
  *
  * @packageDocumentation
  */
 
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
-import { afterEach, beforeEach, expect, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, expect, vi } from "vitest";
 
+import { server } from "./backend";
 import { recordConsoleCall, takeConsoleCalls } from "./console";
+
+beforeAll(() => {
+  server.listen({ onUnhandledFrame: "error" });
+});
+
+afterAll(() => {
+  server.close();
+});
 
 beforeEach(() => {
   takeConsoleCalls();
@@ -25,6 +34,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  server.resetHandlers();
   const calls = takeConsoleCalls();
   vi.restoreAllMocks();
   expect(calls).toEqual([]);
