@@ -26,6 +26,10 @@ __pycache__
 .tox
 .nox
 
+**/node_modules
+**/coverage
+**/playwright-report
+
 .coverage
 .coverage.*
 coverage.xml

@@ -90,7 +90,7 @@ and 12 full-stack documents and files, which exist only once their tickets creat
 | `frontend/` | The React, Tailwind, and TypeScript project; created by Ticket 87 with its own manifest and lockfile |
 | `frontend/package.json`, `frontend/pnpm-lock.yaml`, `frontend/pnpm-workspace.yaml`, `frontend/.node-version` | Exact pins, the committed lockfile, the seven-day release-age gate and the one peer override, and the Node pin; created by Ticket 87 |
 | `frontend/tsconfig.json`, `frontend/tsconfig.node.json`, `frontend/vite.config.ts`, `frontend/eslint.config.js`, `frontend/.prettierrc.json`, `frontend/.prettierignore`, `frontend/index.html` | Strict TypeScript for the app and for the tooling, the Vite and Vitest configuration, lint and format rules, and the document shell; created by Ticket 87 |
-| `frontend/scripts/` | `check-docs.mjs`, `generate-api.mjs`, `check-bundle.mjs`, `audit-supply-chain.mjs` and their tests; created by Tickets 87 and 98 |
+| `frontend/scripts/` | TypeScript tooling run by Node: `check-docs.ts`, `check-architecture.ts`, `generate-api.ts`, `check-bundle.ts`, `audit-supply-chain.ts`, `backend-origin.ts` and their tests; created by Tickets 87 and 98 |
 | `frontend/src/`, `frontend/test/` | Application source with colocated tests, and the test setup, mock backend, and fake socket; created by Tickets 87 to 93 |
 | `frontend/e2e/`, `frontend/playwright.config.ts` | Browser suites and projects against the `testing` backend; created by Ticket 96 |
 | `docker/frontend/Dockerfile`, `docker/frontend/nginx.conf` | Digest-pinned build and static runtime image and its server configuration; created by Ticket 97 |

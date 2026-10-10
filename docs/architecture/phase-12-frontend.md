@@ -138,7 +138,7 @@ proceeded. The ticket order, scope, route map, and gate are unchanged; the corre
 | ESLint 9 is unsupported, and TypeScript 7 breaks two peer ranges | ESLint 10.12.0 with a recorded peer override for `jsx-a11y`; TypeScript 5.9.3 | 87 |
 | pnpm excluded three too-new packages from its own release-age gate | A seven-day gate with no exclusions; nine pins moved to older releases | 87, 98 |
 | Several required packages were missing from the ADR | `openapi-typescript`, `yaml`, `axe-core`, the Tailwind Vite plugin, and the Playwright axe package recorded with dated evidence | 87 |
-| "Types derive from the schema" had no mechanism | `scripts/generate-api.mjs` writes `src/api/generated/` and `--check` fails the type check on drift | 87, 88 |
+| "Types derive from the schema" had no mechanism | `scripts/generate-api.ts` writes `src/api/generated/` and `--check` fails the type check on drift | 87, 88 |
 | Callers could not know a route's documented statuses at run time | The generated `operations.ts` table drives the client's unexpected-status rule and the exhaustive status tests | 88 |
 | The coverage tree was ambiguous | Coverage measures `src/` only; helpers live in `test/`, tooling in `scripts/`, and the script tests run in the suite | 87, 95 |
 | The TSDoc checker had no definition | Rules are fixed in the frontend standard Section 9 | 87 |

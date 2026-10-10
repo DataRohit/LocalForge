@@ -74,6 +74,27 @@ repos:
         types:
           - python
 
+      - id: frontend-format
+        name: frontend prettier
+        entry: pnpm --dir frontend run format
+        language: system
+        pass_filenames: false
+        files: ^frontend/
+
+      - id: frontend-lint
+        name: frontend eslint
+        entry: pnpm --dir frontend run lint
+        language: system
+        pass_filenames: false
+        files: ^frontend/
+
+      - id: frontend-docs-standard
+        name: frontend documentation standard
+        entry: pnpm --dir frontend run docs
+        language: system
+        pass_filenames: false
+        files: ^frontend/
+
       - id: mypy
         name: mypy
         entry: uv run --project backend poe -C backend types-mypy

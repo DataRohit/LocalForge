@@ -1,0 +1,4 @@
+minimumReleaseAge: 10080
+minimumReleaseAgeStrict: true
+overrides:
+  eslint-plugin-jsx-a11y>eslint: 10.12.0

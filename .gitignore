@@ -65,6 +65,11 @@ venv.bak/
 !/.env.example
 !/.env.*.sops
 
+node_modules/
+coverage/
+playwright-report/
+*.tsbuildinfo
+
 pip-log.txt
 pip-delete-this-directory.txt
 

@@ -1,5 +1,9 @@
 {
   "ignores": [
-    ".agents/**"
+    ".agents/**",
+    "**/node_modules/**",
+    "frontend/dist/**",
+    "frontend/coverage/**",
+    "frontend/playwright-report/**"
   ]
 }

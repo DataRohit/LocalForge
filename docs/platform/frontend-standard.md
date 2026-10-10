@@ -97,11 +97,11 @@ props, what it returns, and what it throws. ESLint and a checker in the frontend
 
 - No `//` comment and no `/* */` comment exists, including inside JSX. The only comments are `/** */` TSDoc blocks.
 - Each file starts with a block tagged `@packageDocumentation`: a one-line title, then two or three description lines.
-- Each exported function, component, hook, class, type, and interface has a block with a one-line title and two or
-  three description lines.
+- Each exported function, component, hook, and class has a block with a one-line title and two or three description
+  lines. Each exported type, interface, and constant has a one-line title and one to three description lines.
 - An exported function documents every parameter with `@param`, a non-void result with `@returns`, and a body that
   contains `throw` with `@throws`. A component documents its props object as `@param props`.
-- A description line is at most 100 characters.
+- No line of a block is longer than 100 characters.
 
 ## 10. Quality gate
 

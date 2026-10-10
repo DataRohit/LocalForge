@@ -21,7 +21,7 @@ age, and install scripts, wired into the security audit.
 - [ ] The served policy is `default-src 'self'` with no inline script and no `unsafe-eval`, and a browser test
       proves it blocks an injected script.
 - [ ] The production bundle contains no absolute URL to another host and no telemetry endpoint.
-- [ ] `scripts/audit-supply-chain.mjs` fails closed on any licence outside the accepted list, any advisory at high or
+- [ ] `scripts/audit-supply-chain.ts` fails closed on any licence outside the accepted list, any advisory at high or
       critical severity, any lockfile entry that requires a build script, any `minimumReleaseAgeExclude` entry, and any
       direct pin younger than seven days, with exceptions recorded in an ADR.
 - [ ] The security audit script covers the frontend checks and fails closed.

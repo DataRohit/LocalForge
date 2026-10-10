@@ -4,6 +4,8 @@ REPOSITORY_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))/
 BACKEND_PROJECT := $(REPOSITORY_ROOT)backend
 UV_RUN := uv run --project $(BACKEND_PROJECT) --directory $(BACKEND_PROJECT)
 POE := $(UV_RUN) poe
+FRONTEND_PROJECT := $(REPOSITORY_ROOT)frontend
+PNPM := pnpm --dir $(FRONTEND_PROJECT)
 
 POE_TASKS := \
   dev setup environments-setup docker-audit docker-clean-check \
@@ -24,7 +26,9 @@ POE_TASKS := \
 ENVIRONMENT_CHOICES := development testing
 ENVIRONMENT_TARGETS := dev migrate migrations superuser shell
 
-.PHONY: help sync preflight pre-commit-install pre-commit require-environment $(POE_TASKS)
+FRONTEND_TARGETS := \n  frontend-install frontend-format frontend-lint frontend-types frontend-docs-standard \n  frontend-test frontend-build frontend-check frontend-api-generate frontend-e2e \n  frontend-image frontend-audit
+
+.PHONY: help sync preflight pre-commit-install pre-commit require-environment $(POE_TASKS) $(FRONTEND_TARGETS)
 
 help:
 	@$(POE) help
@@ -54,3 +58,44 @@ endif
 
 $(POE_TASKS):
 	$(POE) $@ $(ARGS)
+
+frontend-install:
+	$(PNPM) install --frozen-lockfile
+
+frontend-format:
+	$(PNPM) run format
+
+frontend-lint:
+	$(PNPM) run lint
+
+frontend-types:
+	$(PNPM) run types
+
+frontend-docs-standard:
+	$(PNPM) run docs
+
+frontend-test:
+	$(PNPM) run test
+
+frontend-build:
+	$(PNPM) run build
+
+frontend-check:
+	$(MAKE) frontend-format
+	$(MAKE) frontend-lint
+	$(MAKE) frontend-types
+	$(MAKE) frontend-docs-standard
+	$(MAKE) frontend-test
+	$(MAKE) frontend-build
+
+frontend-api-generate:
+	$(PNPM) run api:generate
+
+frontend-e2e:
+	$(PNPM) run e2e
+
+frontend-image:
+	docker build --file docker/frontend/Dockerfile --tag localforge/frontend:0.1.0 $(REPOSITORY_ROOT)
+
+frontend-audit:
+	$(PNPM) run audit:supply
