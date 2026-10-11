@@ -80,7 +80,7 @@ describe("sign out", () => {
 
     await user.click(await screen.findByRole("button", { name: "Sign out" }));
 
-    expect(await screen.findByRole("heading", { name: "Page not found" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Sign in" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Sign out" })).not.toBeInTheDocument();
   });
 

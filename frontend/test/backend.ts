@@ -12,6 +12,7 @@ import { setupServer } from "msw/node";
 
 import { operations, type OperationId } from "../src/api/generated/operations";
 import type { components } from "../src/api/generated/schema";
+import { setCookies } from "./cookies";
 import type { SuccessBody } from "../src/api/types";
 
 /**
@@ -181,6 +182,20 @@ export function fail(
 export function disconnect(id: OperationId): void {
   const operation = operations[id];
   server.use(http[operation.method](operation.path, () => HttpResponse.error()));
+}
+
+/**
+ * Answer the CSRF seeding route the way the backend does.
+ *
+ * Returns 204 and stores the CSRF cookie, so a later unsafe request finds a token to send.
+ * Tests use it for flows that start with no cookies.
+ */
+export function seedCsrfCookie(): void {
+  server.use(
+    handler("browser_csrf", 204, undefined, {}, () => {
+      setCookies("__Host-lf-csrf=seeded-token");
+    }),
+  );
 }
 
 /**

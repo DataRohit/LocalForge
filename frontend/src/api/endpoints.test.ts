@@ -135,6 +135,14 @@ describe("bodiless and acceptance endpoints", () => {
     await expect(activate({ account: ACCOUNT, token: "t" })).resolves.toBeUndefined();
   });
 
+  it("register rejects an accepted response that has no body", async () => {
+    server.use(handler("user_registration_or_activation", 204));
+
+    await expect(
+      register({ username: "a", email: "a@example.test", password: "p", password_confirm: "p" }),
+    ).rejects.toBeInstanceOf(UnexpectedResponseError);
+  });
+
   it.each([
     [
       "resendActivation",

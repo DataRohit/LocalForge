@@ -13,3 +13,5 @@ export { toProblem } from "./problem";
 export type { Problem, ProblemKind } from "./problem";
 export { createQueryClient, queryKeys } from "./query";
 export { subscribeUnauthorized } from "./unauthorized";
+export { useSubmission } from "./useSubmission";
+export type { Submission } from "./useSubmission";

@@ -22,9 +22,9 @@ export interface TextFieldProps {
   readonly label: string;
   readonly name: string;
   readonly type?: "text" | "email" | "password";
-  readonly autoComplete?: string;
-  readonly hint?: string;
-  readonly error?: string;
+  readonly autoComplete?: string | undefined;
+  readonly hint?: string | undefined;
+  readonly error?: string | undefined;
   readonly onChange?: ChangeEventHandler<HTMLInputElement>;
   readonly onBlur?: FocusEventHandler<HTMLInputElement>;
   readonly ref?: Ref<HTMLInputElement>;

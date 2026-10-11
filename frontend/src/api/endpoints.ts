@@ -166,11 +166,16 @@ export function deleteAccount(body: RequestBody<"user_profile_delete">): Promise
  *
  * @param body - Registration fields.
  * @returns The accepted username and email.
+ * @throws UnexpectedResponseError If the backend answers without the documented body.
  */
-export function register(
+export async function register(
   body: components["schemas"]["Registration"],
-): Promise<SuccessBody<"user_registration_or_activation">> {
-  return call("user_registration_or_activation", { body });
+): Promise<components["schemas"]["RegistrationResponse"]> {
+  const result = await call("user_registration_or_activation", { body });
+  if (result === undefined) {
+    throw new UnexpectedResponseError("The registration response had no body.", 204);
+  }
+  return result;
 }
 
 /**
@@ -181,11 +186,15 @@ export function register(
  *
  * @param body - The account key and token from the link.
  * @returns Nothing; the backend answers 204.
+ * @throws UnexpectedResponseError If the backend answers with a body instead of 204.
  */
-export function activate(
+export async function activate(
   body: components["schemas"]["ActivationConfirmation"],
-): Promise<SuccessBody<"user_registration_or_activation">> {
-  return call("user_registration_or_activation", { body });
+): Promise<void> {
+  const result = await call("user_registration_or_activation", { body });
+  if (result !== undefined) {
+    throw new UnexpectedResponseError("The activation response had a body.", 201);
+  }
 }
 
 /**
