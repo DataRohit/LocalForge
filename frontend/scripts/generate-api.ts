@@ -27,7 +27,15 @@ export interface OperationEntry {
   readonly path: string;
   readonly statuses: readonly number[];
   readonly authenticated: boolean;
+  readonly hasBody: boolean;
 }
+
+/**
+ * Response examples of the specification.
+ *
+ * Maps an operation identifier to a status code to the JSON examples the document gives for it.
+ */
+export type ExampleTable = Record<string, Record<string, unknown[]>>;
 
 /**
  * Outcome of a generation run.
@@ -103,7 +111,14 @@ export function readOperations(document: unknown): OperationEntry[] {
         security.every(
           (alternative) => isRecord(alternative) && Object.keys(alternative).length > 0,
         );
-      entries.push({ id: operation.operationId, method, path: route, statuses, authenticated });
+      entries.push({
+        id: operation.operationId,
+        method,
+        path: route,
+        statuses,
+        authenticated,
+        hasBody: isRecord(operation.requestBody),
+      });
     }
   }
   return entries;
@@ -126,6 +141,7 @@ export function renderOperationsModule(entries: readonly OperationEntry[]): stri
       `    path: "${entry.path}",\n` +
       `    statuses: [${entry.statuses.join(", ")}],\n` +
       `    authenticated: ${String(entry.authenticated)},\n` +
+      `    hasBody: ${String(entry.hasBody)},\n` +
       `  },`,
   );
   return [
@@ -148,20 +164,99 @@ export function renderOperationsModule(entries: readonly OperationEntry[]): stri
 }
 
 /**
- * Generate both output files in memory.
+ * Read the JSON response examples out of a parsed OpenAPI document.
+ *
+ * Collects, for every operation and status, each example under the application/json content, from
+ * either a single example or a named examples map, keeping document order.
+ *
+ * @param document - Parsed OpenAPI document.
+ * @returns The examples by operation identifier and status code.
+ * @throws Error If the document has no paths object.
+ */
+export function readExamples(document: unknown): ExampleTable {
+  if (!isRecord(document) || !isRecord(document.paths)) {
+    throw new Error("The OpenAPI document has no paths object.");
+  }
+  const table: ExampleTable = {};
+  for (const item of Object.values(document.paths)) {
+    if (!isRecord(item)) {
+      continue;
+    }
+    for (const method of HTTP_METHODS) {
+      const operation = item[method];
+      if (!isRecord(operation) || typeof operation.operationId !== "string") {
+        continue;
+      }
+      const byStatus: Record<string, unknown[]> = {};
+      const responses = isRecord(operation.responses) ? operation.responses : {};
+      for (const [status, response] of Object.entries(responses)) {
+        const content = isRecord(response) && isRecord(response.content) ? response.content : {};
+        const json = content["application/json"];
+        const values: unknown[] = [];
+        if (isRecord(json) && "example" in json) {
+          values.push(json.example);
+        }
+        if (isRecord(json) && isRecord(json.examples)) {
+          for (const entry of Object.values(json.examples)) {
+            if (isRecord(entry) && "value" in entry) {
+              values.push(entry.value);
+            }
+          }
+        }
+        if (values.length > 0) {
+          byStatus[status] = values;
+        }
+      }
+      table[operation.operationId] = byStatus;
+    }
+  }
+  return table;
+}
+
+/**
+ * Render the response examples module.
+ *
+ * Emits the examples as a typed constant so tests can replay the document's own responses through
+ * the client without reading the filesystem.
+ *
+ * @param table - The examples by operation and status.
+ * @returns The module source text.
+ */
+export function renderExamplesModule(table: ExampleTable): string {
+  return [
+    "/**",
+    " * Generated response examples.",
+    " *",
+    " * Produced by scripts/generate-api.ts from docs/api/openapi-v1.yaml. Do not edit by hand;",
+    " * run the generator and commit the result.",
+    " *",
+    " * @packageDocumentation",
+    " */",
+    "",
+    "export const examples: Readonly<",
+    "  Record<string, Readonly<Record<string, readonly unknown[]>>>",
+    `> = ${JSON.stringify(table, null, 2)};`,
+    "",
+  ].join("\n");
+}
+
+/**
+ * Generate the output files in memory.
  *
  * Runs the type generator and the table renderer against the specification file.
  * Nothing is written here, so the caller decides between writing and comparing.
  *
  * @param specPath - Absolute path of the OpenAPI document.
- * @returns The schema declaration text and the operations module text.
+ * @returns The schema declaration text, the operations module, and the examples module.
  */
 export async function generateFiles(specPath: string): Promise<Record<string, string>> {
   const source = await readFile(specPath, "utf8");
+  const document: unknown = parse(source);
   const ast = await openapiTS(pathToFileURL(specPath));
   return {
     "schema.d.ts": astToString(ast),
-    "operations.ts": renderOperationsModule(readOperations(parse(source))),
+    "operations.ts": renderOperationsModule(readOperations(document)),
+    "examples.ts": renderExamplesModule(readExamples(document)),
   };
 }
 

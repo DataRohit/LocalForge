@@ -13,7 +13,13 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { readOperations, renderOperationsModule, run } from "./generate-api.ts";
+import {
+  readExamples,
+  readOperations,
+  renderExamplesModule,
+  renderOperationsModule,
+  run,
+} from "./generate-api.ts";
 
 const SPEC = `openapi: 3.1.0
 info:
@@ -26,8 +32,18 @@ paths:
       responses:
         "200":
           description: ok
+          content:
+            application/json:
+              example:
+                total: 1
         "429":
           description: slow down
+          content:
+            application/json:
+              examples:
+                Slow:
+                  value:
+                    code: throttled
     post:
       operationId: things_create
       security:
@@ -50,16 +66,42 @@ describe("readOperations", () => {
       paths: {
         "/a/": {
           get: { operationId: "a_get", responses: { "404": {}, "200": {}, default: {} } },
-          post: { operationId: "a_post", security: [{ jwtAuth: [] }], responses: { "204": {} } },
+          post: {
+            operationId: "a_post",
+            security: [{ jwtAuth: [] }],
+            requestBody: { content: {} },
+            responses: { "204": {} },
+          },
           delete: { operationId: "a_delete", security: [{}], responses: { "204": {} } },
         },
       },
     });
 
     expect(entries).toEqual([
-      { id: "a_get", method: "get", path: "/a/", statuses: [200, 404], authenticated: false },
-      { id: "a_post", method: "post", path: "/a/", statuses: [204], authenticated: true },
-      { id: "a_delete", method: "delete", path: "/a/", statuses: [204], authenticated: false },
+      {
+        id: "a_get",
+        method: "get",
+        path: "/a/",
+        statuses: [200, 404],
+        authenticated: false,
+        hasBody: false,
+      },
+      {
+        id: "a_post",
+        method: "post",
+        path: "/a/",
+        statuses: [204],
+        authenticated: true,
+        hasBody: true,
+      },
+      {
+        id: "a_delete",
+        method: "delete",
+        path: "/a/",
+        statuses: [204],
+        authenticated: false,
+        hasBody: false,
+      },
     ]);
   });
 
@@ -79,16 +121,92 @@ describe("readOperations", () => {
   });
 });
 
+describe("readExamples", () => {
+  it("collects single examples and named examples by operation and status", () => {
+    const table = readExamples({
+      paths: {
+        "/a/": {
+          get: {
+            operationId: "a_get",
+            responses: {
+              "200": { content: { "application/json": { example: { ok: true } } } },
+              "400": {
+                content: {
+                  "application/json": {
+                    examples: { First: { value: { code: "a" } }, Second: { value: { code: "b" } } },
+                  },
+                },
+              },
+              "404": { content: { "text/plain": { example: "no" } } },
+              "500": { description: "no content" },
+              "503": "not an object",
+            },
+          },
+          post: { operationId: "a_post" },
+          parameters: [],
+        },
+        "/b/": "not an object",
+        "/c/": { get: { responses: {} } },
+      },
+    });
+
+    expect(table).toEqual({
+      a_get: { "200": [{ ok: true }], "400": [{ code: "a" }, { code: "b" }] },
+      a_post: {},
+    });
+  });
+
+  it("skips an example entry that has no value", () => {
+    const table = readExamples({
+      paths: {
+        "/a/": {
+          get: {
+            operationId: "a_get",
+            responses: {
+              "200": { content: { "application/json": { examples: { Empty: {}, Odd: 1 } } } },
+            },
+          },
+        },
+      },
+    });
+
+    expect(table).toEqual({ a_get: {} });
+  });
+
+  it("rejects a document without paths", () => {
+    expect(() => readExamples({})).toThrow(Error);
+    expect(() => readExamples(undefined)).toThrow(Error);
+  });
+});
+
+describe("renderExamplesModule", () => {
+  it("renders the table as a typed constant", () => {
+    const text = renderExamplesModule({ a_get: { "200": [{ ok: true }] } });
+
+    expect(text).toContain("export const examples: Readonly<");
+    expect(text).toContain('"a_get"');
+    expect(text).toContain('"ok": true');
+  });
+});
+
 describe("renderOperationsModule", () => {
   it("renders a typed constant keyed by identifier", () => {
     const text = renderOperationsModule([
-      { id: "a_get", method: "get", path: "/a/", statuses: [200, 404], authenticated: true },
+      {
+        id: "a_get",
+        method: "get",
+        path: "/a/",
+        statuses: [200, 404],
+        authenticated: true,
+        hasBody: false,
+      },
     ]);
 
     expect(text).toContain("a_get: {");
     expect(text).toContain('path: "/a/",');
     expect(text).toContain("statuses: [200, 404],");
     expect(text).toContain("authenticated: true,");
+    expect(text).toContain("hasBody: false,");
     expect(text).toContain("export type OperationId = keyof typeof operations;");
   });
 });
@@ -115,7 +233,7 @@ describe("run", () => {
     const written = await run(options);
     const checked = await run({ ...options, check: true });
 
-    expect(written).toEqual({ ok: true, changed: ["schema.d.ts", "operations.ts"] });
+    expect(written).toEqual({ ok: true, changed: ["schema.d.ts", "operations.ts", "examples.ts"] });
     expect(checked).toEqual({ ok: true, changed: [] });
     expect(await readFile(path.join(directory, "out", "operations.ts"), "utf8")).toContain(
       "things_create",
@@ -133,7 +251,7 @@ describe("run", () => {
       check: true,
     });
 
-    expect(result).toEqual({ ok: false, changed: ["schema.d.ts", "operations.ts"] });
+    expect(result).toEqual({ ok: false, changed: ["schema.d.ts", "operations.ts", "examples.ts"] });
     expect(await readFile(path.join(out, "operations.ts"), "utf8")).toBe("stale");
   });
 });
