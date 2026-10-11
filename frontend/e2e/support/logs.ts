@@ -34,6 +34,11 @@ export interface Classified {
  */
 export const EXPECTED_WARNINGS: readonly ExpectedPattern[] = [
   {
+    pattern:
+      /WARNING django\.request "Not Found: \/api\/v1\/image-proof-missing\/" GET \/api\/v1\/image-proof-missing\/ 404$/,
+    reason: "the standalone candidate proof deliberately requests an unknown API path",
+  },
+  {
     pattern: /WARNING django\.request "[^"]*" GET \/api\/v1\/users\/me\/ 401$/,
     reason: "every signed-out page load asks for the profile and is told to sign in",
   },

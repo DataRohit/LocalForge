@@ -10,11 +10,13 @@ would otherwise have surfaced as a mysterious failure at build time.
 
 ## 1. Development stack
 
-23 services. Ports listed are **host** ports; the internal port is given where it differs.
+24 registered services, including the inert frontend candidate until deployment is authorized.
+Ports listed are **host** ports; the internal port is given where it differs.
 
 | Container name | Role | Host ports | Internal | Networks |
 | --- | --- | --- | --- | --- |
 | `traefik-tk2jp` | reverse proxy, Docker label discovery | `127.0.0.1:8080` web, `127.0.0.1:8081` dashboard | 80, 8080, 8082 health internal only | `edge-net-ne2vk` |
+| `frontend-fe6vn` | static React SPA, Ticket 97 candidate | none | 8080 HTTP, `/healthz` | `edge-net-ne2vk` |
 | `cloudflared-cf7q2` | authenticated Cloudflare Tunnel connector | none | 2000 metrics and readiness internal only | `edge-net-ne2vk` |
 | `django-uv5n2` | Django ASGI app plus observability-only metrics listener | `127.0.0.1:8000` | 8000 app, 8001 metrics on `obsv-net-nb4xt` only | `edge-net-ne2vk`, `app-net-na6hy`, `data-net-nd9pc`, `obsv-net-nb4xt`, `access-net-ha4mz` |
 | `postgres-pg3ka` | PostgreSQL 18.6 primary | `127.0.0.1:5432` | 5432 | `data-net-nd9pc`, `access-net-ha4mz` |

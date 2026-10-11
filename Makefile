@@ -28,7 +28,7 @@ ENVIRONMENT_TARGETS := dev migrate migrations superuser shell
 
 FRONTEND_TARGETS := \n  frontend-install frontend-format frontend-lint frontend-types frontend-docs-standard \n  frontend-test frontend-build frontend-check frontend-api-generate frontend-e2e \n  frontend-image frontend-audit
 
-.PHONY: help sync preflight pre-commit-install pre-commit require-environment $(POE_TASKS) $(FRONTEND_TARGETS)
+.PHONY: help sync preflight pre-commit-install pre-commit require-environment $(POE_TASKS) $(FRONTEND_TARGETS) frontend-image-check
 
 help:
 	@$(POE) help
@@ -96,6 +96,9 @@ frontend-e2e:
 
 frontend-image:
 	docker build --file docker/frontend/Dockerfile --tag localforge/frontend:0.1.0 $(REPOSITORY_ROOT)
+
+frontend-image-check:
+	$(PNPM) exec node scripts/check-image.ts
 
 frontend-audit:
 	$(PNPM) run audit:supply

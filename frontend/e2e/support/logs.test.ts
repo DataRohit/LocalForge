@@ -63,6 +63,13 @@ describe("serverWarnings", () => {
 });
 
 describe("recorded expectations", () => {
+  it("accepts only the exact standalone unknown-route rejection", () => {
+    const line =
+      'host-mode server: WARNING django.request "Not Found: /api/v1/image-proof-missing/" GET /api/v1/image-proof-missing/ 404';
+    expect(classify([line]).unexplained).toEqual([]);
+    expect(classify([line.replace(" 404", " 500")]).unexplained).toHaveLength(1);
+    expect(classify([line.replace("GET", "POST")]).unexplained).toHaveLength(1);
+  });
   const described = (method: string, path: string, status: number): string =>
     `host-mode server: WARNING django.request "Forbidden: x" ${method} ${path} ${status}`;
 

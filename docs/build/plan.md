@@ -96,6 +96,8 @@ and 12 full-stack documents and files, which exist only once their tickets creat
 | `frontend/.e2e-run/` | Git-ignored run directory for the throwaway certificate, the server log, and `results.json`; created and removed by the runner |
 | `backend/tests/integration/accounts/csrf_support.py` | Builds the CSRF-rejected request the status-contract evidence tests observe; created when Phase 11 was reopened on 2026-10-11 |
 | `docker/frontend/Dockerfile`, `docker/frontend/nginx.conf` | Digest-pinned build and static runtime image and its server configuration; created by Ticket 97 |
+| `docker/frontend/entrypoint.sh` | Converts native nginx error records to JSON without another service or dependency; created by Ticket 97 |
+| `frontend/scripts/check-image.ts`, `frontend/scripts/check-image.test.ts` | Standalone image and candidate-routing proof against the isolated testing backend; created by Ticket 97 |
 | `docs/runbooks/frontend-deployment/` | Inert candidate Compose and Traefik files plus deploy and rollback procedure; never loaded by tooling; created by Tickets 97 and 99 |
 | `docs/handover/phase-11.md`, `docs/handover/phase-12.md` | Freeze Manifest and frontend handover records; created by Tickets 86 and 99 |
 | `docs/handover/phase-10.md` | Phase 10 final migration evidence and rollback record |
