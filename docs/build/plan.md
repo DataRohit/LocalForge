@@ -92,7 +92,7 @@ and 12 full-stack documents and files, which exist only once their tickets creat
 | `frontend/tsconfig.json`, `frontend/tsconfig.node.json`, `frontend/vite.config.ts`, `frontend/eslint.config.js`, `frontend/.prettierrc.json`, `frontend/.prettierignore`, `frontend/index.html` | Strict TypeScript for the app and for the tooling, the Vite and Vitest configuration, lint and format rules, and the document shell; created by Ticket 87 |
 | `frontend/scripts/` | TypeScript tooling run by Node: `check-docs.ts`, `check-architecture.ts`, `generate-api.ts`, `check-bundle.ts`, `audit-supply-chain.ts`, `backend-origin.ts` and their tests; created by Tickets 87 and 98 |
 | `frontend/src/`, `frontend/test/` | Application source with colocated tests, and the test setup, mock backend, and fake socket; created by Tickets 87 to 93 |
-| `frontend/e2e/`, `frontend/playwright.config.ts` | Browser suites and projects against the `testing` backend; created by Ticket 96 |
+| `frontend/e2e/`, `frontend/playwright.config.ts` | Browser suites: the audit project with a mocked network (Ticket 94) and the journey projects against the `testing` backend (Ticket 96) |
 | `docker/frontend/Dockerfile`, `docker/frontend/nginx.conf` | Digest-pinned build and static runtime image and its server configuration; created by Ticket 97 |
 | `docs/runbooks/frontend-deployment/` | Inert candidate Compose and Traefik files plus deploy and rollback procedure; never loaded by tooling; created by Tickets 97 and 99 |
 | `docs/handover/phase-11.md`, `docs/handover/phase-12.md` | Freeze Manifest and frontend handover records; created by Tickets 86 and 99 |

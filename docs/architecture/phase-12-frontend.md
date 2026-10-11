@@ -56,7 +56,7 @@ no `VITE_*` or other build-time variables: every URL is relative, so one build s
 | `src/api/generated/` | `schema.d.ts` and `operations.ts`, generated from `docs/api/openapi-v1.yaml`; committed, never edited |
 | `test/` | Test setup, the schema-typed MSW handlers, render helpers, and the fake socket; not measured for coverage |
 | `scripts/` | The TSDoc checker, API generator and drift check, bundle check, and supply-chain audit, each with tests |
-| `e2e/` | Playwright specs, projects, and the `testing` isolation check (Ticket 96) |
+| `e2e/` | Playwright specs: the browser audit (Ticket 94), and the journeys and the `testing` isolation check (Ticket 96) |
 
 All commands run through the root `Makefile`, which calls `pnpm --dir frontend`. Only `pnpm install
 --frozen-lockfile` installs; a dependency changes through `pnpm add --save-exact` or `pnpm remove`.
@@ -70,7 +70,7 @@ All commands run through the root `Makefile`, which calls `pnpm --dir frontend`.
 | `frontend-build` | Production build and the bundle checks |
 | `frontend-check` | All of the above in order |
 | `frontend-api-generate` | Regenerates `src/api/generated/` from the committed OpenAPI document |
-| `frontend-e2e` | Playwright against the `testing` backend |
+| `frontend-e2e` | Builds, then runs Playwright: the audit project with a mocked network, and from Ticket 96 the journeys against the `testing` backend |
 | `frontend-image` | The pinned container build |
 | `frontend-audit` | Licence, advisory, release-age, and install-script audit |
 

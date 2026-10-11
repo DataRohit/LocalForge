@@ -1,13 +1,14 @@
 /**
  * Shared test setup.
  *
- * Registers the DOM matchers, runs the mock backend, unmounts rendered trees, and fails any test
- * that leaves a console.error or console.warn call unconsumed.
+ * Registers the DOM matchers, runs the mock backend, unmounts rendered trees, restores the shared
+ * online state, and fails any test that leaves a console.error or console.warn call unconsumed.
  *
  * @packageDocumentation
  */
 
 import "@testing-library/jest-dom/vitest";
+import { onlineManager } from "@tanstack/react-query";
 import { cleanup, configure } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, vi } from "vitest";
 
@@ -40,6 +41,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   server.resetHandlers();
+  onlineManager.setOnline(true);
   const calls = takeConsoleCalls();
   vi.restoreAllMocks();
   expect(calls).toEqual([]);
