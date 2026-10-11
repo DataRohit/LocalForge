@@ -13,13 +13,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { envelope, fail, handler, profile, sequence, server, succeed } from "../../test/backend";
 import { setCookies } from "../../test/cookies";
-import { call } from "./client";
+import { call, renewSession } from "./client";
 import { exposedOperations } from "./endpoints";
 import { ApiError, NetworkError, UnexpectedResponseError } from "./errors";
 import { operations } from "./generated/operations";
 import { notifyUnauthorized, subscribeUnauthorized } from "./unauthorized";
 
 const TOKEN = "token-123";
+
+function watchSessionLoss(): { count: () => number; stop: () => void } {
+  let calls = 0;
+  const stop = subscribeUnauthorized(() => {
+    calls += 1;
+  });
+  return { count: () => calls, stop };
+}
 
 beforeEach(() => {
   setCookies(`__Host-lf-csrf=${TOKEN}`);
@@ -237,14 +245,6 @@ describe("transport failures", () => {
 });
 
 describe("session recovery", () => {
-  function watchSessionLoss(): { count: () => number; stop: () => void } {
-    let calls = 0;
-    const stop = subscribeUnauthorized(() => {
-      calls += 1;
-    });
-    return { count: () => calls, stop };
-  }
-
   it("refreshes once and retries once after a 401", async () => {
     const lost = watchSessionLoss();
     const profileCalls = sequence("user_profile_retrieve", [
@@ -370,6 +370,51 @@ describe("session recovery", () => {
     notifyUnauthorized();
     expect(lost.count()).toBe(1);
     lost.stop();
+  });
+});
+
+describe("renewing the session on demand", () => {
+  it("returns true when the cookies were renewed and does not announce loss", async () => {
+    const lost = watchSessionLoss();
+    const refreshCalls = sequence("browser_refresh", [{ status: 204 }]);
+
+    await expect(renewSession()).resolves.toBe(true);
+
+    expect(refreshCalls()).toBe(1);
+    expect(lost.count()).toBe(0);
+    lost.stop();
+  });
+
+  it("returns false and announces session loss when the refresh is refused", async () => {
+    const lost = watchSessionLoss();
+    fail("browser_refresh", 401, envelope("not_authenticated", "No session."));
+
+    await expect(renewSession()).resolves.toBe(false);
+
+    expect(lost.count()).toBe(1);
+    lost.stop();
+  });
+
+  it("propagates a failure that is not a 401 without announcing loss", async () => {
+    const lost = watchSessionLoss();
+    fail("browser_refresh", 503, envelope("service_unavailable", "Down."));
+
+    await expect(renewSession()).rejects.toMatchObject({ status: 503 });
+
+    expect(lost.count()).toBe(0);
+    lost.stop();
+  });
+
+  it("shares the refresh with a concurrent authenticated call", async () => {
+    const refreshCalls = sequence("browser_refresh", [{ status: 204 }]);
+    sequence("user_profile_retrieve", [
+      { status: 401, body: envelope("not_authenticated", "x") },
+      { status: 200, body: profile() },
+    ]);
+
+    await Promise.all([renewSession(), call("user_profile_retrieve")]);
+
+    expect(refreshCalls()).toBe(1);
   });
 });
 

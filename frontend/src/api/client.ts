@@ -222,3 +222,21 @@ export async function call<Id extends OperationId>(
     }
   }
 }
+
+/**
+ * Renew the browser session on demand.
+ *
+ * Used by the notification socket when it is closed for an expired credential. Shares the refresh
+ * request with any API call that needs one, and announces session loss when the refresh is refused.
+ *
+ * @returns True when the cookies were renewed, false when the session could not be recovered.
+ * @throws ApiError For a refresh failure other than 401.
+ * @throws NetworkError If no response arrived.
+ */
+export async function renewSession(): Promise<boolean> {
+  const renewed = await refreshSession();
+  if (!renewed) {
+    notifyUnauthorized();
+  }
+  return renewed;
+}

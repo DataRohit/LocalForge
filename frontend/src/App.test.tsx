@@ -12,7 +12,7 @@ import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import { envelope, fail, profile, succeed } from "../test/backend";
-import { createTestClient, renderApp } from "../test/render";
+import { createTestClient, renderApp, silentConnect } from "../test/render";
 import { queryKeys } from "./api";
 import { App } from "./App";
 
@@ -49,7 +49,7 @@ describe("App", () => {
     succeed("user_profile_retrieve", 200, profile());
     render(
       <MemoryRouter initialEntries={["/account"]}>
-        <App credentials={null} />
+        <App credentials={null} connect={silentConnect} />
       </MemoryRouter>,
     );
 

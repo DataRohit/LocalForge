@@ -13,6 +13,7 @@ import { useState } from "react";
 import type { JSX } from "react";
 
 import { createQueryClient } from "./api";
+import type { ConnectNotifications } from "./api";
 import { AppRoutes } from "./routes/AppRoutes";
 import { FragmentCredentialsProvider, SessionProvider } from "./session";
 import type { FragmentCredentials } from "./session";
@@ -20,10 +21,12 @@ import type { FragmentCredentials } from "./session";
 /**
  * Application props.
  *
- * The credentials read from the URL fragment at startup, and an optional query client for tests.
+ * The credentials read from the URL fragment at startup, the function that opens the notification
+ * socket, and an optional query client for tests.
  */
 export interface AppProps {
   readonly credentials: FragmentCredentials | null;
+  readonly connect: ConnectNotifications;
   readonly client?: QueryClient;
 }
 
@@ -36,13 +39,13 @@ export interface AppProps {
  * @param props - The application props.
  * @returns The root element tree.
  */
-export function App({ credentials, client }: AppProps): JSX.Element {
+export function App({ credentials, connect, client }: AppProps): JSX.Element {
   const [owned] = useState(createQueryClient);
   return (
     <QueryClientProvider client={client ?? owned}>
       <FragmentCredentialsProvider initial={credentials}>
         <SessionProvider>
-          <AppRoutes />
+          <AppRoutes connect={connect} />
         </SessionProvider>
       </FragmentCredentialsProvider>
     </QueryClientProvider>

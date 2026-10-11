@@ -15,9 +15,20 @@ import type { UserEvent } from "@testing-library/user-event";
 import type { JSX, ReactNode } from "react";
 import { MemoryRouter } from "react-router";
 
+import type { ConnectNotifications } from "../src/api";
 import { App } from "../src/App";
 import { FragmentCredentialsProvider, SessionProvider } from "../src/session";
 import type { FragmentCredentials } from "../src/session";
+
+/**
+ * Socket opener that never connects.
+ *
+ * Used by every test that does not exercise the notification feed, so no test opens a real socket.
+ * The feed stays in its connecting state and nothing is ever delivered.
+ *
+ * @returns A handle whose close does nothing.
+ */
+export const silentConnect: ConnectNotifications = () => ({ close: () => undefined });
 
 /**
  * Options for rendering the application.
@@ -28,6 +39,7 @@ export interface AppOptions {
   readonly path?: string;
   readonly credentials?: FragmentCredentials | null;
   readonly client?: QueryClient;
+  readonly connect?: ConnectNotifications;
 }
 
 /**
@@ -67,7 +79,11 @@ export function renderApp(options: AppOptions = {}): AppRender {
   const client = options.client ?? createTestClient();
   const result = render(
     <MemoryRouter initialEntries={[options.path ?? "/"]}>
-      <App credentials={options.credentials ?? null} client={client} />
+      <App
+        credentials={options.credentials ?? null}
+        connect={options.connect ?? silentConnect}
+        client={client}
+      />
     </MemoryRouter>,
   );
   return { ...result, user: userEvent.setup(), client };

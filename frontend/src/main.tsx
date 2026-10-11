@@ -11,6 +11,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 
+import { openNotificationSocket } from "./api";
 import { App } from "./App";
 import { takeFragmentCredentials } from "./session";
 import "./index.css";
@@ -24,7 +25,7 @@ if (root === null) {
 createRoot(root).render(
   <StrictMode>
     <BrowserRouter>
-      <App credentials={credentials} />
+      <App credentials={credentials} connect={openNotificationSocket} />
     </BrowserRouter>
   </StrictMode>,
 );
