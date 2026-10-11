@@ -12,6 +12,7 @@ import { cleanup, configure } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, vi } from "vitest";
 
 import { server } from "./backend";
+import "./dialog";
 import { recordConsoleCall, takeConsoleCalls } from "./console";
 
 const ASYNC_TIMEOUT_MS = 5000;

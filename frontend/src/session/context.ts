@@ -40,7 +40,7 @@ export type Session =
  * Held in memory for the sign-in page to explain, because a route guard redirects before the
  * screen that caused the sign-out could show anything.
  */
-export type SignInNotice = "password-changed" | "session-ended";
+export type SignInNotice = "password-changed" | "session-ended" | "account-deleted";
 
 /**
  * Session actions.

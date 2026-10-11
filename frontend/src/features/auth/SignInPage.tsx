@@ -47,6 +47,11 @@ const NOTICES: Readonly<
     title: "Your session ended",
     text: "Sign in again to continue.",
   },
+  "account-deleted": {
+    kind: "info",
+    title: "Account deleted",
+    text: "Your account was deleted. You can register again at any time.",
+  },
 };
 
 /**
