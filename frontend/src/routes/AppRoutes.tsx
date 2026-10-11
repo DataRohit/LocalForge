@@ -15,6 +15,12 @@ import { ActivatePage } from "../features/auth/ActivatePage";
 import { RegisterPage } from "../features/auth/RegisterPage";
 import { ResendActivationPage } from "../features/auth/ResendActivationPage";
 import { SignInPage } from "../features/auth/SignInPage";
+import { ChangePasswordPage } from "../features/credentials/ChangePasswordPage";
+import { ChangeUsernamePage } from "../features/credentials/ChangeUsernamePage";
+import { ForgotPasswordPage } from "../features/recovery/ForgotPasswordPage";
+import { ForgotUsernamePage } from "../features/recovery/ForgotUsernamePage";
+import { ResetPasswordPage } from "../features/recovery/ResetPasswordPage";
+import { ResetUsernamePage } from "../features/recovery/ResetUsernamePage";
 import { NotFound } from "../features/shell/NotFound";
 import { Shell } from "../features/shell/Shell";
 import { PATHS } from "../session";
@@ -52,10 +58,44 @@ export function AppRoutes(): JSX.Element {
         <Route path={PATHS.activate} element={<ActivatePage />} />
         <Route path={PATHS.resendActivation} element={<ResendActivationPage />} />
         <Route
+          path={PATHS.forgotPassword}
+          element={
+            <PublicOnly>
+              <ForgotPasswordPage />
+            </PublicOnly>
+          }
+        />
+        <Route path={PATHS.resetPassword} element={<ResetPasswordPage />} />
+        <Route
+          path={PATHS.forgotUsername}
+          element={
+            <PublicOnly>
+              <ForgotUsernamePage />
+            </PublicOnly>
+          }
+        />
+        <Route path={PATHS.resetUsername} element={<ResetUsernamePage />} />
+        <Route
           path={PATHS.account}
           element={
             <RequireCapability capability="account:read">
               <AccountPage />
+            </RequireCapability>
+          }
+        />
+        <Route
+          path={PATHS.accountPassword}
+          element={
+            <RequireCapability capability="credentials:change">
+              <ChangePasswordPage />
+            </RequireCapability>
+          }
+        />
+        <Route
+          path={PATHS.accountUsername}
+          element={
+            <RequireCapability capability="credentials:change">
+              <ChangeUsernamePage />
             </RequireCapability>
           }
         />

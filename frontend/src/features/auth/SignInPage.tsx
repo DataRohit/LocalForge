@@ -13,7 +13,9 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 
 import { login, useSubmission } from "../../api";
-import { PATHS, useSessionActions } from "../../session";
+import { PATHS, useSessionActions, useSignInNotice } from "../../session";
+import type { SignInNotice } from "../../session";
+import { Alert } from "../../ui/Alert";
 import { Button } from "../../ui/Button";
 import { Card } from "../../ui/Card";
 import { Form } from "../../ui/Form";
@@ -29,6 +31,24 @@ const schema = z.object({
 
 type Values = z.infer<typeof schema>;
 
+const NOTICES: Readonly<
+  Record<
+    SignInNotice,
+    { readonly kind: "success" | "info"; readonly title: string; readonly text: string }
+  >
+> = {
+  "password-changed": {
+    kind: "success",
+    title: "Password changed",
+    text: "You were signed out everywhere. Sign in with your new password.",
+  },
+  "session-ended": {
+    kind: "info",
+    title: "Your session ended",
+    text: "Sign in again to continue.",
+  },
+};
+
 /**
  * Render the sign-in page.
  *
@@ -39,6 +59,7 @@ type Values = z.infer<typeof schema>;
  */
 export function SignInPage(): JSX.Element {
   const actions = useSessionActions();
+  const notice = useSignInNotice();
   const form = useForm<Values>({
     resolver: zodResolver(schema),
     defaultValues: { username: "", password: "" },
@@ -52,6 +73,11 @@ export function SignInPage(): JSX.Element {
   } = form;
   return (
     <Page title="Sign in">
+      {notice === null ? null : (
+        <Alert kind={NOTICES[notice].kind} title={NOTICES[notice].title}>
+          {NOTICES[notice].text}
+        </Alert>
+      )}
       <Card>
         <Form label="Sign in" onSubmit={onSubmit}>
           {problem === null ? null : <ProblemAlert problem={problem} details={details} />}

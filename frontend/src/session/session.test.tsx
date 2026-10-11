@@ -20,15 +20,17 @@ import { renderWithSession } from "../../test/render";
 import { operations } from "../api/generated/operations";
 import { notifyUnauthorized } from "../api/unauthorized";
 import { useFragmentCredentials } from "./FragmentCredentialsContext";
-import { useSession, useSessionActions, useSignedInSession } from "./useSession";
+import { useSession, useSessionActions, useSignedInSession, useSignInNotice } from "./useSession";
 
 function Probe(): JSX.Element {
   const session = useSession();
   const actions = useSessionActions();
+  const notice = useSignInNotice();
   const [result, setResult] = useState("");
   return (
     <div>
       <p>state: {session.status}</p>
+      <p>notice: {notice ?? "none"}</p>
       {session.status === "signedIn" ? (
         <>
           <p>user: {session.profile.username}</p>
@@ -59,7 +61,27 @@ function Probe(): JSX.Element {
       >
         establish
       </button>
-      <button onClick={actions.drop}>drop</button>
+      <button
+        onClick={() => {
+          actions.drop();
+        }}
+      >
+        drop
+      </button>
+      <button
+        onClick={() => {
+          actions.drop("password-changed");
+        }}
+      >
+        drop with notice
+      </button>
+      <button
+        onClick={() => {
+          void actions.refresh();
+        }}
+      >
+        refresh
+      </button>
     </div>
   );
 }
@@ -181,6 +203,48 @@ describe("SessionProvider", () => {
     expect(await screen.findByText("state: signedOut")).toBeInTheDocument();
   });
 
+  it("keeps a sign-in notice after a drop and clears it when a session is established", async () => {
+    succeed("user_profile_retrieve", 200, profile());
+    const { user } = renderWithSession(<Probe />);
+    await screen.findByText("state: signedIn");
+    expect(screen.getByText("notice: none")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "drop with notice" }));
+
+    expect(await screen.findByText("notice: password-changed")).toBeInTheDocument();
+    expect(screen.getByText("state: signedOut")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "establish" }));
+
+    expect(await screen.findByText("notice: none")).toBeInTheDocument();
+  });
+
+  it("refetches the profile when asked, so a change the server made shows up", async () => {
+    const calls = sequence("user_profile_retrieve", [
+      { status: 200, body: profile() },
+      { status: 200, body: profile({ username: "renamed" }) },
+    ]);
+    const { user } = renderWithSession(<Probe />);
+    expect(await screen.findByText("user: ada")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "refresh" }));
+
+    expect(await screen.findByText("user: renamed")).toBeInTheDocument();
+    expect(calls()).toBe(2);
+  });
+
+  it("does not announce a lost session to a visitor who never had one", async () => {
+    signedOutBackend();
+    renderWithSession(<Probe />);
+    await screen.findByText("state: signedOut");
+
+    act(() => {
+      notifyUnauthorized();
+    });
+
+    expect(screen.getByText("notice: none")).toBeInTheDocument();
+  });
+
   it("signs out everywhere when the API client announces session loss", async () => {
     succeed("user_profile_retrieve", 200, profile());
     const { client } = renderWithSession(<Probe />);
@@ -193,6 +257,7 @@ describe("SessionProvider", () => {
 
     expect(await screen.findByText("state: signedOut")).toBeInTheDocument();
     expect(client.getQueryData(["other"])).toBeUndefined();
+    expect(screen.getByText("notice: session-ended")).toBeInTheDocument();
   });
 });
 

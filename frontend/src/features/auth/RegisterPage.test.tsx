@@ -44,7 +44,9 @@ describe("RegisterPage", () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toHaveAttribute("type", "email");
     expect(screen.getByLabelText("Repeat password")).toHaveAttribute("type", "password");
-    expect(screen.getByRole("link", { name: "Sign in" })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("main")).getByRole("link", { name: "Sign in" }),
+    ).toBeInTheDocument();
   });
 
   it("explains every missing field without sending a request", async () => {

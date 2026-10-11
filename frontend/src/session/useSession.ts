@@ -10,7 +10,7 @@
 import { useContext } from "react";
 
 import { SessionContext } from "./context";
-import type { Session, SessionActions, SessionContextValue } from "./context";
+import type { Session, SessionActions, SessionContextValue, SignInNotice } from "./context";
 
 /**
  * A session that is known to be signed in.
@@ -72,4 +72,16 @@ export function useSignedInSession(): SignedInSession {
     throw new Error("This screen needs a signed-in session; protect its route with a guard.");
   }
   return session;
+}
+
+/**
+ * Read the pending sign-in notice.
+ *
+ * The sign-in page shows it once to explain why the visitor was signed out, and signing in
+ * clears it.
+ *
+ * @returns The notice, or null when there is nothing to explain.
+ */
+export function useSignInNotice(): SignInNotice | null {
+  return useSessionContext().notice;
 }

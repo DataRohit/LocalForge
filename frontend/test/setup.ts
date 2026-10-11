@@ -8,11 +8,15 @@
  */
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, vi } from "vitest";
 
 import { server } from "./backend";
 import { recordConsoleCall, takeConsoleCalls } from "./console";
+
+const ASYNC_TIMEOUT_MS = 5000;
+
+configure({ asyncUtilTimeout: ASYNC_TIMEOUT_MS });
 
 beforeAll(() => {
   server.listen({ onUnhandledFrame: "error" });

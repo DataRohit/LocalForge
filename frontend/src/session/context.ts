@@ -35,25 +35,35 @@ export type Session =
     };
 
 /**
+ * Reason the visitor was returned to sign-in.
+ *
+ * Held in memory for the sign-in page to explain, because a route guard redirects before the
+ * screen that caused the sign-out could show anything.
+ */
+export type SignInNotice = "password-changed" | "session-ended";
+
+/**
  * Session actions.
  *
- * Establish a session after sign-in, end it with a sign-out request, or drop it locally when the
- * server has already ended it, as after an account deletion.
+ * Establish a session after sign-in, end it with a sign-out request, drop it locally when the
+ * server has already ended it, or refresh the profile after the server changed it.
  */
 export interface SessionActions {
   readonly establish: (profile: UserProfile) => void;
   readonly end: () => Promise<Problem | null>;
-  readonly drop: () => void;
+  readonly drop: (notice?: SignInNotice) => void;
+  readonly refresh: () => Promise<void>;
 }
 
 /**
  * Value of the session context.
  *
- * The current session and the actions that change it.
+ * The current session, the actions that change it, and the pending sign-in notice.
  */
 export interface SessionContextValue {
   readonly session: Session;
   readonly actions: SessionActions;
+  readonly notice: SignInNotice | null;
 }
 
 /**

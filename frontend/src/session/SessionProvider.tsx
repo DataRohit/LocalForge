@@ -9,7 +9,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { JSX, ReactNode } from "react";
 
 import {
@@ -22,7 +22,7 @@ import {
 } from "../api";
 import type { Problem, UserProfile } from "../api";
 import { SessionContext } from "./context";
-import type { Capability, Session, SessionContextValue } from "./context";
+import type { Capability, Session, SessionContextValue, SignInNotice } from "./context";
 
 /**
  * Provider props.
@@ -74,6 +74,7 @@ function forgetAccount(client: QueryClient): void {
  */
 export function SessionProvider({ children }: SessionProviderProps): JSX.Element {
   const client = useQueryClient();
+  const [notice, setNotice] = useState<SignInNotice | null>(null);
   const query = useQuery({
     queryKey: queryKeys.me,
     queryFn: ({ signal }) => loadProfile(signal),
@@ -83,7 +84,11 @@ export function SessionProvider({ children }: SessionProviderProps): JSX.Element
   useEffect(
     () =>
       subscribeUnauthorized(() => {
+        const current = client.getQueryData<UserProfile | null>(queryKeys.me);
         forgetAccount(client);
+        if (current !== undefined && current !== null) {
+          setNotice("session-ended");
+        }
       }),
     [client],
   );
@@ -115,6 +120,7 @@ export function SessionProvider({ children }: SessionProviderProps): JSX.Element
       session,
       actions: {
         establish: (profile) => {
+          setNotice(null);
           client.setQueryData(queryKeys.me, profile);
         },
         end: async () => {
@@ -126,12 +132,15 @@ export function SessionProvider({ children }: SessionProviderProps): JSX.Element
           forgetAccount(client);
           return null;
         },
-        drop: () => {
+        drop: (reason) => {
+          setNotice(reason ?? null);
           forgetAccount(client);
         },
+        refresh: () => client.invalidateQueries({ queryKey: queryKeys.me }),
       },
+      notice,
     };
-  }, [client, query]);
+  }, [client, notice, query]);
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
