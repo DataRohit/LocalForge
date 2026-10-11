@@ -65,6 +65,7 @@ from accounts.response_timing import (
 )
 from accounts.token_authentication import (
     ErrorEnvelopeSerializer,
+    csrf_rejected_response,
     error_example,
     error_response,
 )
@@ -939,6 +940,7 @@ class UserProfileView(APIView):
                     error_example("Authentication failed", AUTHENTICATION_FAILED),
                 ],
             ),
+            HTTPStatus.FORBIDDEN: csrf_rejected_response(),
             HTTPStatus.METHOD_NOT_ALLOWED: error_response(
                 "The self-profile route supports only GET, PATCH, and DELETE.",
                 "Method not allowed",
@@ -1060,6 +1062,7 @@ class UserProfileView(APIView):
                     error_example("Authentication failed", AUTHENTICATION_FAILED),
                 ],
             ),
+            HTTPStatus.FORBIDDEN: csrf_rejected_response(),
             HTTPStatus.METHOD_NOT_ALLOWED: error_response(
                 "The self-profile route supports only GET, PATCH, and DELETE.",
                 "Method not allowed",

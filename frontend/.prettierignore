@@ -2,6 +2,7 @@ node_modules
 dist
 coverage
 playwright-report
+.e2e-run
 test-results
 pnpm-lock.yaml
 src/api/generated

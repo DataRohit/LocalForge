@@ -127,6 +127,23 @@ describe.each(FLOWS)("$name page", (flow) => {
     expect(screen.getByLabelText("Email")).toHaveValue("ada@example.test");
   });
 
+  it("removes the earlier acceptance statement when a later attempt fails", async () => {
+    server.use(handler(flow.operation, 202, { detail: STATEMENT }));
+    const { user } = start(flow);
+    await submit(user);
+    expect(await screen.findByText("Request received")).toBeInTheDocument();
+
+    server.use(
+      handler(flow.operation, 429, envelope("throttled", "Too many requests."), {
+        "Retry-After": "3600",
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "Send reset link" }));
+
+    expect(await screen.findByText("Too many attempts")).toBeInTheDocument();
+    expect(screen.queryByText("Request received")).not.toBeInTheDocument();
+  });
+
   it("keeps the typed address and says so when offline", async () => {
     disconnect(flow.operation);
     const { user } = start(flow);

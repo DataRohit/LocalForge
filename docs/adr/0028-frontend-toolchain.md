@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-10-08
-amended: 2026-10-10
+amended: 2026-10-11
 ---
 
 # Frontend supporting toolchain
@@ -25,6 +25,7 @@ resolved pins, the release-age policy, and the compatibility decisions Ticket 87
 | API types | `openapi-typescript` and `yaml` | Types and a status-code table generated from `docs/api/openapi-v1.yaml`; drift fails the type check |
 | Unit and integration tests | Vitest, React Testing Library, MSW, axe-core | Vite-native; request mocking without a server; accessibility rules in jsdom |
 | Browser tests | Playwright, `@axe-core/playwright` | Real browser against the `testing` backend; accessibility rules |
+| Browser test origin | `selfsigned` | A throwaway loopback certificate, so the suite can serve the HTTPS origin the secure cookies need without committing a private key |
 | Quality | ESLint 10, Prettier | Type-aware lint plus a no-comments docstring check |
 | Package manager | pnpm 11.21.0 | Mandated by the user; strict `node_modules`, a lockfile that records integrity, and a native release-age gate |
 | Runtime | Node 24 LTS | Matches the host; pinned by `.node-version` and image digest |
@@ -53,6 +54,7 @@ resolved pins, the release-age policy, and the compatibility decisions Ticket 87
 | `react-router` 8.4.0 | Requires Node 22.22 or newer and React 19.2.7 or newer; both hold |
 | `vitest` 5.0.3 with `vite` 8.3.2 | Peer range `vite ^6.4 \|\| ^7 \|\| ^8` and Node `^22.12 \|\| ^24`; `@vitest/coverage-v8` is pinned to the same version |
 | `@types/node` **24.19.1** | Matches the Node 24 runtime rather than the registry's Node 26 types |
+| `selfsigned` 5.5.0 | Development and test only; generates a one-day loopback certificate in memory-safe JavaScript, with no install script. Its dependency tree (checked 2026-10-11 with `pnpm licenses list`) is MIT, BSD-3-Clause, Apache-2.0, and 0BSD only. Added because `detect-private-key` forbids a committed key and OpenSSL is not a listed prerequisite |
 | `axe-core` **MPL-2.0**, `@axe-core/playwright` **MPL-2.0** | Development and test only, never bundled; file-level copyleft accepted under the same terms as the MPL-2.0 tools in [0015](./0015-reject-restricted-licenses.md) |
 
 ## Evidence
@@ -98,6 +100,7 @@ days old. [0016](./0016-accept-release-lag.md) and the CI-matrix standard apply 
 | `typescript-eslint` | 8.71.0 | development | 2026-09-28 | 12 | MIT |
 | `vite` | 8.3.2 | development | 2026-10-01 | 9 | MIT |
 | `vitest` | 5.0.3 | development | 2026-09-30 | 10 | MIT |
+| `selfsigned` | 5.5.0 | development | 2026-01-12 | 272 | MIT |
 | `yaml` | 2.9.1 | development | 2026-09-11 | 29 | ISC |
 
 Release lines recorded before resolution (2026-10-08 web snapshots) were React 19.2.x, Tailwind CSS 4.3.x, Vite 8.1,

@@ -51,6 +51,7 @@ from accounts.username_tokens import (
 )
 from config.api_errors import ErrorCode, ServiceUnavailable
 from config.logs import StructuredFormatter
+from tests.integration.accounts.csrf_support import csrf_rejected_response
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -2574,6 +2575,7 @@ def test_username_operation_observed_statuses_exactly_match_its_documented_contr
     ]
     if case == "set-username":
         responses.append(invoke(valid_data, authenticated=False))
+        responses.append(csrf_rejected_response(django_user_model, "post", route, valid_data))
     observed = {cast("Any", response).status_code for response in responses}
     schema = cast(
         "dict[str, Any]",
@@ -2622,6 +2624,7 @@ def test_username_routes_document_and_reach_complete_framework_contract(
             "204",
             "400",
             "401",
+            "403",
             "405",
             "406",
             "413",

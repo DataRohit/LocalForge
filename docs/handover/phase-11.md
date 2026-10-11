@@ -1,9 +1,11 @@
 # Phase 11 handover and Freeze Manifest
 
-Status: **Locally Verified**. The backend freeze was **accepted on 2026-10-10** under the user's explicit delegation
-(Section 8). Backend code changes after acceptance reopen Phase 11. Everything here was verified in `testing` only.
+Status: **Locally Verified correction; corrected freeze acceptance outstanding** (Section 10). Phase 11 reopened
+on 2026-10-11. The previous backend freeze was
+**accepted on 2026-10-10** under the user's explicit delegation (Section 8). Backend code changes after acceptance
+reopen Phase 11. Verification addresses `testing` only.
 `development` was addressed once, on the user's explicit request, to add three non-secret variable names (Section 5).
-Production runtime truth is an unverified gate. Phase 12 has not started.
+Production runtime truth is an unverified gate. Phase 12 Ticket 96 exposed the contract gap recorded in Section 10.
 
 Authoritative scope: [Phase 11 architecture](../architecture/phase-11-backend-freeze.md). Decisions:
 [ADR 0024](../adr/0024-full-stack-pivot.md), [ADR 0025](../adr/0025-browser-authentication.md),
@@ -11,6 +13,9 @@ Authoritative scope: [Phase 11 architecture](../architecture/phase-11-backend-fr
 [WebSocket](../api/websocket-v1.md).
 
 ## 1. Gate status
+
+This table records the original acceptance. The reopened contract correction and its outstanding gates are in
+Section 10; the earlier passing evidence does not verify that correction.
 
 | Gate item | State | Evidence |
 | --- | --- | --- |
@@ -53,9 +58,11 @@ Behavior frozen with the routes:
 ### 2.2 Existing routes
 
 Every route that authenticates through the default classes accepts the access cookie after the bearer classes:
-`users/me/` (GET, HEAD, PATCH, DELETE), `users/set_password/`, and `users/set_username/`. Their documented statuses and
-payloads are unchanged; the OpenAPI security alternatives gain `browserCookieAuth`. Unsafe requests authenticated by
-the cookie are CSRF-checked; bearer and token requests are exempt. A request carrying both an `Authorization` header and
+`users/me/` (GET, HEAD, PATCH, DELETE), `users/set_password/`, and `users/set_username/`. Their payloads are unchanged
+and the OpenAPI security alternatives gain `browserCookieAuth`. Unsafe requests authenticated by the cookie are
+CSRF-checked and a rejection is the enveloped `403` `permission_denied`; that status is documented on `PATCH` and
+`DELETE` `users/me/`, `set_password/`, and `set_username/` (added 2026-10-11, Section 10). Bearer and token requests
+are exempt. A request carrying both an `Authorization` header and
 the access cookie is rejected with the `400` `bad_request` envelope.
 
 The profile payload gains one field:
@@ -111,23 +118,26 @@ is same-origin and needs no CORS. `X-Frame-Options: DENY` and `frame-ancestors '
 
 ### Browser evidence for `Secure` cookies on plain-HTTP local origins
 
-Recorded 2026-10-09 from public sources only. **No browser was driven in this session**, so this is secondary evidence,
-not a hands-on result; Phase 12 Playwright runs re-verify it.
+The 2026-10-09 table came from public sources only. On 2026-10-11 the Phase 12 browser suite replaced it with a hands-on
+result: each browser, driven by Playwright 1.63, signed a freshly activated account in through the real interface on
+the plain-HTTP loopback origin `http://127.0.0.1:4173` proxied to the `testing` backend.
 
-| Browser | `Secure` on `http://localhost` | `__Host-` and `__Secure-` prefixes on `http://localhost` |
+| Browser | Session cookies kept on plain HTTP | Signed in |
 | --- | --- | --- |
-| Chrome (since 89) | Accepted | Reported as rejected |
-| Firefox (since 75) | Accepted | Reported as accepted |
-| Safari | Rejected (WebKit bugs 232088, 231035, 281149) | Rejected |
+| Chromium | `__Host-` access, `__Secure-` refresh, `__Host-` CSRF | Yes |
+| Firefox | All three | Yes |
+| WebKit | Only the readable `__Host-` CSRF cookie | No; the interface stays on sign-in |
 
-Sources: [WebKit bug 232088](https://bugs.webkit.org/show_bug.cgi?id=232088),
+All three browsers sign in over the HTTPS origin. The earlier report that Chrome rejects the prefixed cookies on a
+loopback HTTP origin does not hold for the Chromium build Playwright runs. The public sources behind the WebKit result
+are [WebKit bug 232088](https://bugs.webkit.org/show_bug.cgi?id=232088),
 [WebKit bug 231035](https://bugs.webkit.org/show_bug.cgi?id=231035),
-[WebKit bug 281149](https://bugs.webkit.org/show_bug.cgi?id=281149),
+[WebKit bug 281149](https://bugs.webkit.org/show_bug.cgi?id=281149), and
 [httpwg/http-extensions issue 2605](https://github.com/httpwg/http-extensions/issues/2605).
 
-Consequence: the prefixed cookies are dependable only over HTTPS. Browser use belongs on the HTTPS public origin
-(`https://localforge.datarohit.com`). A plain-HTTP local origin is documented as unsupported for browsers that reject
-the cookies, and the flags are not relaxed for any browser.
+Consequence: the prefixed cookies are dependable over HTTPS in every browser, and over plain-HTTP loopback in Chromium
+and Firefox only. Browser use belongs on the HTTPS public origin (`https://localforge.datarohit.com`); a plain-HTTP
+local origin is unsupported for WebKit, and the flags are not relaxed for any browser.
 
 ## 4. Capability matrix
 
@@ -194,12 +204,12 @@ container mode. Everything ran on 2026-10-09 against `localforge-test` only.
 | --- | --- |
 | 79 Test-isolation hardening | Done. Mount removed, entry points default to `testing`, guarded Make targets, suite-wide guard against opening the live development file, baseline failures repaired |
 | 80 Browser session endpoints | Done |
-| 81 CSRF, cookie attributes, origin policy | Done; browser evidence is secondary, see Section 3 |
+| 81 CSRF, cookie attributes, origin policy | Done; current hands-on browser evidence is in Section 3 |
 | 82 Cookie-authenticated REST | Done |
 | 83 WebSocket cookie authentication | Done |
 | 84 Frontend contract gaps | Done |
 | 85 Non-browser regression and credential hygiene | Done |
-| 86 Backend freeze manifest | Done; freeze accepted 2026-10-10 (Section 8) |
+| 86 Backend freeze manifest | Original freeze accepted 2026-10-10 (Section 8); reopened correction in Section 10 |
 
 Each ticket file under `.scratch/phase-11-backend-freeze/` carries its own verification record with findings and
 dispositions.
@@ -210,8 +220,8 @@ dispositions.
   nothing was started, rebuilt, or exercised there, and the running development backend does not yet carry the browser
   routes. Reported status does not exceed Locally Verified. The clean-room rehearsal in Section 9 is the first
   runtime exercise of the browser routes through Traefik, and it is the user's to run.
-- **Hands-on browser evidence** for `Secure` and prefixed cookies on plain-HTTP origins is secondary, from public bug
-  trackers.
+- **Previous-stable browser evidence** remains unverified. Section 3 records only the bundled browser builds exercised
+  by Ticket 96, not earlier stable releases.
 
 ## 8. Freeze acceptance
 
@@ -229,7 +239,8 @@ Basis:
 Residual risks the acceptance carries, none of which blocks it:
 
 - A logout does not revoke an access token already issued; it lives until expiry. The cookie sockets do close.
-- The prefixed cookies are dependable only over HTTPS; the plain-HTTP evidence is secondary (Section 3).
+- The prefixed cookies are dependable only over HTTPS; Section 3 now includes hands-on plain-HTTP evidence from
+  2026-10-11, replacing the secondary evidence available at the original acceptance.
 - The host security timing stage is load sensitive and passed on a clean rerun (Section 6).
 - The image audit compares against a dated scanner snapshot, so it can fail with no code change. The clean-room run on
   2026-10-10 hit this on `axllent/mailpit:v1.31.1`, and the audit stops at the first drifting image. Rescanning all 19
@@ -579,3 +590,79 @@ PowerShell session, so the unpiped version kept printing layers. Block 2 therefo
     Write-Host ('=' * $Width) -ForegroundColor Cyan
 }
 ```
+
+## 10. Contract correction and reopened gate, 2026-10-11
+
+Ticket 96 exposed an existing runtime response missing from OpenAPI: cookie-authenticated unsafe requests with an
+invalid CSRF token return the enveloped `403` `permission_denied`. The correction adds that response and its example
+only to `PATCH` and `DELETE /api/v1/users/me/`, `POST /api/v1/users/set_password/`, and
+`POST /api/v1/users/set_username/`. It does not change runtime authentication, payloads, cookies, routes, or bearer
+and token behavior. The existing browser-route description is shared with these operations.
+
+The first complete host gate failed three schema-contract tests because their expected sets still omitted `403`.
+On 2026-10-11 the main thread reproduced all three failures in parallel: **3 failed in 4.59 seconds**. Updating only
+the four unsafe-operation expectations restored the regression loop. The combined schema and observed-status
+selection passed **12 tests in 15.23 seconds** with three workers. The observed-status cases exercise genuine browser
+login and a mismatched CSRF header through the public account routes, not a mocked forbidden response.
+
+| Gate | Current evidence |
+| --- | --- |
+| Focused regression | Passed: three formerly failing tests plus observed-status cases, 12 tests total |
+| Complete host backend gate | `make check` passed: static gates, 2,297 core tests at 100% branch coverage (306.55 s), 23 timing tests (1,077.10 s), five registration stability runs, and post-run audits |
+| Current testing image | `make testing-build` passed; `make testing-test-container` recreated `django-test-dt5qx` from the rebuilt image |
+| Complete container backend gate | `make testing-test-container` passed: 2,297 core tests at 100% branch coverage (121.20 s), 23 timing tests (283.45 s), collection parity, health, ownership, container set, and bounded logs; `RESULT mode=container status=0` |
+| Runtime truth | `make frontend-e2e` passed all 108 browser cases; wrong-CSRF behavior is exercised through the served SPA in Chromium, Firefox, and WebKit. All seven testing containers and the host backend logs were inspected; final health, ownership, and preview-log review passed |
+| Frontend contract consumers | `make frontend-check` passed: 1,087 tests, 100% statements, branches, functions, and lines; build passed |
+| Browser security | `make security-audit ARGS="--scope browser"` passed; only the testing-scoped browser audit ran |
+| Inline review | Main thread reviewed the backend schema correction, regression tests, harness fixes, and evidence against the criteria and standards; findings below are remediated |
+| Acceptance | Corrected freeze accepted on 2026-10-11 under the user's renewed autopilot and previously delegated decision authority |
+
+No development inspection, deployment, commit, or push was performed for this correction. Production runtime truth
+remains unverified. The corrected acceptance below closes the reopened gate before further Phase 12 implementation.
+
+Host runtime audit windows: `2026-10-11T15:23:52.239252Z` to `2026-10-11T15:47:04.497591Z` for the complete suite,
+then `2026-10-11T15:47:05.255201Z` to `2026-10-11T15:53:19.485046Z` for registration stability. Both reported passing
+health, testing Docker ownership, exact container set, and bounded logs; `RESULT mode=host status=0` and
+`RESULT registration-timing-stability status=0`.
+
+An intermediate `make convention-audit-testing` run during the active SMTP stage rejected the temporary Mailpit
+container because the ordinary headless audit excludes that profile. This is not accepted as a pass; rerun after the
+gate removes Mailpit. The final rerun passed after cleanup. No audit policy or allowed container set was weakened.
+
+The container command completed during the user's interruption; its XML recorded 2,297 core and 23 timing tests
+with zero failures or errors. Because the terminal's final audit result was unavailable after interruption, the main
+thread reran the complete container gate. Its final audited window was `2026-10-11T16:12:16.562270Z` to
+`2026-10-11T16:19:10.337841Z`, with collection, test, and post-check statuses all zero on rebuilt image
+`d1be6940b17a`.
+
+The final browser window was `2026-10-11T16:32:30.9775932Z` to `2026-10-11T16:34:01.2803651Z`. Backend and container
+logs contained only the runner's documented negative-path records. The separate preview-output review found twelve
+severity lines: three paired client-socket reset events, each comprising the two Vite headings and their two
+`Error: read ECONNRESET` lines. All had the `TLSWrap.onStreamRead` stack and matched the narrow client-disconnection
+disposition in [the service inventory](../platform/service-inventory.md); no other preview warning or error remained.
+The runner proved no throwaway database, no keys in its two cache databases, no Mailpit container, and channel-layer
+keys back to baseline. Final `make testing-health` and `make convention-audit-testing` passed.
+
+Additional verification findings and dispositions:
+
+- The end-to-end log reader previously treated failed `docker logs` calls as clean and inspected only four
+  containers. Two new tests reproduced those false greens. The reader now rejects failed log reads and the runner
+  checks every registered testing container plus temporary Mailpit; both regression tests pass.
+- Windows build spawning used a shell with an argument array and emitted Node's `DEP0190` warning. The runner now
+  invokes the root `make frontend-build` target directly, with no shell interpolation.
+- Conflicting inherited color flags emitted Node warnings. Child tools now choose color without an inherited
+  `NO_COLOR` conflict; no warning suppression flag was added.
+- Closing authenticated browser contexts abruptly left live sockets. Cleanup now signs out one remaining session
+  per context. The first cleanup attempt raced revocation by signing out multiple tabs and caused one Firefox
+  after-hook timeout; signing out once fixed it, and the complete 108-case rerun passed without retries or skips.
+
+The user renewed full autopilot authority on 2026-10-11, explicitly directing completion of Phase 12,
+one commit per ticket, no push, and deployment. Under the previously delegated freeze decision, the main thread
+accepts this corrected Freeze Manifest after reviewing the evidence above. All six Phase 11 gate items retain
+their proof; the change documents existing runtime responses without altering authentication behavior.
+Development inspection and deployment are now authorized, but production readiness still requires every
+Phase 12 gate and production runtime check. No gate is waived by this authorization.
+
+Documentation proof: `make test-unit ARGS="tests/unit/test_freeze_manifest.py"` passed all three manifest tests
+after these records were updated. Markdownlint passed the handover, service inventory, and Tickets 86 and 96;
+`git diff --check` passed. The final frontend gate rerun passed all 1,087 tests and retained 100% coverage.

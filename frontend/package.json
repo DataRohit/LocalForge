@@ -18,7 +18,7 @@
     "api:generate": "node scripts/generate-api.ts",
     "test": "vitest run --coverage",
     "build": "vite build && node scripts/check-bundle.ts",
-    "e2e": "pnpm run build && playwright test",
+    "e2e": "node e2e/support/run.ts",
     "audit:supply": "node scripts/audit-supply-chain.ts"
   },
   "dependencies": {
@@ -54,6 +54,7 @@
     "openapi-typescript": "7.13.0",
     "prettier": "3.9.9",
     "prettier-plugin-tailwindcss": "0.8.1",
+    "selfsigned": "5.5.0",
     "tailwindcss": "4.3.3",
     "typescript": "5.9.3",
     "typescript-eslint": "8.71.0",

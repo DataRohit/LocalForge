@@ -2180,6 +2180,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description The CSRF token or Origin was missing, mismatched, or untrusted. Cookies are left in place so the client can fetch a fresh token and retry. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description The self-profile route supports only GET, PATCH, and DELETE. */
             405: {
                 headers: {
@@ -2355,6 +2364,15 @@ export interface operations {
             };
             /** @description A credential was absent, malformed, expired, revoked, or inactive. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The CSRF token or Origin was missing, mismatched, or untrusted. Cookies are left in place so the client can fetch a fresh token and retry. */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2977,6 +2995,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description The CSRF token or Origin was missing, mismatched, or untrusted. Cookies are left in place so the client can fetch a fresh token and retry. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Password change accepts only POST. */
             405: {
                 headers: {
@@ -3079,6 +3106,15 @@ export interface operations {
             };
             /** @description A credential was absent, malformed, expired, revoked, or inactive. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The CSRF token or Origin was missing, mismatched, or untrusted. Cookies are left in place so the client can fetch a fresh token and retry. */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

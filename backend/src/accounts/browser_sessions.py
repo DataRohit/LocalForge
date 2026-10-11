@@ -39,6 +39,7 @@ from accounts.token_authentication import (
     ErrorEnvelopeSerializer,
     TokenLoginSerializer,
     TokenLoginThrottle,
+    csrf_rejected_response,
     error_example,
     error_response,
 )
@@ -49,7 +50,6 @@ from config.api_errors import (
     METHOD_NOT_ALLOWED,
     NOT_ACCEPTABLE,
     PARSE_ERROR,
-    PERMISSION_DENIED,
     REQUEST_TOO_LARGE,
     SERVICE_UNAVAILABLE,
     THROTTLED,
@@ -68,10 +68,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 REVOCATION_BROADCAST_FAILED = "session revocation broadcast failed"
-CSRF_REJECTED_DESCRIPTION = (
-    "The CSRF token or Origin was missing, mismatched, or untrusted. Cookies are left in place so "
-    "the client can fetch a fresh token and retry."
-)
 
 
 def refresh_cookie_credential(request: Request) -> str | None:
@@ -329,11 +325,7 @@ class BrowserLoginView(BrowserSessionView):
                 "Authentication failed",
                 AUTHENTICATION_FAILED,
             ),
-            HTTPStatus.FORBIDDEN: error_response(
-                CSRF_REJECTED_DESCRIPTION,
-                "CSRF rejected",
-                PERMISSION_DENIED,
-            ),
+            HTTPStatus.FORBIDDEN: csrf_rejected_response(),
             HTTPStatus.METHOD_NOT_ALLOWED: error_response(
                 "The browser login route accepts only POST.",
                 "Method not allowed",
@@ -500,11 +492,7 @@ class BrowserRefreshView(BrowserSessionView):
                 "Authentication failed",
                 AUTHENTICATION_FAILED,
             ),
-            HTTPStatus.FORBIDDEN: error_response(
-                CSRF_REJECTED_DESCRIPTION,
-                "CSRF rejected",
-                PERMISSION_DENIED,
-            ),
+            HTTPStatus.FORBIDDEN: csrf_rejected_response(),
             HTTPStatus.METHOD_NOT_ALLOWED: error_response(
                 "The browser refresh route accepts only POST.",
                 "Method not allowed",
@@ -631,11 +619,7 @@ class BrowserLogoutView(BrowserSessionView):
                 response=None,
                 description="The session ended and the cookies were cleared.",
             ),
-            HTTPStatus.FORBIDDEN: error_response(
-                CSRF_REJECTED_DESCRIPTION,
-                "CSRF rejected",
-                PERMISSION_DENIED,
-            ),
+            HTTPStatus.FORBIDDEN: csrf_rejected_response(),
             HTTPStatus.METHOD_NOT_ALLOWED: error_response(
                 "The browser logout route accepts only POST.",
                 "Method not allowed",

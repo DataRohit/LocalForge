@@ -37,6 +37,7 @@ const TITLES: Readonly<Record<string, string>> = {
   offline: "You are offline",
   throttled: "Too many attempts",
   validation: "Please correct the form",
+  forbidden: "Request refused",
 };
 
 /**
@@ -59,6 +60,7 @@ export function ProblemAlert({ problem, details = [] }: ProblemAlertProps): JSX.
       {details.map((detail) => (
         <p key={detail}>{detail}</p>
       ))}
+      {problem.kind === "forbidden" ? <p>Reload the page, then try again.</p> : null}
       {problem.retryAfterSeconds === null ? null : (
         <p>Try again in {problem.retryAfterSeconds} seconds.</p>
       )}

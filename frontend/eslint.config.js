@@ -38,6 +38,7 @@ export default defineConfig(
     "dist",
     "coverage",
     "playwright-report",
+    ".e2e-run",
     "test-results",
     "node_modules",
     "src/api/generated",
@@ -95,7 +96,7 @@ export default defineConfig(
     languageOptions: { globals: globals.node },
   },
   {
-    files: ["scripts/**/*.ts"],
+    files: ["scripts/**/*.ts", "e2e/support/run.ts"],
     rules: { "no-console": "off" },
   },
   {

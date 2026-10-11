@@ -42,6 +42,7 @@ from config.api_errors import (
     NOT_ACCEPTABLE,
     NOT_AUTHENTICATED,
     PARSE_ERROR,
+    PERMISSION_DENIED,
     REQUEST_TOO_LARGE,
     SERVICE_UNAVAILABLE,
     THROTTLED,
@@ -150,6 +151,27 @@ def error_response(
         description=description,
         examples=[error_example(name, definition)],
     )
+
+
+CSRF_REJECTED_DESCRIPTION = (
+    "The CSRF token or Origin was missing, mismatched, or untrusted. Cookies are left in place so "
+    "the client can fetch a fresh token and retry."
+)
+
+
+def csrf_rejected_response() -> OpenApiResponse:
+    """Build the documented CSRF rejection response.
+
+    Describes the enveloped 403 every cookie-authenticated unsafe request receives when its CSRF
+    token or Origin is missing, mismatched, or untrusted, so each such route documents it alike.
+
+    Arguments:
+        None.
+
+    Returns:
+        OpenAPI response carrying the shared envelope and the permission-denied example.
+    """
+    return error_response(CSRF_REJECTED_DESCRIPTION, "CSRF rejected", PERMISSION_DENIED)
 
 
 def normalized_login_username(data: object) -> str | None:

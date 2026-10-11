@@ -46,6 +46,7 @@ from accounts.response_timing import (
 from accounts.tasks import send_username_changed_email, send_username_reset_email
 from accounts.token_authentication import (
     ErrorEnvelopeSerializer,
+    csrf_rejected_response,
     error_example,
     error_response,
 )
@@ -1232,6 +1233,7 @@ class UsernameChangeView(APIView):
                     error_example("Authentication failed", AUTHENTICATION_FAILED),
                 ],
             ),
+            HTTPStatus.FORBIDDEN: csrf_rejected_response(),
             HTTPStatus.METHOD_NOT_ALLOWED: error_response(
                 "Username change accepts only POST.",
                 "Method not allowed",

@@ -33,6 +33,7 @@ from accounts.models import LoginThrottleEvent, User
 from accounts.user_profiles import ACCOUNT_CAPABILITIES
 from config.api_errors import ErrorCode, ServiceUnavailable
 from config.logs import REQUEST_ID_HEADER
+from tests.integration.accounts.csrf_support import csrf_rejected_response
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -1710,11 +1711,11 @@ def test_registration_and_profile_routes_document_every_reachable_response() -> 
         ),
         "profile-patch": (
             cast("dict[str, Any]", profile["patch"]),
-            {"200", "400", "401", "405", "406", "413", "415", "429", "500", "503"},
+            {"200", "400", "401", "403", "405", "406", "413", "415", "429", "500", "503"},
         ),
         "profile-delete": (
             cast("dict[str, Any]", profile["delete"]),
-            {"204", "400", "401", "405", "406", "413", "415", "429", "500", "503"},
+            {"204", "400", "401", "403", "405", "406", "413", "415", "429", "500", "503"},
         ),
     }
 
@@ -2333,6 +2334,17 @@ def test_profile_observed_statuses_exactly_match_each_documented_contract(
         responses.append(invalid)
     if unsupported is not None:
         responses.append(unsupported)
+        responses.append(
+            cast(
+                "ClientResponse",
+                csrf_rejected_response(
+                    django_user_model,
+                    method,
+                    "/api/v1/users/me/",
+                    cast("dict[str, str]", valid_data),
+                ),
+            )
+        )
 
     observed = {response.status_code for response in responses}
     generator = import_module("drf_spectacular.generators").SchemaGenerator()

@@ -102,14 +102,14 @@ export const operations = {
   user_profile_update: {
     method: "patch",
     path: "/api/v1/users/me/",
-    statuses: [200, 400, 401, 405, 406, 413, 415, 429, 500, 503],
+    statuses: [200, 400, 401, 403, 405, 406, 413, 415, 429, 500, 503],
     authenticated: true,
     hasBody: true,
   },
   user_profile_delete: {
     method: "delete",
     path: "/api/v1/users/me/",
-    statuses: [204, 400, 401, 405, 406, 413, 415, 429, 500, 503],
+    statuses: [204, 400, 401, 403, 405, 406, 413, 415, 429, 500, 503],
     authenticated: true,
     hasBody: true,
   },
@@ -151,14 +151,14 @@ export const operations = {
   user_password_change: {
     method: "post",
     path: "/api/v1/users/set_password/",
-    statuses: [204, 400, 401, 405, 406, 413, 415, 429, 500, 503],
+    statuses: [204, 400, 401, 403, 405, 406, 413, 415, 429, 500, 503],
     authenticated: true,
     hasBody: true,
   },
   user_username_change: {
     method: "post",
     path: "/api/v1/users/set_username/",
-    statuses: [204, 400, 401, 405, 406, 413, 415, 429, 500, 503],
+    statuses: [204, 400, 401, 403, 405, 406, 413, 415, 429, 500, 503],
     authenticated: true,
     hasBody: true,
   },

@@ -135,14 +135,14 @@ OPERATION_CONTRACT: Final = {
     ("patch", "/api/v1/users/me/"): (
         "user_profile_update",
         AUTHENTICATED_SECURITY,
-        {"200", "400", "401", "405", "406", "413", "415", "429", "500", "503"},
+        {"200", "400", "401", "403", "405", "406", "413", "415", "429", "500", "503"},
         "backend/tests/integration/accounts/test_user_profiles.py",
         "test_profile_observed_statuses_exactly_match_each_documented_contract[patch]",
     ),
     ("delete", "/api/v1/users/me/"): (
         "user_profile_delete",
         AUTHENTICATED_SECURITY,
-        {"204", "400", "401", "405", "406", "413", "415", "429", "500", "503"},
+        {"204", "400", "401", "403", "405", "406", "413", "415", "429", "500", "503"},
         "backend/tests/integration/accounts/test_user_profiles.py",
         "test_profile_observed_statuses_exactly_match_each_documented_contract[delete]",
     ),
@@ -196,7 +196,7 @@ OPERATION_CONTRACT: Final = {
     ("post", "/api/v1/users/set_password/"): (
         "user_password_change",
         AUTHENTICATED_SECURITY,
-        {"204", "400", "401", "405", "406", "413", "415", "429", "500", "503"},
+        {"204", "400", "401", "403", "405", "406", "413", "415", "429", "500", "503"},
         "backend/tests/integration/accounts/test_password_management.py",
         (
             "test_password_operation_observed_statuses_exactly_match_its_documented_contract"
@@ -206,7 +206,7 @@ OPERATION_CONTRACT: Final = {
     ("post", "/api/v1/users/set_username/"): (
         "user_username_change",
         AUTHENTICATED_SECURITY,
-        {"204", "400", "401", "405", "406", "413", "415", "429", "500", "503"},
+        {"204", "400", "401", "403", "405", "406", "413", "415", "429", "500", "503"},
         "backend/tests/integration/accounts/test_username_management.py",
         (
             "test_username_operation_observed_statuses_exactly_match_its_documented_contract"

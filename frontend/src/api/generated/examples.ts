@@ -1063,6 +1063,14 @@ export const examples: Readonly<
         "request_id": "00000000-0000-4000-8000-000000000000"
       }
     ],
+    "403": [
+      {
+        "code": "permission_denied",
+        "message": "You do not have permission to perform this action.",
+        "details": {},
+        "request_id": "00000000-0000-4000-8000-000000000000"
+      }
+    ],
     "405": [
       {
         "code": "method_not_allowed",
@@ -1165,6 +1173,14 @@ export const examples: Readonly<
       {
         "code": "authentication_failed",
         "message": "Authentication failed.",
+        "details": {},
+        "request_id": "00000000-0000-4000-8000-000000000000"
+      }
+    ],
+    "403": [
+      {
+        "code": "permission_denied",
+        "message": "You do not have permission to perform this action.",
         "details": {},
         "request_id": "00000000-0000-4000-8000-000000000000"
       }
@@ -1768,6 +1784,14 @@ export const examples: Readonly<
         "request_id": "00000000-0000-4000-8000-000000000000"
       }
     ],
+    "403": [
+      {
+        "code": "permission_denied",
+        "message": "You do not have permission to perform this action.",
+        "details": {},
+        "request_id": "00000000-0000-4000-8000-000000000000"
+      }
+    ],
     "405": [
       {
         "code": "method_not_allowed",
@@ -1880,6 +1904,14 @@ export const examples: Readonly<
       {
         "code": "authentication_failed",
         "message": "Authentication failed.",
+        "details": {},
+        "request_id": "00000000-0000-4000-8000-000000000000"
+      }
+    ],
+    "403": [
+      {
+        "code": "permission_denied",
+        "message": "You do not have permission to perform this action.",
         "details": {},
         "request_id": "00000000-0000-4000-8000-000000000000"
       }

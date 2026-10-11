@@ -68,6 +68,7 @@ venv.bak/
 node_modules/
 coverage/
 playwright-report/
+.e2e-run/
 *.tsbuildinfo
 
 pip-log.txt

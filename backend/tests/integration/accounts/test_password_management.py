@@ -51,6 +51,7 @@ from accounts.password_tokens import (
 from accounts.tasks import send_password_changed_email, send_password_reset_email
 from config.api_errors import ErrorCode, ServiceUnavailable
 from config.logs import REQUEST_ID_HEADER, StructuredFormatter
+from tests.integration.accounts.csrf_support import csrf_rejected_response
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -2261,6 +2262,7 @@ def test_password_routes_document_their_complete_status_contract() -> None:
             "204",
             "400",
             "401",
+            "403",
             "405",
             "406",
             "413",
@@ -2590,6 +2592,7 @@ def test_password_operation_observed_statuses_exactly_match_its_documented_contr
     ]
     if case == "set-password":
         responses.append(invoke(valid_data, authenticated=False))
+        responses.append(csrf_rejected_response(django_user_model, "post", route, valid_data))
     observed = {cast("Any", response).status_code for response in responses}
     schema = cast(
         "dict[str, Any]",

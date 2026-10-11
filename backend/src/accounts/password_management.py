@@ -56,6 +56,7 @@ from accounts.response_timing import (
 from accounts.tasks import send_password_changed_email, send_password_reset_email
 from accounts.token_authentication import (
     ErrorEnvelopeSerializer,
+    csrf_rejected_response,
     error_example,
     error_response,
 )
@@ -1280,6 +1281,7 @@ class PasswordChangeView(APIView):
                     error_example("Authentication failed", AUTHENTICATION_FAILED),
                 ],
             ),
+            HTTPStatus.FORBIDDEN: csrf_rejected_response(),
             HTTPStatus.METHOD_NOT_ALLOWED: error_response(
                 "Password change accepts only POST.",
                 "Method not allowed",

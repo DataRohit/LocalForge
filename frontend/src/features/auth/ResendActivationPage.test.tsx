@@ -11,7 +11,7 @@ import { screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { disconnect, envelope, fail, seedCsrfCookie, server } from "../../../test/backend";
+import { disconnect, envelope, fail, handler, seedCsrfCookie, server } from "../../../test/backend";
 import { renderApp } from "../../../test/render";
 import { operations } from "../../api/generated/operations";
 
@@ -32,6 +32,23 @@ async function submit(
 }
 
 describe("ResendActivationPage", () => {
+  it("removes the earlier acceptance statement when a later attempt is throttled", async () => {
+    server.use(handler("user_activation_resend", 202, { detail: STATEMENT }));
+    const { user } = start();
+    await submit(user);
+    expect(await screen.findByText("Request received")).toBeInTheDocument();
+
+    server.use(
+      handler("user_activation_resend", 429, envelope("throttled", "Too many requests."), {
+        "Retry-After": "3600",
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "Send activation email" }));
+
+    expect(await screen.findByText("Too many attempts")).toBeInTheDocument();
+    expect(screen.queryByText("Request received")).not.toBeInTheDocument();
+  });
+
   it("renders the form and a link back to sign in", async () => {
     start();
 

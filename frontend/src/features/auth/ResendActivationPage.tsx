@@ -40,6 +40,7 @@ export function ResendActivationPage(): JSX.Element {
   const [statement, setStatement] = useState<string | null>(null);
   const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { email: "" } });
   const { problem, details, onSubmit } = useSubmission(form, async (values) => {
+    setStatement(null);
     const result = await resendActivation(values);
     setStatement(result.detail);
   });

@@ -44,8 +44,8 @@ export interface EmailRequestPageProps {
 /**
  * Render an email request page.
  *
- * Shows the backend's statement verbatim after a successful request and keeps the typed address
- * after a failure so it can be corrected.
+ * Shows the backend's statement verbatim after a successful request, clears it when the next
+ * attempt starts, and keeps the typed address after a failure so it can be corrected.
  *
  * @param props - The page props.
  * @returns The page element.
@@ -59,6 +59,7 @@ export function EmailRequestPage({
   const [statement, setStatement] = useState<string | null>(null);
   const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { email: "" } });
   const { problem, details, onSubmit } = useSubmission(form, async (values) => {
+    setStatement(null);
     setStatement(await request(values.email));
   });
   const {

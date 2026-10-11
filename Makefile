@@ -92,7 +92,7 @@ frontend-api-generate:
 	$(PNPM) run api:generate
 
 frontend-e2e:
-	$(PNPM) run e2e
+	$(PNPM) run e2e $(ARGS)
 
 frontend-image:
 	docker build --file docker/frontend/Dockerfile --tag localforge/frontend:0.1.0 $(REPOSITORY_ROOT)

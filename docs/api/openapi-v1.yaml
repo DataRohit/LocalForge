@@ -2398,6 +2398,23 @@ paths:
           description: A credential was absent, malformed, expired, revoked, or inactive.
           x-localforge-observed-by:
           - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[patch]
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                CSRFRejected:
+                  value:
+                    code: permission_denied
+                    message: You do not have permission to perform this action.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: CSRF rejected
+          description: The CSRF token or Origin was missing, mismatched, or untrusted.
+            Cookies are left in place so the client can fetch a fresh token and retry.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[patch]
         '405':
           content:
             application/json:
@@ -2610,6 +2627,23 @@ paths:
                     request_id: 00000000-0000-4000-8000-000000000000
                   summary: Authentication failed
           description: A credential was absent, malformed, expired, revoked, or inactive.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[delete]
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                CSRFRejected:
+                  value:
+                    code: permission_denied
+                    message: You do not have permission to perform this action.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: CSRF rejected
+          description: The CSRF token or Origin was missing, mismatched, or untrusted.
+            Cookies are left in place so the client can fetch a fresh token and retry.
           x-localforge-observed-by:
           - backend/tests/integration/accounts/test_user_profiles.py::test_profile_observed_statuses_exactly_match_each_documented_contract[delete]
         '405':
@@ -4013,6 +4047,23 @@ paths:
           description: A credential was absent, malformed, expired, revoked, or inactive.
           x-localforge-observed-by:
           - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[set-password]
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                CSRFRejected:
+                  value:
+                    code: permission_denied
+                    message: You do not have permission to perform this action.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: CSRF rejected
+          description: The CSRF token or Origin was missing, mismatched, or untrusted.
+            Cookies are left in place so the client can fetch a fresh token and retry.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_password_management.py::test_password_operation_observed_statuses_exactly_match_its_documented_contract[set-password]
         '405':
           content:
             application/json:
@@ -4249,6 +4300,23 @@ paths:
                     request_id: 00000000-0000-4000-8000-000000000000
                   summary: Authentication failed
           description: A credential was absent, malformed, expired, revoked, or inactive.
+          x-localforge-observed-by:
+          - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[set-username]
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                CSRFRejected:
+                  value:
+                    code: permission_denied
+                    message: You do not have permission to perform this action.
+                    details: {}
+                    request_id: 00000000-0000-4000-8000-000000000000
+                  summary: CSRF rejected
+          description: The CSRF token or Origin was missing, mismatched, or untrusted.
+            Cookies are left in place so the client can fetch a fresh token and retry.
           x-localforge-observed-by:
           - backend/tests/integration/accounts/test_username_management.py::test_username_operation_observed_statuses_exactly_match_its_documented_contract[set-username]
         '405':

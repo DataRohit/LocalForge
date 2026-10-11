@@ -70,7 +70,7 @@ All commands run through the root `Makefile`, which calls `pnpm --dir frontend`.
 | `frontend-build` | Production build and the bundle checks |
 | `frontend-check` | All of the above in order |
 | `frontend-api-generate` | Regenerates `src/api/generated/` from the committed OpenAPI document |
-| `frontend-e2e` | Builds, then runs Playwright: the audit project with a mocked network, and from Ticket 96 the journeys against the `testing` backend |
+| `frontend-e2e` | `node e2e/support/run.ts`: isolation check, build, throwaway database, cache namespaces, and Mailpit in `testing`, then Playwright (the mocked audit project and the journeys on three browsers), a log-window check, cleanup, and a residue check; see [service inventory](../platform/service-inventory.md) Section 4.3 |
 | `frontend-image` | The pinned container build |
 | `frontend-audit` | Licence, advisory, release-age, and install-script audit |
 
@@ -97,8 +97,9 @@ Same posture as the backend: enforced, never lowered to pass.
 
 | Browser | Support |
 | --- | --- |
-| Chromium and Firefox, current and previous stable | Supported and tested by Playwright |
-| WebKit, current stable | Supported and tested on HTTPS origins; unsupported on plain-HTTP local origins because of `Secure` cookies |
+| Chromium and Firefox, current stable | Supported and tested by Playwright on the HTTPS origin and on the plain-HTTP loopback origin |
+| Chromium and Firefox, previous stable | Supported; not separately tested, because Playwright runs only the build it bundles |
+| WebKit, current stable | Supported and tested on HTTPS origins; unsupported on plain-HTTP local origins, where it rejects the `Secure` session cookies (observed 2026-10-11) |
 | Older or other engines | Unsupported |
 
 ## 6. Delivery
@@ -146,3 +147,15 @@ proceeded. The ticket order, scope, route map, and gate are unchanged; the corre
 | A five-minute access token needs session upkeep | The client refreshes once, single-flight, then retries once; a second `401` signs out | 88, 89 |
 
 Sequence, one commit per ticket: 87, 88, 89, 90, then 91, 92, and 93, then 94 and 95, then 96 and 97, then 98, then 99.
+
+### 8.1 Findings from real-browser runs
+
+Ticket 96 drove the built application in Chromium, Firefox, and WebKit against the `testing` backend on 2026-10-11.
+
+| Finding | Resolution | Ticket |
+| --- | --- | --- |
+| `PATCH` and `DELETE` on `users/me/`, `set_password/`, and `set_username/` rejected a wrong CSRF token with `403` but did not document it, so the client rightly called it unexpected | Backend contract defect: Phase 11 was reopened and the four operations now document the enveloped `403`, with the evidence tests observing it ([the Phase 11 handover](../handover/phase-11.md) Section 10) | 96 |
+| A throttled repeat left the earlier "Request received" message beside the error | The two request pages clear the message when the next attempt starts, with regression tests | 90, 91 |
+| A refused request showed only "The request failed" | The `forbidden` kind has its own title and a "Reload the page, then try again" hint | 89 |
+| The Phase 11 manifest held only secondary evidence about prefixed cookies on plain HTTP | Observed: Chromium and Firefox keep them on loopback HTTP, WebKit does not; the journeys run on HTTPS in all three and an origin test pins the HTTP result | 96 |
+| Previous-stable browsers were listed as tested | Corrected above: only the bundled current builds are tested | 96 |

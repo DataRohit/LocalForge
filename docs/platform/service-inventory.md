@@ -511,6 +511,48 @@ stability gate, then stop the testing environment while preserving its named vol
 running so status and logs remain available. `make testing-registration-timing-stability` exposes the same
 host stability gate without rerunning the complete suite.
 
+### 4.3 Browser end-to-end
+
+`make frontend-e2e` drives the built single-page application in Chromium, Firefox, and WebKit against the
+`testing` stack without adding a service to it ([Ticket 96](../../.scratch/phase-12-frontend/96-browser-e2e-against-testing-backend.md)).
+It runs only on the host, reads `.env.testing.host` and `.env.testing`, and never reads `.env.development`.
+
+Before anything starts, an isolation check requires the testing project name and settings module, loopback hosts, the
+exact testing ports, credentials that agree between the two env files, and the six registered headless containers
+with no other container in the project. A mismatch stops the run before anything is created.
+
+| Resource | Where | Lifetime |
+| --- | --- | --- |
+| `lf_e2e` PostgreSQL database | `postgres-tp8vn`, created and migrated for the run | Dropped with force at the end |
+| Valkey databases 11 and 12 | `valkey-cache-tv4kq` | Flushed at the end |
+| `mailpit-tm7bh` | The `smtp` profile, the same command the gates use | Messages cleared, container removed |
+| Django under Uvicorn | `127.0.0.1:28000`, host process, no container | Stopped by Playwright |
+| Preview server | `127.0.0.1:4173` (HTTP) and `127.0.0.1:4443` (HTTPS, throwaway certificate) | Stopped by Playwright |
+
+The host server takes its settings from the testing env file with only the throwaway database and cache namespaces, SMTP
+delivery to Mailpit, the two served origins, and higher shared rate limits overridden. The resend account limit stays
+at `3/hour` so one journey reaches it. After the run the runner inspects a bounded log window for all six registered
+testing containers, temporary Mailpit, and the server. An unreadable container log fails the run. Every `WARNING` or
+worse must match a recorded expectation. The runner then
+verifies that the database is gone, both cache databases are empty, Mailpit is removed, and the channel layer's key
+count is back to its starting value. A leftover fails the run.
+
+Browser teardown signs out one remaining authenticated page per context; all tabs share that session, so a second
+sign-out would race its revocation. Child commands use direct executables and the root `make frontend-build` target,
+without shell interpolation. Child tools select color output without inheriting a conflicting `NO_COLOR` flag.
+
+The HTTPS preview can emit paired `ws proxy error` and `ws proxy socket error` records with `Error: read ECONNRESET`
+and `TLSWrap.onStreamRead` while WebKit reloads or closes a connected page. These exact client-disconnection records
+are expected in the browser test window: Vite 8.3.2 attaches the latter error listener to the incoming browser socket
+in its `proxyReqWs` handler (`node_modules/vite/dist/node/chunks/node.js`), and the backend target is plain HTTP.
+This exception covers neither HTTP proxy failures, other reset stacks, backend failures, nor failed journey
+assertions. Review the captured preview output as well as the runner's container and backend log classification;
+a green Playwright result alone is not the runtime-truth gate.
+
+The origin matrix observed on 2026-10-11 with Playwright 1.63 browsers: Chromium and Firefox keep the `__Host-` and
+`__Secure-` cookies and hold a session on the plain-HTTP loopback origin; WebKit keeps only the readable CSRF cookie
+there and cannot sign in. All three work on the HTTPS origin.
+
 ## 5. Image pins
 
 Exact versions everywhere. `latest` is forbidden, including Dockerfile base images. All tags checked 2026-09-13.
