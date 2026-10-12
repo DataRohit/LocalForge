@@ -118,6 +118,69 @@ export function checkRuntimeLogs(text: string): string[] {
 }
 
 /**
+ * Describe the disposable proxy routing as a file-provider document.
+ *
+ * Builds the backend router and, when given, the frontend router at the candidate's lower priority.
+ * Omitting the frontend reproduces the routing that existed before the candidate was applied.
+ *
+ * @param backendRule - Rule for the Django router.
+ * @param frontend - Frontend rule and health path, or undefined for the rolled-back routing.
+ * @returns YAML text for the proxy's file provider.
+ */
+export function routingDocument(
+  backendRule: string,
+  frontend?: { readonly rule: string; readonly healthPath: string },
+): string {
+  const routers: Record<string, unknown> = {
+    backend: {
+      rule: backendRule,
+      ...(frontend === undefined ? {} : { priority: 100 }),
+      entryPoints: ["web"],
+      service: "backend",
+    },
+  };
+  const services: Record<string, unknown> = {
+    backend: { loadBalancer: { servers: [{ url: "http://host.docker.internal:28000" }] } },
+  };
+  if (frontend !== undefined) {
+    routers.frontend = {
+      rule: frontend.rule,
+      priority: 10,
+      entryPoints: ["web"],
+      service: "frontend",
+    };
+    services.frontend = {
+      loadBalancer: {
+        servers: [{ url: "http://127.0.0.1:8080" }],
+        healthCheck: { path: frontend.healthPath, interval: "5s" },
+      },
+    };
+  }
+  return stringify({ http: { routers, services } });
+}
+
+/**
+ * Read the Django routing rule that existed before the frontend candidate.
+ *
+ * Takes the local-host router rule from the committed development Compose labels, which a rollback
+ * returns to. A missing label fails closed so the rehearsal never invents a baseline.
+ *
+ * @param compose - Parsed development Compose document.
+ * @returns The baseline whole-host rule.
+ * @throws Error If the label is absent.
+ */
+export function baselineRule(compose: {
+  services: Record<string, { labels?: readonly string[] }>;
+}): string {
+  const prefix = "traefik.http.routers.localforge-local.rule=";
+  const label = compose.services["django-uv5n2"]?.labels?.find((entry) => entry.startsWith(prefix));
+  if (label === undefined) {
+    throw new Error("The development Django routing label is missing.");
+  }
+  return label.slice(prefix.length);
+}
+
+/**
  * Request a bounded local runtime seam.
  *
  * Applies the host used by the candidate routers and a ten-second timeout.
@@ -182,7 +245,8 @@ async function ready(url: string): Promise<void> {
  * Prove the running image and the actual candidate routing rules.
  *
  * Starts the isolated host backend and a disposable proxy in the image's network namespace.
- * Exercises fallback, headers, cache, health, and an unknown API path, then reads both logs.
+ * Exercises fallback, headers, cache, health, and an unknown API path, then rehearses rollback by
+ * restarting the proxy with the pre-candidate routing. Reads both logs after each routing.
  *
  * @param env - Isolated testing environment prepared by the shared runner.
  * @returns Zero only when every assertion passes.
@@ -227,6 +291,7 @@ async function prove(env: Record<string, string>): Promise<number> {
     const inspection: unknown = JSON.parse(await docker(["inspect", image]));
     const records = inspection as {
       HostConfig: { ReadonlyRootfs: boolean };
+      Mounts: unknown[];
       Config: { User: string };
       NetworkSettings: { Ports: Record<string, { HostPort: string }[]> };
     }[];
@@ -340,57 +405,32 @@ async function prove(env: Record<string, string>): Promise<number> {
     };
     const labels = candidate.services["django-uv5n2"]?.labels ?? {};
     const frontendLabels = candidate.services["frontend-fe6vn"]?.labels ?? {};
+    const startProxy = async (): Promise<string> =>
+      docker([
+        "run",
+        "--detach",
+        "--network",
+        `container:${image}`,
+        "--mount",
+        `type=bind,src=${proxyFile},dst=/routing.yaml,readonly`,
+        "traefik:v3.7.13",
+        "--entrypoints.web.address=:8081",
+        "--providers.file.filename=/routing.yaml",
+        "--global.checknewversion=false",
+        "--global.sendanonymoususage=false",
+        "--log.format=json",
+        "--accesslog.format=json",
+      ]);
     await writeFile(
       proxyFile,
-      stringify({
-        http: {
-          routers: {
-            backend: {
-              rule: labels["traefik.http.routers.localforge-local.rule"],
-              priority: 100,
-              entryPoints: ["web"],
-              service: "backend",
-            },
-            frontend: {
-              rule: frontendLabels["traefik.http.routers.frontend-local.rule"],
-              priority: 10,
-              entryPoints: ["web"],
-              service: "frontend",
-            },
-          },
-          services: {
-            backend: { loadBalancer: { servers: [{ url: "http://host.docker.internal:28000" }] } },
-            frontend: {
-              loadBalancer: {
-                servers: [{ url: "http://127.0.0.1:8080" }],
-                healthCheck: {
-                  path: frontendLabels[
-                    "traefik.http.services.frontend.loadbalancer.healthcheck.path"
-                  ],
-                  interval: "5s",
-                },
-              },
-            },
-          },
-        },
+      routingDocument(labels["traefik.http.routers.localforge-local.rule"] ?? "", {
+        rule: frontendLabels["traefik.http.routers.frontend-local.rule"] ?? "",
+        healthPath:
+          frontendLabels["traefik.http.services.frontend.loadbalancer.healthcheck.path"] ?? "",
       }),
       "utf8",
     );
-    proxy = await docker([
-      "run",
-      "--detach",
-      "--network",
-      `container:${image}`,
-      "--mount",
-      `type=bind,src=${proxyFile},dst=/routing.yaml,readonly`,
-      "traefik:v3.7.13",
-      "--entrypoints.web.address=:8081",
-      "--providers.file.filename=/routing.yaml",
-      "--global.checknewversion=false",
-      "--global.sendanonymoususage=false",
-      "--log.format=json",
-      "--accesslog.format=json",
-    ]);
+    proxy = await startProxy();
     await ready(`${edge}/sign-in`);
     if ((await (await request(`${edge}/account`)).text()) !== html) {
       throw new Error("Candidate SPA routing failed.");
@@ -399,13 +439,36 @@ async function prove(env: Record<string, string>): Promise<number> {
     if (unknown.status !== 404 || (await unknown.text()).includes('<div id="root">')) {
       throw new Error("Unknown API route reached the SPA.");
     }
-    for (const container of [image, proxy]) {
+    const assertCleanLogs = async (container: string): Promise<void> => {
       const logs = await spawnRunner("docker", ["logs", "--since", since, container]);
       if (logs.code !== 0 || checkRuntimeLogs(logs.stdout + logs.stderr).length > 0) {
         throw new Error("Standalone runtime log window is not clean.");
       }
+    };
+    if ((await request(`${edge}/api/v1/browser/csrf/`)).status !== 204) {
+      throw new Error("The backend seam failed under the candidate routing.");
     }
-    console.log(`Image and candidate routing passed; log window starts ${since}.`);
+    if (record.Mounts.length !== 0) {
+      throw new Error("The frontend must be stateless, with no volume or bind mount.");
+    }
+    await assertCleanLogs(proxy);
+    await docker(["rm", "--force", proxy]);
+    const development = parse(
+      await readFile(path.join(root, "compose.development.yaml"), "utf8"),
+    ) as Parameters<typeof baselineRule>[0];
+    await writeFile(proxyFile, routingDocument(baselineRule(development)), "utf8");
+    proxy = await startProxy();
+    await ready(`${edge}/api/v1/browser/csrf/`);
+    const rolledBack = await request(`${edge}/account`);
+    if (rolledBack.status !== 404 || (await rolledBack.text()).includes('<div id="root">')) {
+      throw new Error("Rolled-back routing still served the single-page application.");
+    }
+    if ((await request(`${edge}/api/v1/browser/csrf/`)).status !== 204) {
+      throw new Error("The backend seam failed after rollback.");
+    }
+    await assertCleanLogs(proxy);
+    await assertCleanLogs(image);
+    console.log(`Image, candidate routing, and rollback passed; log window starts ${since}.`);
     return 0;
   } finally {
     if (process.platform === "win32" && backend.pid !== undefined) {

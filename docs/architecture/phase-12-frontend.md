@@ -10,6 +10,10 @@ Decisions behind it: [0026](../adr/0026-react-and-tailwind-frontend.md),
 accepted the Phase 11 freeze (delegated, recorded in `docs/handover/phase-11.md` Section 8) and instructed Phase 12 to
 start on 2026-10-10.
 
+Status: tickets 87–99 are **Locally Verified** as of 2026-10-12 and the Gate 4 report is in
+[the Phase 12 handover](../handover/phase-12.md). Deployment into `development` has not been applied and waits
+for the user's explicit authorization.
+
 ## 1. Scope
 
 A React and Tailwind CSS single-page application for the frozen backend: registration, activation, sign-in and

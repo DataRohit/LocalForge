@@ -1,7 +1,8 @@
 # Frontend deployment candidates
 
 These files are inert. Ticket 97 builds and exercises the image outside both Compose projects.
-Ticket 99 supplies deployment and rollback commands; no candidate is loaded automatically by operator tooling.
+Ticket 99 supplies [deploy.md](./deploy.md) and [rollback.md](./rollback.md); no candidate is loaded
+automatically by operator tooling, and none has been applied to `localforge-dev`.
 
 ## Ownership and proof
 
@@ -35,6 +36,8 @@ The proof observes actual backend `404` for `/api/v1/image-proof-missing/`, not 
 container's health and headers, and inspects bounded logs. Both standalone containers and the host backend
 are stopped before testing resources are removed; residue checks must pass. Never run this concurrently with
 browser journeys because they deliberately share throwaway testing namespaces.
+The same proof then rehearses rollback by restarting the disposable Traefik with the pre-candidate routing
+read from `compose.development.yaml`, requiring the backend seam to survive and the SPA shell to disappear.
 
 ## Base-image evidence, 2026-10-11
 

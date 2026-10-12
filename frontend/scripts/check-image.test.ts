@@ -9,7 +9,9 @@
 
 import { describe, expect, it } from "vitest";
 
-import { checkHeaders, checkRuntimeLogs } from "./check-image.ts";
+import { parse } from "yaml";
+
+import { baselineRule, checkHeaders, checkRuntimeLogs, routingDocument } from "./check-image.ts";
 
 const POLICY = "default-src 'self'; script-src 'self'; frame-ancestors 'none'";
 
@@ -71,5 +73,47 @@ describe("checkHeaders", () => {
         "asset",
       ),
     ).toEqual([]);
+  });
+});
+
+describe("routingDocument", () => {
+  const frontend = { rule: "Host(`a`)", healthPath: "/healthz" };
+
+  it("gives the Django router priority over the frontend router in the candidate", () => {
+    const { http } = parse(routingDocument("Host(`a`) && PathPrefix(`/api/`)", frontend)) as {
+      http: { routers: Record<string, { priority: number }>; services: Record<string, unknown> };
+    };
+    expect(http.routers.backend?.priority).toBe(100);
+    expect(http.routers.frontend?.priority).toBe(10);
+    expect(Object.keys(http.services)).toEqual(["backend", "frontend"]);
+  });
+
+  it("omits every frontend router and service in the rolled-back routing", () => {
+    const { http } = parse(routingDocument("Host(`a`)")) as {
+      http: { routers: Record<string, unknown>; services: Record<string, unknown> };
+    };
+    expect(Object.keys(http.routers)).toEqual(["backend"]);
+    expect(Object.keys(http.services)).toEqual(["backend"]);
+  });
+});
+
+describe("baselineRule", () => {
+  it("reads the whole-host rule from the development Django labels", () => {
+    expect(
+      baselineRule({
+        services: {
+          "django-uv5n2": {
+            labels: ["traefik.enable=true", "traefik.http.routers.localforge-local.rule=Host(`a`)"],
+          },
+        },
+      }),
+    ).toBe("Host(`a`)");
+  });
+
+  it("fails closed when the label is absent", () => {
+    expect(() => baselineRule({ services: { "django-uv5n2": { labels: [] } } })).toThrow(
+      "routing label is missing",
+    );
+    expect(() => baselineRule({ services: {} })).toThrow("routing label is missing");
   });
 });
