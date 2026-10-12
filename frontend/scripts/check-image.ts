@@ -12,6 +12,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import path from "node:path";
 
+import { chromium } from "@playwright/test";
 import { parse, stringify } from "yaml";
 
 import { DEFAULT_SETTINGS, spawnRunner } from "../e2e/support/environment.ts";
@@ -282,11 +283,11 @@ async function prove(env: Record<string, string>): Promise<number> {
     if (!formatted) {
       throw new Error("nginx error records were not escaped as structured JSON.");
     }
-    const document = await request(`${origin}/index.html`);
-    const html = await document.text();
-    const problems = checkHeaders(document.headers, "document");
+    const servedDocument = await request(`${origin}/index.html`);
+    const html = await servedDocument.text();
+    const problems = checkHeaders(servedDocument.headers, "document");
     const asset = /src="(\/assets\/[^"]+)"/.exec(html)?.[1];
-    if (document.status !== 200 || asset === undefined) {
+    if (servedDocument.status !== 200 || asset === undefined) {
       throw new Error("Missing SPA document or asset.");
     }
     const built = await request(`${origin}${asset}`);
@@ -296,6 +297,38 @@ async function prove(env: Record<string, string>): Promise<number> {
     }
     if ((await (await request(`${origin}/account/password`)).text()) !== html) {
       throw new Error("SPA fallback failed.");
+    }
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      await page.goto(`${origin}/healthz`);
+      const blocked = await page.evaluate(async () => {
+        const violation = new Promise<string>((resolve) => {
+          document.addEventListener(
+            "securitypolicyviolation",
+            (event) => {
+              resolve(event.violatedDirective);
+            },
+            { once: true },
+          );
+          setTimeout(() => {
+            resolve("missing");
+          }, 5000);
+        });
+        const script = document.createElement("script");
+        script.textContent = 'document.documentElement.dataset.injected = "executed"';
+        document.body.append(script);
+        return {
+          directive: await violation,
+          executed: document.documentElement.dataset.injected,
+        };
+      });
+      if (blocked.directive !== "script-src-elem" || blocked.executed !== undefined) {
+        throw new Error("Served CSP failed to block an injected inline script.");
+      }
+      console.log("Served CSP blocked injected inline script in Chromium.");
+    } finally {
+      await browser.close();
     }
     const candidate = parse(
       await readFile(

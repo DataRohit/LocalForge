@@ -72,8 +72,10 @@ All commands run through the root `Makefile`, which calls `pnpm --dir frontend`.
 | `frontend-api-generate` | Regenerates `src/api/generated/` from the committed OpenAPI document |
 | `frontend-e2e` | `node e2e/support/run.ts`: isolation check, build, throwaway database, cache namespaces, and Mailpit in `testing`, then Playwright (the mocked audit project and the journeys on three browsers), a log-window check, cleanup, and a residue check; see [service inventory](../platform/service-inventory.md) Section 4.3 |
 | `frontend-image` | The pinned container build |
-| `frontend-image-check` | Standalone image, headers, cache, health, and candidate Traefik routing proof |
-| `frontend-audit` | Licence, advisory, release-age, and install-script audit |
+| `frontend-image-check` | Standalone image, headers, injected-script CSP block, cache, health, and candidate Traefik routing proof |
+| `frontend-audit` | Offline licence, advisory, release-age, and install-script audit; requires fresh matching evidence |
+| `frontend-audit-refresh` | Explicit dependency-resolution boundary; retrieves and validates full-lock registry and advisory evidence |
+| `frontend-advisory-evidence` | Machine-readable pnpm advisory document for the refresh command |
 
 The Vite development server proxies `/api/` and `/ws/` to a backend started in host mode against `testing`. It
 never targets `development`.

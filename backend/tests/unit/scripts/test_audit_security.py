@@ -1527,6 +1527,30 @@ def test_runtime_secret_check_rejects_command_and_secret_failures(tmp_path: Path
     )
 
 
+@pytest.mark.parametrize("codes", [(0, 0), (1,), (0, 1)])
+def test_frontend_check_requires_build_and_supply_evidence(codes: tuple[int, ...]) -> None:
+    """Require both frontend security operator boundaries.
+
+    Supplies success and failure results at each command boundary.
+    Confirms build failures stop before dependency evidence can hide them.
+
+    Arguments:
+        codes: Exit statuses returned by the command runner.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If either failure is accepted or commands run out of order.
+    """
+    runner = FakeRunner([audit.CommandResult(code, "") for code in codes])
+    assert audit.frontend_check(runner) is all(code == 0 for code in codes)
+    assert [call[0] for call in runner.calls] == [
+        ("make", "frontend-build"),
+        *((("make", "frontend-audit"),) if codes[0] == 0 else ()),
+    ]
+
+
 @pytest.mark.parametrize(
     ("scope", "expected_calls"),
     [
@@ -1534,11 +1558,21 @@ def test_runtime_secret_check_rejects_command_and_secret_failures(tmp_path: Path
         ("browser", ["browser"]),
         ("history", ["history"]),
         ("dependencies", ["dependencies"]),
+        ("frontend", ["frontend"]),
         ("images", ["images"]),
         ("runtime", ["exposure", "secrets"]),
         (
             "all",
-            ["deployment", "browser", "history", "dependencies", "images", "exposure", "secrets"],
+            [
+                "deployment",
+                "browser",
+                "history",
+                "dependencies",
+                "frontend",
+                "images",
+                "exposure",
+                "secrets",
+            ],
         ),
     ],
 )
@@ -1585,6 +1619,7 @@ def test_main_runs_selected_checks(
         patch.object(audit, "browser_contract_check", side_effect=lambda *_args: record("browser")),
         patch.object(audit, "history_secret_check", side_effect=lambda *_args: record("history")),
         patch.object(audit, "dependency_check", side_effect=lambda *_args: record("dependencies")),
+        patch.object(audit, "frontend_check", side_effect=lambda *_args: record("frontend")),
         patch.object(audit, "image_check", side_effect=lambda *_args: record("images")),
         patch.object(
             audit,

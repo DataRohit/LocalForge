@@ -26,9 +26,12 @@ POE_TASKS := \
 ENVIRONMENT_CHOICES := development testing
 ENVIRONMENT_TARGETS := dev migrate migrations superuser shell
 
-FRONTEND_TARGETS := \n  frontend-install frontend-format frontend-lint frontend-types frontend-docs-standard \n  frontend-test frontend-build frontend-check frontend-api-generate frontend-e2e \n  frontend-image frontend-audit
+FRONTEND_TARGETS := \
+  frontend-install frontend-format frontend-lint frontend-types frontend-docs-standard \
+  frontend-test frontend-build frontend-check frontend-api-generate frontend-e2e \
+  frontend-image frontend-image-check frontend-audit frontend-audit-refresh frontend-advisory-evidence
 
-.PHONY: help sync preflight pre-commit-install pre-commit require-environment $(POE_TASKS) $(FRONTEND_TARGETS) frontend-image-check
+.PHONY: help sync preflight pre-commit-install pre-commit require-environment $(POE_TASKS) $(FRONTEND_TARGETS)
 
 help:
 	@$(POE) help
@@ -102,3 +105,9 @@ frontend-image-check:
 
 frontend-audit:
 	$(PNPM) run audit:supply
+
+frontend-audit-refresh:
+	$(PNPM) run audit:supply --refresh
+
+frontend-advisory-evidence:
+	@$(PNPM) audit --json

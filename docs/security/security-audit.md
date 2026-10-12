@@ -46,6 +46,26 @@ path, and lifetime attributes, wildcard-free trusted origins, CSRF middleware pr
 position after the bearer classes, and rejection of a forged unsafe request. It then runs the tests proving no
 credential reaches a log record. It needs the `testing` stack, like the other runtime-backed checks.
 
+## Frontend security contract
+
+Ticket 98 adds `frontend` to the complete and static security audit. That scope runs root
+`make frontend-build` (production bundle budgets and foreign-host/telemetry checks), then `make frontend-audit`.
+Either failure fails the scope; a failed build prevents the supply check from masking it. No registry refresh
+occurs in the ordinary audit. `make frontend-audit-refresh` is the explicit dependency-resolution boundary,
+collecting licences and lifecycle hooks for every resolved lock entry, direct publication dates, and pnpm
+advisories. Evidence is fingerprinted to the manifest, policy, lockfile, and Node pin and expires after 24 hours.
+Missing, malformed, stale, future-dated, or changed-input evidence fails closed.
+
+No high/critical advisory, install hook, young direct pin, or release-age exclusion is accepted. Registry evidence
+exposed the optional macOS `fsevents` hook; a documented removal override eliminates the package without weakening
+the gate. Bounded data-licence exceptions and the permissive licence list are recorded in
+[ADR 0028](../adr/0028-frontend-toolchain.md#resolved-tree-licence-disposition-2026-10-11).
+
+`make frontend-image-check` additionally launches Chromium against the served image policy, injects an inline
+script, requires a `script-src-elem` violation, and proves the script did not execute. Document and hashed-asset
+headers retain `default-src 'self'`, `script-src 'self'`, and no `unsafe-inline` or `unsafe-eval`. Testing runtime
+and bounded logs remain separate gates; production policy proof is recorded with Ticket 99 deployment evidence.
+
 ## Framework and secret evidence
 
 `config.settings.testing` keeps debug mode off and is the production-shaped configuration for the deployment

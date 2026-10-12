@@ -104,6 +104,15 @@ export default defineConfig(
     rules: { "no-restricted-globals": "off", "no-restricted-properties": "off" },
   },
   {
+    files: ["scripts/audit-supply-chain.ts"],
+    rules: {
+      "no-restricted-globals": [
+        "error",
+        ...restrictedGlobals.filter(({ name }) => name !== "fetch"),
+      ],
+    },
+  },
+  {
     files: ["**/*.js"],
     extends: [tseslint.configs.disableTypeChecked],
     languageOptions: { globals: globals.node },

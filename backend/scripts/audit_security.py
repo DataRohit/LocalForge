@@ -1250,6 +1250,24 @@ def runtime_secret_check(runner: AuditRunner, root: Path = REPOSITORY_ROOT) -> b
     return True
 
 
+def frontend_check(runner: AuditRunner) -> bool:
+    """Require the offline frontend build and dependency security gates.
+
+    Builds the production bundle through the root operator boundary before checking its pinned
+    supply evidence. Neither command refreshes registry data or permits an unavailable verdict.
+
+    Arguments:
+        runner: Command execution boundary.
+
+    Returns:
+        True only when both frontend commands succeed.
+    """
+    return (
+        runner.run(("make", "frontend-build")).code == 0
+        and runner.run(("make", "frontend-audit")).code == 0
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the command-line parser.
 
@@ -1265,7 +1283,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--scope",
-        choices=("all", "deployment", "browser", "history", "dependencies", "images", "runtime"),
+        choices=(
+            "all",
+            "deployment",
+            "browser",
+            "history",
+            "dependencies",
+            "frontend",
+            "images",
+            "runtime",
+        ),
         default="all",
     )
     return parser
@@ -1297,6 +1324,7 @@ def main(
         "browser": lambda: browser_contract_check(active_runner, root),
         "history": lambda: history_secret_check(active_runner, root),
         "dependencies": lambda: dependency_check(active_runner),
+        "frontend": lambda: frontend_check(active_runner),
         "images": lambda: image_check(active_runner, root),
         "runtime": lambda: (
             runtime_exposure_check(active_runner, root)

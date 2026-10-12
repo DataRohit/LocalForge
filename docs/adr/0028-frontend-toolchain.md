@@ -41,7 +41,10 @@ resolved pins, the release-age policy, and the compatibility decisions Ticket 87
   2026-10-10 pnpm flagged `prettier`, `msw`, and `@types/node`, and nine direct pins in total were under seven days
   old; each was moved to the newest same-major release older than seven days.
 - **Install scripts.** pnpm blocks dependency lifecycle scripts by default. The resolved lockfile contains no
-  `requiresBuild` entry, so nothing in the tree runs an install-time script. Ticket 98 audits this on every change.
+  `requiresBuild` entry. Ticket 98 also checks the registry metadata for every resolved package: the optional
+  macOS-only `fsevents` 2.3.3 declared an install hook despite that missing marker. The exact `fsevents: '-'`
+  override removes it rather than accepting its hook; Vite retains its portable watcher. Both recorded override
+  keys and values are audited. Nothing in the resolved tree declares an install-time script.
 - **Licence of the project.** `frontend/package.json` declares `MIT`, matching the repository `LICENSE` and
   `backend/pyproject.toml`. `private: true` prevents accidental publication.
 
@@ -58,6 +61,31 @@ resolved pins, the release-age policy, and the compatibility decisions Ticket 87
 | `axe-core` **MPL-2.0**, `@axe-core/playwright` **MPL-2.0** | Development and test only, never bundled; file-level copyleft accepted under the same terms as the MPL-2.0 tools in [0015](./0015-reject-restricted-licenses.md) |
 
 ## Evidence
+
+### Resolved-tree licence disposition, 2026-10-11
+
+Ticket 98 retrieves version-specific metadata for every package in the lockfile, not only installed packages.
+MIT, MIT-0, ISC, Apache-2.0, BSD-2-Clause, BSD-3-Clause, 0BSD, Python-2.0, BlueOak-1.0.0, and MPL-2.0 are accepted
+under ADR 0015. `(MIT OR CC0-1.0)` uses its MIT alternative. SPDX's primary licence-list data confirms the
+OSI status of Python-2.0, BlueOak-1.0.0, MIT-0, and 0BSD; CC-BY-4.0 and CC0-1.0 are **not** OSI-approved.
+
+The bounded data exceptions are `caniuse-lite` under CC-BY-4.0 (browser-support data with attribution), and
+`language-subtag-registry` and `mdn-data` under CC0-1.0 (public-domain language and CSS metadata). These build-tool
+datasets are accepted as data, not a licence exception for arbitrary software. The audit permits those exact
+package/licence pairs only. Unknown licences and all other CC-BY/CC0 packages fail closed. No install-hook,
+release-age, or advisory exception is accepted.
+
+Primary evidence: version metadata at `https://registry.npmjs.org/<package>/<version>`, the caniuse-lite licence
+at `https://github.com/browserslist/caniuse-lite/blob/main/LICENSE`, and SPDX's maintained licence data at
+`https://github.com/spdx/license-list-data/blob/main/json/licenses.json`. pnpm documents dependency removal
+overrides at `https://pnpm.io/settings#overrides`. Full build and browser gates verify portable watcher behavior.
+
+`make frontend-audit-refresh` is the explicit dependency-resolution network boundary. It saves a fingerprinted
+snapshot only after a complete passing scan. Ordinary `make frontend-audit` is offline and rejects absent,
+malformed, older-than-24-hour, future-dated, or input-mismatched evidence. Refresh when dependencies change or
+before final verification; cache files are ignored under `frontend/.e2e-run/` and are never application assets.
+Starting a refresh invalidates the previous snapshot, so a failed or interrupted fresh scan cannot fall back to
+an earlier successful verdict for the same pins.
 
 Resolved on 2026-10-10 from `registry.npmjs.org` with `npm view <package> time --json` and
 `npm view <package>@<version> license`. Age is days from publication to 2026-10-10. Every direct pin is at least seven
