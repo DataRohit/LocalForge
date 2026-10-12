@@ -11,7 +11,13 @@ import { describe, expect, it } from "vitest";
 
 import { parse } from "yaml";
 
-import { baselineRule, checkHeaders, checkRuntimeLogs, routingDocument } from "./check-image.ts";
+import {
+  baselineRule,
+  checkHeaders,
+  checkRuntimeLogs,
+  routingDocument,
+  serviceLabels,
+} from "./check-image.ts";
 
 const POLICY = "default-src 'self'; script-src 'self'; frame-ancestors 'none'";
 
@@ -79,7 +85,7 @@ describe("checkHeaders", () => {
 describe("routingDocument", () => {
   const frontend = { rule: "Host(`a`)", healthPath: "/healthz" };
 
-  it("gives the Django router priority over the frontend router in the candidate", () => {
+  it("gives the Django router priority over the frontend router in the deployed routing", () => {
     const { http } = parse(routingDocument("Host(`a`) && PathPrefix(`/api/`)", frontend)) as {
       http: { routers: Record<string, { priority: number }>; services: Record<string, unknown> };
     };
@@ -97,23 +103,42 @@ describe("routingDocument", () => {
   });
 });
 
+describe("serviceLabels", () => {
+  it("splits each label at its first equals sign", () => {
+    expect(
+      serviceLabels(
+        { services: { web: { labels: ["a.rule=Host(`x`) && Path(`/a=b`)", "enable=true"] } } },
+        "web",
+      ),
+    ).toEqual({ "a.rule": "Host(`x`) && Path(`/a=b`)", enable: "true" });
+  });
+
+  it("returns no labels for a service that declares none", () => {
+    expect(serviceLabels({ services: { web: {} } }, "web")).toEqual({});
+  });
+
+  it("fails closed when the service is absent", () => {
+    expect(() => serviceLabels({ services: {} }, "web")).toThrow("web is missing");
+  });
+});
+
 describe("baselineRule", () => {
-  it("reads the whole-host rule from the development Django labels", () => {
+  it("reads the whole-host rule from the frontend local router", () => {
     expect(
       baselineRule({
         services: {
-          "django-uv5n2": {
-            labels: ["traefik.enable=true", "traefik.http.routers.localforge-local.rule=Host(`a`)"],
+          "frontend-fe6vn": {
+            labels: ["traefik.enable=true", "traefik.http.routers.frontend-local.rule=Host(`a`)"],
           },
         },
       }),
     ).toBe("Host(`a`)");
   });
 
-  it("fails closed when the label is absent", () => {
-    expect(() => baselineRule({ services: { "django-uv5n2": { labels: [] } } })).toThrow(
-      "routing label is missing",
+  it("fails closed when the label or the service is absent", () => {
+    expect(() => baselineRule({ services: { "frontend-fe6vn": { labels: [] } } })).toThrow(
+      "frontend routing label is missing",
     );
-    expect(() => baselineRule({ services: {} })).toThrow("routing label is missing");
+    expect(() => baselineRule({ services: {} })).toThrow("frontend-fe6vn is missing");
   });
 });

@@ -69,7 +69,7 @@ frontend; both reuse the existing edge network and neither creates a third envir
 | --- | --- | --- | --- |
 | `traefik-tk2jp` | `tk2jp` | reverse proxy | `docker.io/library/traefik:v3.7.13` |
 | `cloudflared-cf7q2` | `cf7q2` | Cloudflare Tunnel public edge client | pinned Cloudflare cloudflared release, selected by Ticket 66 |
-| `frontend-fe6vn` | `fe6vn` | static React single-page application | `localforge/frontend:0.1.0`, built from `docker/frontend/Dockerfile`; non-root, read-only, edge network only; Ticket 97 candidate |
+| `frontend-fe6vn` | `fe6vn` | static React single-page application | `localforge/frontend:0.1.0`, built from `docker/frontend/Dockerfile`; non-root, read-only, edge network only |
 | `django-uv5n2` | `uv5n2` | Django ASGI app | built, `docker/django/Dockerfile` |
 | `postgres-pg3ka` | `pg3ka` | PostgreSQL primary | built, `docker/pgbackrest/Dockerfile` |
 | `postgres-replica-pg6vy` | `pg6vy` | PostgreSQL hot standby | `docker.io/library/postgres:18.6` |

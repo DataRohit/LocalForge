@@ -1,19 +1,22 @@
-# Frontend deployment candidates
+# Frontend deployment
 
-These files are inert. Ticket 97 builds and exercises the image outside both Compose projects.
-Ticket 99 supplies [deploy.md](./deploy.md) and [rollback.md](./rollback.md); no candidate is loaded
-automatically by operator tooling, and none has been applied to `localforge-dev`.
+The frontend is part of the committed development definition. Ticket 97 built and proved the image and drafted the
+routing as inert candidate files; the adoption merged them into `compose.development.yaml`, the platform registries,
+and the image build targets, and retired the candidate files. [deploy.md](./deploy.md) is the verification and
+existing-environment procedure; [rollback.md](./rollback.md) is the undo.
 
 ## Ownership and proof
 
 - `docker/frontend/Dockerfile` builds `localforge/frontend:0.1.0` with pinned Node 24.20.0 and pnpm 11.21.0.
   Runtime is digest-pinned nginx-unprivileged 1.30.4, UID/GID 101, with no Node, npm, pnpm, or apk executable.
-- `compose.candidate.yaml` adds only `frontend-fe6vn`, edge network only, no host publication, secret, or volume.
-  It requires read-only root, dropped capabilities, no-new-privileges, and a bounded non-executable `/tmp` tmpfs.
+- The `frontend-fe6vn` service in `compose.development.yaml` is on the edge network only, with no host publication,
+  secret, or volume. It requires read-only root, dropped capabilities, no-new-privileges, and a bounded
+  non-executable `/tmp` tmpfs.
 - Django's exact paths and owned prefixes have priority 100; the SPA has priority 10. Existing public admin
   blocking and forwarded-HTTPS middleware stay on Django. Frontend health is `/healthz` on port 8080.
-- `registry.candidate.patch` updates operator and naming registries when deployment is authorized. Apply it
-  together with the Compose candidate, not before; until then existing development gates retain their baseline.
+- `manage_platform.py` and `audit_naming.py` register the container, its image and build target, its network
+  membership, and its absence of published ports, so the project-scoped Docker audit and the convention audit
+  cover it.
 - Alloy already discovers every container with `com.docker.compose.project=localforge-dev`, attaches service
   labels, and sends its stdout/stderr to Loki. No collection allowlist or additional collector is needed.
   Access records are JSON and omit query strings. The entrypoint converts native nginx error records to
@@ -23,21 +26,19 @@ automatically by operator tooling, and none has been applied to `localforge-dev`
 ```console
 make frontend-image
 make frontend-image-check
-git apply --check docs/runbooks/frontend-deployment/registry.candidate.patch
-docker compose --project-name localforge-dev --env-file .env.development -f compose.yaml -f compose.development.yaml -f docs/runbooks/frontend-deployment/compose.candidate.yaml config --quiet
 ```
 
 The image proof first validates testing ports and credentials, creates the same throwaway database and cache
 namespaces as browser journeys, and captures mail through temporary Mailpit. No frontend joins the testing
 project or its networks. The image exposes random loopback ports only during this proof. A disposable pinned
-Traefik process shares its network namespace and consumes rules directly from the candidate. Docker-returned
+Traefik process shares its network namespace and consumes rules read from `compose.development.yaml`. Docker-returned
 probe IDs are transient process identities, not new registry services, networks, volumes, or environments.
 The proof observes actual backend `404` for `/api/v1/image-proof-missing/`, not the SPA shell, checks the
 container's health and headers, and inspects bounded logs. Both standalone containers and the host backend
 are stopped before testing resources are removed; residue checks must pass. Never run this concurrently with
 browser journeys because they deliberately share throwaway testing namespaces.
-The same proof then rehearses rollback by restarting the disposable Traefik with the pre-candidate routing
-read from `compose.development.yaml`, requiring the backend seam to survive and the SPA shell to disappear.
+The same proof then rehearses rollback by restarting the disposable Traefik without the frontend, requiring the
+backend seam to survive and the SPA shell to disappear.
 
 ## Base-image evidence, 2026-10-11
 

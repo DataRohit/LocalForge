@@ -1211,3 +1211,38 @@ def test_security_timing_marker_partitions_every_statistical_case_exactly_once()
 
     assert len(timing_cases) == SECURITY_TIMING_CASES
     assert cases_by_test == Counter(SECURITY_TIMING_CASES_BY_TEST)
+
+
+@pytest.mark.unit
+def test_per_minute_throttle_tests_wait_out_the_end_of_a_window() -> None:
+    """Hold a per-minute throttle test back until the next window has room.
+
+    Proves the guard sleeps only for tests naming a per-minute rate, only when a window boundary is
+    near, and long enough to cross it, so two throttle requests cannot straddle two windows.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the delay is wrong for any combination of rate and instant.
+    """
+    minute_test = 'override_settings(API_AUTHENTICATION_THROTTLE_RATE="1/minute")'
+    other_test = 'override_settings(API_AUTHENTICATION_THROTTLE_RATE="1000/hour")'
+    window_start = 1_800_000_000 - (1_800_000_000 % integration_conftest.MINUTE_WINDOW_SECONDS)
+
+    assert integration_conftest.seconds_to_window_end(window_start) == (
+        integration_conftest.MINUTE_WINDOW_SECONDS
+    )
+    assert integration_conftest.seconds_to_window_end(window_start + 59.5) == pytest.approx(0.5)
+    assert integration_conftest.window_boundary_delay(minute_test, window_start + 59.9) == (
+        pytest.approx(0.1 + integration_conftest.WINDOW_GUARD_SETTLE_SECONDS)
+    )
+    assert integration_conftest.window_boundary_delay(minute_test, window_start + 46.0) == (
+        pytest.approx(14.0 + integration_conftest.WINDOW_GUARD_SETTLE_SECONDS)
+    )
+    assert integration_conftest.window_boundary_delay(minute_test, window_start + 44.0) == 0.0
+    assert integration_conftest.window_boundary_delay(minute_test, window_start + 10.0) == 0.0
+    assert integration_conftest.window_boundary_delay(other_test, window_start + 59.9) == 0.0

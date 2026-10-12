@@ -10,13 +10,13 @@ would otherwise have surfaced as a mysterious failure at build time.
 
 ## 1. Development stack
 
-24 registered services, including the inert frontend candidate until deployment is authorized.
+24 registered services, all deployed by `make development-up`, the static frontend included.
 Ports listed are **host** ports; the internal port is given where it differs.
 
 | Container name | Role | Host ports | Internal | Networks |
 | --- | --- | --- | --- | --- |
 | `traefik-tk2jp` | reverse proxy, Docker label discovery | `127.0.0.1:8080` web, `127.0.0.1:8081` dashboard | 80, 8080, 8082 health internal only | `edge-net-ne2vk` |
-| `frontend-fe6vn` | static React SPA, Ticket 97 candidate | none | 8080 HTTP, `/healthz` | `edge-net-ne2vk` |
+| `frontend-fe6vn` | static React SPA | none | 8080 HTTP, `/healthz` | `edge-net-ne2vk` |
 | `cloudflared-cf7q2` | authenticated Cloudflare Tunnel connector | none | 2000 metrics and readiness internal only | `edge-net-ne2vk` |
 | `django-uv5n2` | Django ASGI app plus observability-only metrics listener | `127.0.0.1:8000` | 8000 app, 8001 metrics on `obsv-net-nb4xt` only | `edge-net-ne2vk`, `app-net-na6hy`, `data-net-nd9pc`, `obsv-net-nb4xt`, `access-net-ha4mz` |
 | `postgres-pg3ka` | PostgreSQL 18.6 primary | `127.0.0.1:5432` | 5432 | `data-net-nd9pc`, `access-net-ha4mz` |
@@ -111,10 +111,10 @@ process is perfectly healthy:
 run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data /etc/alloy/config.alloy
 ```
 
-### 1.4 Planned: frontend
+### 1.4 Frontend
 
-`frontend-fe6vn` is registered but **not deployed**. Ticket 97 builds its image and writes its candidate files; it
-joins the stack only after the user authorizes deployment, which makes the count 24.
+`frontend-fe6vn` is part of the development stack. Its image is built from `docker/frontend/Dockerfile` and it is
+started by every development command alongside Django, which makes the count 24.
 
 | Container name | Role | Host ports | Internal | Networks |
 | --- | --- | --- | --- | --- |
@@ -584,6 +584,7 @@ Built locally rather than pulled:
 | --- | --- | --- |
 | `localforge/django` | `docker/django/Dockerfile`, target `runtime`, tagged `0.1.0` | `python:3.14.6-slim`. Serves `django-uv5n2`, and later `celery-worker-cw8rt`, `celery-beat-cb4hq` and `flower-fl9zd`, which pass their own command to the entrypoint and therefore wait for dependencies without migrating |
 | `localforge/django-test` | `docker/django/Dockerfile`, target `test`, tagged `0.1.0` | the runtime stage plus the development dependencies, the suite, and the repository artifacts the suite reads |
+| `localforge/frontend` | `docker/frontend/Dockerfile`, tagged `0.1.0` | a pinned Node build stage, then a digest-pinned `nginxinc/nginx-unprivileged` runtime with no Node, npm, pnpm, or apk executable. Serves `frontend-fe6vn`; [../adr/0027-frontend-hosting-and-edge-routing.md](../adr/0027-frontend-hosting-and-edge-routing.md) |
 | `localforge/pgbackrest` | `docker/pgbackrest/Dockerfile` | `postgres:18.6` plus PGDG `pgbackrest`, tagged `18.6`. Run by **both** `pgbackrest-pb2wj` and `postgres-pg3ka`, because `archive_command` executes on the primary and therefore needs the binary there. See [../adr/0011-pgbackrest-backups.md](../adr/0011-pgbackrest-backups.md) |
 
 The application image installs from the lockfile with a pinned `uv` binary copied from `ghcr.io/astral-sh/uv:0.12.1`,

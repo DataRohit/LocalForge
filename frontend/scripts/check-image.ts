@@ -120,8 +120,8 @@ export function checkRuntimeLogs(text: string): string[] {
 /**
  * Describe the disposable proxy routing as a file-provider document.
  *
- * Builds the backend router and, when given, the frontend router at the candidate's lower priority.
- * Omitting the frontend reproduces the routing that existed before the candidate was applied.
+ * Builds the backend router and, when given, the frontend router at the lower frontend priority.
+ * Omitting the frontend reproduces the routing that existed before the frontend was added.
  *
  * @param backendRule - Rule for the Django router.
  * @param frontend - Frontend rule and health path, or undefined for the rolled-back routing.
@@ -160,30 +160,61 @@ export function routingDocument(
 }
 
 /**
- * Read the Django routing rule that existed before the frontend candidate.
+ * Development Compose document shape read by the routing proof.
  *
- * Takes the local-host router rule from the committed development Compose labels, which a rollback
- * returns to. A missing label fails closed so the rehearsal never invents a baseline.
+ * Keeps only the service labels the proof consumes, so unrelated Compose keys stay unchecked.
+ */
+export interface ComposeDocument {
+  readonly services: Record<string, { readonly labels?: readonly string[] }>;
+}
+
+/**
+ * Read one service's Traefik labels from the development Compose document.
+ *
+ * Splits each `key=value` entry at its first equals sign. A missing service fails closed so the
+ * proof never invents routing.
  *
  * @param compose - Parsed development Compose document.
- * @returns The baseline whole-host rule.
+ * @param service - Compose service name.
+ * @returns The service labels keyed by name.
+ * @throws Error If the service is absent.
+ */
+export function serviceLabels(compose: ComposeDocument, service: string): Record<string, string> {
+  const definition = compose.services[service];
+  if (definition === undefined) {
+    throw new Error(`The development Compose service ${service} is missing.`);
+  }
+  return Object.fromEntries(
+    (definition.labels ?? []).map((entry) => {
+      const separator = entry.indexOf("=");
+      return [entry.slice(0, separator), entry.slice(separator + 1)];
+    }),
+  );
+}
+
+/**
+ * Read the whole-host rule that a rollback returns Django to.
+ *
+ * The frontend's local router matches the entire host at a lower priority, so removing the frontend
+ * leaves Django answering exactly that rule. A missing label fails closed so the rehearsal never
+ * invents a baseline.
+ *
+ * @param compose - Parsed development Compose document.
+ * @returns The whole-host rule.
  * @throws Error If the label is absent.
  */
-export function baselineRule(compose: {
-  services: Record<string, { labels?: readonly string[] }>;
-}): string {
-  const prefix = "traefik.http.routers.localforge-local.rule=";
-  const label = compose.services["django-uv5n2"]?.labels?.find((entry) => entry.startsWith(prefix));
-  if (label === undefined) {
-    throw new Error("The development Django routing label is missing.");
+export function baselineRule(compose: ComposeDocument): string {
+  const rule = serviceLabels(compose, "frontend-fe6vn")["traefik.http.routers.frontend-local.rule"];
+  if (rule === undefined) {
+    throw new Error("The frontend routing label is missing.");
   }
-  return label.slice(prefix.length);
+  return rule;
 }
 
 /**
  * Request a bounded local runtime seam.
  *
- * Applies the host used by the candidate routers and a ten-second timeout.
+ * Applies the host used by the frontend and Django routers and a ten-second timeout.
  * Only the standalone listener and isolated testing backend are reachable.
  *
  * @param url - Loopback URL.
@@ -242,11 +273,11 @@ async function ready(url: string): Promise<void> {
 }
 
 /**
- * Prove the running image and the actual candidate routing rules.
+ * Prove the running image and the committed development routing rules.
  *
  * Starts the isolated host backend and a disposable proxy in the image's network namespace.
  * Exercises fallback, headers, cache, health, and an unknown API path, then rehearses rollback by
- * restarting the proxy with the pre-candidate routing. Reads both logs after each routing.
+ * restarting the proxy with the frontend-free routing. Reads both logs after each routing.
  *
  * @param env - Isolated testing environment prepared by the shared runner.
  * @returns Zero only when every assertion passes.
@@ -395,16 +426,11 @@ async function prove(env: Record<string, string>): Promise<number> {
     } finally {
       await browser.close();
     }
-    const candidate = parse(
-      await readFile(
-        path.join(root, "docs/runbooks/frontend-deployment/compose.candidate.yaml"),
-        "utf8",
-      ),
-    ) as {
-      services: Record<string, { labels: Record<string, string> }>;
-    };
-    const labels = candidate.services["django-uv5n2"]?.labels ?? {};
-    const frontendLabels = candidate.services["frontend-fe6vn"]?.labels ?? {};
+    const development = parse(
+      await readFile(path.join(root, "compose.development.yaml"), "utf8"),
+    ) as ComposeDocument;
+    const labels = serviceLabels(development, "django-uv5n2");
+    const frontendLabels = serviceLabels(development, "frontend-fe6vn");
     const startProxy = async (): Promise<string> =>
       docker([
         "run",
@@ -433,7 +459,7 @@ async function prove(env: Record<string, string>): Promise<number> {
     proxy = await startProxy();
     await ready(`${edge}/sign-in`);
     if ((await (await request(`${edge}/account`)).text()) !== html) {
-      throw new Error("Candidate SPA routing failed.");
+      throw new Error("Committed SPA routing failed.");
     }
     const unknown = await request(`${edge}/api/v1/image-proof-missing/`);
     if (unknown.status !== 404 || (await unknown.text()).includes('<div id="root">')) {
@@ -446,16 +472,13 @@ async function prove(env: Record<string, string>): Promise<number> {
       }
     };
     if ((await request(`${edge}/api/v1/browser/csrf/`)).status !== 204) {
-      throw new Error("The backend seam failed under the candidate routing.");
+      throw new Error("The backend seam failed under the committed routing.");
     }
     if (record.Mounts.length !== 0) {
       throw new Error("The frontend must be stateless, with no volume or bind mount.");
     }
     await assertCleanLogs(proxy);
     await docker(["rm", "--force", proxy]);
-    const development = parse(
-      await readFile(path.join(root, "compose.development.yaml"), "utf8"),
-    ) as Parameters<typeof baselineRule>[0];
     await writeFile(proxyFile, routingDocument(baselineRule(development)), "utf8");
     proxy = await startProxy();
     await ready(`${edge}/api/v1/browser/csrf/`);
@@ -468,7 +491,7 @@ async function prove(env: Record<string, string>): Promise<number> {
     }
     await assertCleanLogs(proxy);
     await assertCleanLogs(image);
-    console.log(`Image, candidate routing, and rollback passed; log window starts ${since}.`);
+    console.log(`Image, committed routing, and rollback passed; log window starts ${since}.`);
     return 0;
   } finally {
     if (process.platform === "win32" && backend.pid !== undefined) {

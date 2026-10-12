@@ -62,6 +62,7 @@ DEVELOPMENT_FOUNDATION = (
 )
 DEVELOPMENT_AFTER_DJANGO = (
     "cloudflared-cf7q2",
+    "frontend-fe6vn",
     "celery-worker-cw8rt",
     "celery-beat-cb4hq",
     "flower-fl9zd",
@@ -134,6 +135,7 @@ CONTAINER_PROJECTS = {
 REQUIRED_CONTAINERS = DEVELOPMENT_CONTAINERS | TESTING_CONTAINERS
 CONTAINER_IMAGES = {
     "cloudflared-cf7q2": "cloudflare/cloudflared:2026.9.3",
+    "frontend-fe6vn": "localforge/frontend:0.1.0",
     "traefik-tk2jp": "traefik:v3.7.13",
     "django-uv5n2": "localforge/django:0.1.0",
     "postgres-pg3ka": "localforge/pgbackrest:18.6",
@@ -225,6 +227,7 @@ LOCALFORGE_IMAGES = frozenset(
     {
         "localforge/django:0.1.0",
         "localforge/django-test:0.1.0",
+        "localforge/frontend:0.1.0",
         "localforge/pgbackrest:18.6",
     }
 )
@@ -599,6 +602,7 @@ TESTING = EnvironmentSpec(
 LOCAL_BUILD_TARGETS = (
     ("localforge/pgbackrest:18.6", DEVELOPMENT, "postgres-pg3ka"),
     ("localforge/django:0.1.0", DEVELOPMENT, "django-uv5n2"),
+    ("localforge/frontend:0.1.0", DEVELOPMENT, "frontend-fe6vn"),
     ("localforge/django-test:0.1.0", TESTING, "django-test-dt5qx"),
 )
 EXTERNAL_PULL_TARGETS = (
@@ -623,8 +627,8 @@ EXTERNAL_PULL_TARGETS = (
     ("oliver006/redis_exporter:v1.91.1", DEVELOPMENT, "valkey-cache-exporter-ve7ts"),
     ("rabbitmq:4.3.5", TESTING, "rabbitmq-tr6mc"),
 )
-DEVELOPMENT_LOCAL_BUILD_TARGETS = LOCAL_BUILD_TARGETS[:2]
-TESTING_LOCAL_BUILD_TARGETS = LOCAL_BUILD_TARGETS[2:]
+DEVELOPMENT_LOCAL_BUILD_TARGETS = LOCAL_BUILD_TARGETS[:3]
+TESTING_LOCAL_BUILD_TARGETS = LOCAL_BUILD_TARGETS[3:]
 DEVELOPMENT_EXTERNAL_PULL_TARGETS = tuple(
     target for target in EXTERNAL_PULL_TARGETS if target[1] is DEVELOPMENT
 )
@@ -894,7 +898,9 @@ def build(
     selected = services
     if selected is None:
         selected = (
-            ("postgres-pg3ka", "django-uv5n2") if spec is DEVELOPMENT else ("django-test-dt5qx",)
+            ("postgres-pg3ka", "django-uv5n2", "frontend-fe6vn")
+            if spec is DEVELOPMENT
+            else ("django-test-dt5qx",)
         )
     arguments.extend(selected)
 

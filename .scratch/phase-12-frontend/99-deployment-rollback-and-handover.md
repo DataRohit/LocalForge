@@ -48,3 +48,29 @@ handover for Gate 4.
 - [x] The handover records final ownership, commands, evidence, and the unverified production gates.
 - [x] Nothing has been applied to `localforge-dev`.
 - [x] Gate 4 report is delivered; deployment waits for the user's explicit authorization.
+
+## Adoption record, 2026-10-12
+
+The user asked for the frontend to be deployed in `development` and for the project to be completed in one run. The
+inert candidate was adopted into the committed development definition instead of being applied by hand, so
+`make environments-setup` and every `make development-*` command deploy it:
+
+- `compose.development.yaml` gained `frontend-fe6vn` and the Django owned-prefix router labels at priority 100.
+- `backend/scripts/manage_platform.py` registers the container, its image, its build target, and its rebuild service;
+  `backend/scripts/audit_naming.py` registers its network membership and absence of published ports.
+- `frontend/scripts/check-image.ts` reads the committed labels, and the rollback baseline is the frontend's own
+  whole-host rule. `compose.candidate.yaml` and `registry.candidate.patch` were retired; the runbooks, inventory,
+  conventions, Kubernetes mapping, ADR 0027, plan, and handover were updated.
+- Verified without touching any Docker object: a merged `docker compose config` of both development files is valid
+  and lists 24 services; the unit tests for Compose, platform, and naming pass (the only failures are the existing
+  ones that need generated environment files); Ruff, Ruff format, the documentation standard, markdownlint, yamllint,
+  and `make frontend-check` (1,133 tests at 100% coverage) pass.
+- Full backend run on 2026-10-12 (Block 2, 34m55s, all six steps passed): `make environments-setup` built and started
+  `frontend-fe6vn` healthy among 24 development containers with the project-scoped Docker audit passing; `make check`
+  passed with 2,303 tests at 100% branch coverage, 23 security-timing tests, and five registration-stability runs;
+  `make testing-test-container` passed 2,303 and 23 tests with a clean `testing` log window; and
+  `make testing-integration-audit` passed. The first `make check` failed once on a minute-boundary race in a
+  per-minute throttle test; the integration harness now waits out the end of a window, with no limit weakened.
+- Still unrecorded: the runtime-truth checks in `deploy.md` Sections 3 to 5 (frontend behavior through Traefik and
+  the public edge, and the `development` log window). The status stays **Locally Verified** until that evidence is
+  recorded.

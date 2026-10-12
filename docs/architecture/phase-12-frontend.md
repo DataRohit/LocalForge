@@ -11,15 +11,14 @@ accepted the Phase 11 freeze (delegated, recorded in `docs/handover/phase-11.md`
 start on 2026-10-10.
 
 Status: tickets 87–99 are **Locally Verified** as of 2026-10-12 and the Gate 4 report is in
-[the Phase 12 handover](../handover/phase-12.md). Deployment into `development` has not been applied and waits
-for the user's explicit authorization.
+[the Phase 12 handover](../handover/phase-12.md). On the user's instruction of 2026-10-12 the frontend was adopted
+into the committed development definition, so every development start deploys it.
 
 ## 1. Scope
 
 A React and Tailwind CSS single-page application for the frozen backend: registration, activation, sign-in and
 sign-out, profile, password and username recovery and change, and live notifications. It is built, tested, and
-packaged as a pinned container with an inert edge candidate. Nothing is deployed to `development` without the
-user's authorization.
+packaged as a pinned container that `development` serves behind the existing edge.
 
 Out of scope: server-side rendering, a backend-for-frontend, internationalization, dark mode, a service worker or
 installable app, analytics or error-reporting services, an admin interface, notification history, file upload,
@@ -76,7 +75,7 @@ All commands run through the root `Makefile`, which calls `pnpm --dir frontend`.
 | `frontend-api-generate` | Regenerates `src/api/generated/` from the committed OpenAPI document |
 | `frontend-e2e` | `node e2e/support/run.ts`: isolation check, build, throwaway database, cache namespaces, and Mailpit in `testing`, then Playwright (the mocked audit project and the journeys on three browsers), a log-window check, cleanup, and a residue check; see [service inventory](../platform/service-inventory.md) Section 4.3 |
 | `frontend-image` | The pinned container build |
-| `frontend-image-check` | Standalone image, headers, injected-script CSP block, cache, health, and candidate Traefik routing proof |
+| `frontend-image-check` | Standalone image, headers, injected-script CSP block, cache, health, and committed Traefik routing proof |
 | `frontend-audit` | Offline licence, advisory, release-age, and install-script audit; requires fresh matching evidence |
 | `frontend-audit-refresh` | Explicit dependency-resolution boundary; retrieves and validates full-lock registry and advisory evidence |
 | `frontend-advisory-evidence` | Machine-readable pnpm advisory document for the refresh command |
@@ -119,9 +118,8 @@ Same posture as the backend: enforced, never lowered to pass.
   `X-Content-Type-Options: nosniff`, `frame-ancestors 'none'`.
 - **Health.** nginx answers `/healthz` on its internal port; Traefik's service health check uses the same path.
 - **Logs.** nginx writes structured access and error logs to stdout. The existing pipeline is expected to collect
-  them; Ticket 97 confirms this without reading live-mounted configuration unless the user authorizes it, and
-  otherwise supplies a candidate patch.
-- **Rollback.** Reverting the routing candidate returns every path to Django; the SPA is stateless, so no data is
+  them; Ticket 97 confirmed this without reading live-mounted configuration.
+- **Rollback.** Reverting the adopting commit returns every path to Django; the SPA is stateless, so no data is
   involved.
 
 ## 7. Gate
@@ -130,9 +128,11 @@ Same posture as the backend: enforced, never lowered to pass.
 2. `make frontend-check`, `make frontend-e2e`, and `make frontend-audit` pass, and the backend `testing` gate still
    passes in container and host mode.
 3. The container runs standalone with its health check passing and a clean bounded log window.
-4. The routing candidate, deployment procedure, and rehearsed rollback are in `docs/runbooks/frontend-deployment/`.
+4. The committed routing, deployment procedure, and rehearsed rollback are in `compose.development.yaml` and
+   `docs/runbooks/frontend-deployment/`.
 5. `docs/handover/phase-12.md` records ownership, commands, evidence, and the unverified production gates.
-6. Nothing has been applied to `localforge-dev`. Deployment waits for the user's explicit authorization.
+6. Development runtime truth for the frontend is verified by the deploy runbook after the stack starts;
+   until that evidence exists the status stays **Locally Verified**.
 
 ## 8. Replan record
 

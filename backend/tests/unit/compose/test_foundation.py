@@ -2481,6 +2481,29 @@ def test_the_proxy_replaces_untrusted_forwarded_address_metadata() -> None:
     assert web["http"]["aliasHeadersStrategy"] == "delete"
 
 
+OWNED_BACKEND_PATHS = (
+    "(PathPrefix(`/api/`) || PathPrefix(`/ws/`) || PathPrefix(`/health/`) || PathPrefix(`/admin/`) "
+    "|| PathPrefix(`/static/`) || Path(`/api`) || Path(`/ws`) || Path(`/health`) "
+    "|| Path(`/admin`) || Path(`/static`))"
+)
+
+
+def owned_rule(router: str, host: str) -> str:
+    """Build the Django router rule label that owns the backend path prefixes.
+
+    Joins the registered host to the exact backend prefixes, which keeps every other path free for
+    the frontend router at its lower priority.
+
+    Arguments:
+        router: Traefik router name.
+        host: Registered host the router matches.
+
+    Returns:
+        The complete Compose label text.
+    """
+    return f"traefik.http.routers.{router}.rule=Host(`{host}`) && {OWNED_BACKEND_PATHS}"
+
+
 @pytest.mark.unit
 def test_the_proxy_routes_the_registered_application_host() -> None:
     """Route the public development host to Django by Docker labels.
@@ -2502,10 +2525,12 @@ def test_the_proxy_routes_the_registered_application_host() -> None:
     labels = set(application["labels"])
 
     assert "traefik.enable=true" in labels
-    assert "traefik.http.routers.localforge-local.rule=Host(`localforge.localhost`)" in labels
+    assert owned_rule("localforge-local", "localforge.localhost") in labels
+    assert "traefik.http.routers.localforge-local.priority=100" in labels
     assert "traefik.http.routers.localforge-local.entrypoints=web" in labels
     assert "traefik.http.routers.localforge-local.service=localforge" in labels
-    assert "traefik.http.routers.localforge-public.rule=Host(`localforge.datarohit.com`)" in labels
+    assert owned_rule("localforge-public", "localforge.datarohit.com") in labels
+    assert "traefik.http.routers.localforge-public.priority=100" in labels
     assert "traefik.http.routers.localforge-public.entrypoints=web" in labels
     assert "traefik.http.routers.localforge-public.service=localforge" in labels
     assert (
@@ -2527,6 +2552,41 @@ def test_the_proxy_routes_the_registered_application_host() -> None:
     assert "traefik.http.services.localforge.loadbalancer.server.port=8000" in labels
     assert "traefik.http.services.localforge.loadbalancer.healthcheck.path=/health/" in labels
     assert services[PROXY_SERVICE]["depends_on"]["django-uv5n2"]["condition"] == "service_healthy"
+
+
+@pytest.mark.unit
+def test_the_frontend_is_a_stateless_edge_only_service_behind_the_backend_prefixes() -> None:
+    """Serve the single-page application from one hardened container below the backend routes.
+
+    Confirms the frontend joins only the edge network with no published port, volume, or secret
+    file, runs unprivileged on a read-only root, and routes both hosts below the backend priority.
+
+    Arguments:
+        None.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: If the frontend is stateful, privileged, exposed, or outranks the backend.
+    """
+    frontend = merged(DEVELOPMENT_FILE)["services"]["frontend-fe6vn"]
+    labels = set(frontend["labels"])
+
+    assert frontend["image"] == "localforge/frontend:0.1.0"
+    assert frontend["build"]["dockerfile"] == "docker/frontend/Dockerfile"
+    assert set(frontend["networks"]) == {"edge-net-ne2vk"}
+    assert not {"ports", "volumes", "env_file", "environment", "depends_on"} & set(frontend)
+    assert frontend["user"] == "101:101"
+    assert frontend["read_only"] is True
+    assert frontend["cap_drop"] == ["ALL"]
+    assert frontend["security_opt"] == ["no-new-privileges:true"]
+    assert "traefik.http.routers.frontend-local.rule=Host(`localforge.localhost`)" in labels
+    assert "traefik.http.routers.frontend-public.rule=Host(`localforge.datarohit.com`)" in labels
+    assert "traefik.http.routers.frontend-local.priority=10" in labels
+    assert "traefik.http.routers.frontend-public.priority=10" in labels
+    assert "traefik.http.services.frontend.loadbalancer.server.port=8080" in labels
+    assert "traefik.http.services.frontend.loadbalancer.healthcheck.path=/healthz" in labels
 
 
 @pytest.mark.unit

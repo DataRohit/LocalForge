@@ -35,8 +35,9 @@ the SPA shell. The SPA's own build assets live under `/assets/`, which Django do
 
 ## Deployment gate
 
-Compose and Traefik label changes that reach `localforge-dev` are authored as inert candidate files and applied only
-after the user authorizes deployment. They are never merged into `compose.development.yaml` earlier.
+Compose and Traefik label changes that reach `localforge-dev` were authored as inert candidate files and applied only
+after the user authorized deployment. On 2026-10-12 the user did so, and the candidate was merged into
+`compose.development.yaml` and the platform registries; the candidate files were retired.
 
 ## Considered options
 

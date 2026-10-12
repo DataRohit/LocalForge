@@ -662,10 +662,12 @@ services:
 
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.localforge-local.rule=Host(`localforge.localhost`)"
+      - "traefik.http.routers.localforge-local.rule=Host(`localforge.localhost`) && (PathPrefix(`/api/`) || PathPrefix(`/ws/`) || PathPrefix(`/health/`) || PathPrefix(`/admin/`) || PathPrefix(`/static/`) || Path(`/api`) || Path(`/ws`) || Path(`/health`) || Path(`/admin`) || Path(`/static`))"
+      - "traefik.http.routers.localforge-local.priority=100"
       - "traefik.http.routers.localforge-local.entrypoints=web"
       - "traefik.http.routers.localforge-local.service=localforge"
-      - "traefik.http.routers.localforge-public.rule=Host(`localforge.datarohit.com`)"
+      - "traefik.http.routers.localforge-public.rule=Host(`localforge.datarohit.com`) && (PathPrefix(`/api/`) || PathPrefix(`/ws/`) || PathPrefix(`/health/`) || PathPrefix(`/admin/`) || PathPrefix(`/static/`) || Path(`/api`) || Path(`/ws`) || Path(`/health`) || Path(`/admin`) || Path(`/static`))"
+      - "traefik.http.routers.localforge-public.priority=100"
       - "traefik.http.routers.localforge-public.entrypoints=web"
       - "traefik.http.routers.localforge-public.service=localforge"
       - "traefik.http.routers.localforge-public.middlewares=localforge-public-forwarded-https,localforge-public-hide-admin"
@@ -706,6 +708,42 @@ services:
       timeout: 10s
       retries: 10
       start_period: 120s
+
+  frontend-fe6vn:
+    image: localforge/frontend:0.1.0
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+      provenance: false
+    container_name: frontend-fe6vn
+    restart: unless-stopped
+    user: "101:101"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m,uid=101,gid=101
+
+    networks:
+      edge-net-ne2vk: {}
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend-local.rule=Host(`localforge.localhost`)"
+      - "traefik.http.routers.frontend-local.entrypoints=web"
+      - "traefik.http.routers.frontend-local.priority=10"
+      - "traefik.http.routers.frontend-local.service=frontend"
+      - "traefik.http.routers.frontend-public.rule=Host(`localforge.datarohit.com`)"
+      - "traefik.http.routers.frontend-public.entrypoints=web"
+      - "traefik.http.routers.frontend-public.priority=10"
+      - "traefik.http.routers.frontend-public.service=frontend"
+      - "traefik.http.services.frontend.loadbalancer.server.port=8080"
+      - "traefik.http.services.frontend.loadbalancer.healthcheck.path=/healthz"
+      - "traefik.http.services.frontend.loadbalancer.healthcheck.interval=5s"
+      - "traefik.http.services.frontend.loadbalancer.healthcheck.timeout=3s"
 
   celery-worker-cw8rt:
     image: localforge/django:0.1.0

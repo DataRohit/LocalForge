@@ -97,8 +97,8 @@ and 12 full-stack documents and files, which exist only once their tickets creat
 | `backend/tests/integration/accounts/csrf_support.py` | Builds the CSRF-rejected request the status-contract evidence tests observe; created when Phase 11 was reopened on 2026-10-11 |
 | `docker/frontend/Dockerfile`, `docker/frontend/nginx.conf` | Digest-pinned build and static runtime image and its server configuration; created by Ticket 97 |
 | `docker/frontend/entrypoint.sh` | Converts native nginx error records to JSON without another service or dependency; created by Ticket 97 |
-| `frontend/scripts/check-image.ts`, `frontend/scripts/check-image.test.ts` | Standalone image and candidate-routing proof against the isolated testing backend; created by Ticket 97 |
-| `docs/runbooks/frontend-deployment/` | Inert candidate Compose and Traefik files plus deploy and rollback procedure; never loaded by tooling; created by Tickets 97 and 99 |
+| `frontend/scripts/check-image.ts`, `frontend/scripts/check-image.test.ts` | Standalone image and committed-routing proof against the isolated testing backend; created by Ticket 97 |
+| `docs/runbooks/frontend-deployment/` | Frontend deploy and rollback procedures and the ownership and proof notes; created by Tickets 97 and 99 |
 | `docs/handover/phase-11.md`, `docs/handover/phase-12.md` | Freeze Manifest and frontend handover records; created by Tickets 86 and 99 |
 | `docs/handover/phase-10.md` | Phase 10 final migration evidence and rollback record |
 | `Makefile` | Root command entry point; selects the backend project and runs Poe from its project directory |
@@ -134,7 +134,7 @@ and 12 full-stack documents and files, which exist only once their tickets creat
 | `backend/tests/factories.py` | Valid-by-default account and credential-state factories shared by unit and integration tests |
 | `backend/tests/websocket.py` | Daphne-free in-process ASGI WebSocket communicator shared by integration tests |
 | `backend/tests/unit/conftest.py` | Guard refusing network access from the unit layer |
-| `backend/tests/integration/conftest.py` | Guard requiring each integration test to declare its services |
+| `backend/tests/integration/conftest.py` | Guard requiring each integration test to declare its services, and a guard keeping per-minute throttle tests inside one fixed window |
 | `backend/tests/integration/config/runtime_probe.py` | Host/container probe for Mailpit recreation and genuinely stopped dependency readiness |
 | `backend/tests/unit/test_architecture.py` | Enforces runtime dependency direction, public cross-module imports, and executable cycle freedom |
 | `backend/tests/unit/test_dependencies.py` | Asserts the dependency baseline is declared, installed, and importable |

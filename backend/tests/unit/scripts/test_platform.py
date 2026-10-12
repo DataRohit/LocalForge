@@ -430,7 +430,7 @@ def test_development_rebuild_preserves_volumes_and_recreates_services(tmp_path: 
 
     commands = [call[0] for call in runner.calls]
     assert code == platform.EXIT_OK
-    assert commands[0][-3:] == ("build", "postgres-pg3ka", "django-uv5n2")
+    assert commands[0][-4:] == ("build", "postgres-pg3ka", "django-uv5n2", "frontend-fe6vn")
     assert commands[0][2:4] == ("--project-name", "localforge-dev")
     assert commands[1][-8:] == (
         "up",
@@ -1937,12 +1937,13 @@ def test_confirmed_development_reset_is_explicitly_destructive(tmp_path: Path) -
     commands = [call[0] for call in runner.calls]
     assert code == platform.EXIT_OK
     assert commands[0][-3:] == ("down", "--volumes", "--remove-orphans")
-    assert commands[1][-5:] == (
+    assert commands[1][-6:] == (
         "build",
         "--no-cache",
         "--pull",
         "postgres-pg3ka",
         "django-uv5n2",
+        "frontend-fe6vn",
     )
     assert commands[2][-2:] == ("pull", "--ignore-buildable")
     assert "--volumes" not in commands[3]
@@ -2262,7 +2263,7 @@ def test_setup_handles_absent_and_successfully_decrypted_artifacts(tmp_path: Pat
 @pytest.mark.parametrize(
     ("command", "expected_tail"),
     [
-        ("development-build", ("build", "postgres-pg3ka", "django-uv5n2")),
+        ("development-build", ("build", "postgres-pg3ka", "django-uv5n2", "frontend-fe6vn")),
         ("testing-build", ("build", "django-test-dt5qx")),
         ("development-down", ("down", "--remove-orphans")),
         ("testing-down", ("down", "--remove-orphans")),
@@ -2742,7 +2743,7 @@ def test_missing_image_setup_builds_each_unique_local_image_once() -> None:
     assert code == platform.EXIT_OK
     build_commands = [call[0] for call in runner.calls if "build" in call[0]]
     assert len(build_commands) == ENVIRONMENT_COUNT
-    assert build_commands[0][-3:] == ("build", "postgres-pg3ka", "django-uv5n2")
+    assert build_commands[0][-4:] == ("build", "postgres-pg3ka", "django-uv5n2", "frontend-fe6vn")
     assert build_commands[1][-2:] == ("build", "django-test-dt5qx")
     build_targets = [argument for command in build_commands for argument in command]
     assert build_targets.count("postgres-pg3ka") == 1
@@ -2785,7 +2786,7 @@ def test_existing_image_setup_rebuilds_local_images_and_uses_no_build_up(
     assert code == platform.EXIT_OK
     assert all("pull" not in command for command in commands)
     assert len(builds) == ENVIRONMENT_COUNT
-    assert builds[0][-3:] == ("build", "postgres-pg3ka", "django-uv5n2")
+    assert builds[0][-4:] == ("build", "postgres-pg3ka", "django-uv5n2", "frontend-fe6vn")
     assert builds[1][-2:] == ("build", "django-test-dt5qx")
     assert len(starts) == ENVIRONMENT_COUNT
     assert all("--no-build" in command for command in starts)
@@ -2816,7 +2817,7 @@ def test_partial_image_setup_refreshes_every_local_image() -> None:
 
     build_commands = [call[0] for call in runner.calls if "build" in call[0]]
     assert code == platform.EXIT_OK
-    assert build_commands[0][-3:] == ("build", "postgres-pg3ka", "django-uv5n2")
+    assert build_commands[0][-4:] == ("build", "postgres-pg3ka", "django-uv5n2", "frontend-fe6vn")
     assert build_commands[1][-2:] == ("build", "django-test-dt5qx")
     assert all("pgbackrest-pb2wj" not in command for command in build_commands)
 
