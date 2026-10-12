@@ -480,13 +480,14 @@ approval.
 
 Tickets 87–93 build the toolchain, API client, shell, and the authentication, recovery, profile, and notification
 workflows. Tickets 94–96 audit accessibility, test the units, and drive real browsers against the `testing`
-backend. Tickets 97–99 produce the pinned container, the inert edge candidate of
+backend. Tickets 97–99 produce the pinned container, the edge routing of
 [ADR 0027](../adr/0027-frontend-hosting-and-edge-routing.md), the security audit, and the deployment and rollback
-procedures.
+procedures. On 2026-10-12 the user authorized deployment, and the container and routing were adopted into
+`compose.development.yaml`, so every development start serves the frontend.
 
-Gate: every frontend quality gate passes, the container and candidate files are verified standalone, and the
-handover in `docs/handover/phase-12.md` is delivered. Deployment into `development` waits for the user's explicit
-authorization.
+Gate: every frontend quality gate passes, the container and routing are verified standalone, and the handover in
+`docs/handover/phase-12.md` is delivered. Runtime evidence from the running `development` stack and the public edge is
+recorded by the deploy runbook; until then the status stays Locally Verified.
 
 ## 4. Rollback
 
